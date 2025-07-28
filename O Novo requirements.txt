@@ -1,0 +1,7 @@
+# requirements.txt (para a aplicação web)
+flask
+pandas
+openpyxl
+matplotlib
+requests
+gunicorn # Servidor web de produção
