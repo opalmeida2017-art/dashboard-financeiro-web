@@ -1,31 +1,21 @@
-# Dockerfile
-
-# Passo 1: Começar com uma imagem base oficial e leve do Python.
-# 'slim' é uma versão mais pequena, ideal para produção.
+# Use uma imagem base do Python
 FROM python:3.10-slim
 
-# Passo 2: Definir o diretório de trabalho dentro do contentor.
-# Todos os comandos subsequentes serão executados a partir deste diretório.
+# Defina o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Passo 3: Copiar o ficheiro de dependências PRIMEIRO.
-# O Docker armazena em cache as camadas. Se requirements.txt não mudar,
-# esta camada não será reconstruída, acelerando futuras builds.
-COPY requirements.txt.
+# Copie o arquivo de dependências primeiro para aproveitar o cache do Docker
+COPY requirements.txt .
 
-# Passo 4: Instalar as dependências do Python.
-# --no-cache-dir reduz o tamanho da imagem final.
+# Instale as dependências
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Passo 5: Copiar o resto do código da aplicação para o contentor.
-COPY..
+# Copie todo o resto do seu projeto para o diretório de trabalho
+COPY . .
 
-# Passo 6: Expor a porta que a aplicação irá ouvir.
-# A Render irá ligar-se a esta porta. 10000 é uma porta comum não privilegiada.
-EXPOSE 10000
-
-# Passo 7: O comando para iniciar a aplicação.
-# Usa-se Gunicorn, um servidor web de produção WSGI, em vez do servidor de desenvolvimento do Flask.
-# --bind 0.0.0.0:10000 faz o servidor ouvir em todas as interfaces de rede na porta 10000.
-# app:app refere-se ao objeto 'app' dentro do ficheiro 'app.py'.
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"]
+# Comando para iniciar a aplicação em produção usando Gunicorn
+# - Render define a variável de ambiente $PORT (que geralmente é 10000)
+# - '--bind 0.0.0.0:$PORT' faz o app ficar acessível externamente na porta correta
+# - '--workers 3' inicia 3 processos para lidar com múltiplas requisições
+# - 'app:app' diz ao Gunicorn para procurar no arquivo "app.py" a variável "app"
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 3 app:app

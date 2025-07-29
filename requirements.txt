@@ -1,0 +1,14 @@
+# Web Server
+flask
+gunicorn
+
+# Data Handling
+pandas
+openpyxl
+
+# Utilities
+requests
+semver
+
+# PostgreSQL Connector
+psycopg2-binary

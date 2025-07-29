@@ -1,22 +1,46 @@
 # database.py
-
+import os
+import psycopg2
 import sqlite3
 import pandas as pd
 import config
-import os
 from datetime import datetime
 
 DATABASE_NAME = config.DATABASE_NAME
 
+# --- SUBSTITUA A FUNÇÃO ANTIGA POR ESTA ---
 def get_db_connection():
-    """Cria e retorna um objeto de conexão com o banco de dados SQLite."""
-    try:
-        conn = sqlite3.connect(DATABASE_NAME)
-        conn.row_factory = sqlite3.Row
-        return conn
-    except sqlite3.Error as e:
-        print(f"Erro ao conectar ao banco de dados: {e}")
-        return None
+    """
+    Cria e retorna uma conexão com o banco de dados.
+    Usa PostgreSQL se a variável de ambiente DATABASE_URL estiver definida (no Render).
+    Caso contrário, usa o banco de dados SQLite local.
+    """
+    db_url = os.getenv('DATABASE_URL')
+    
+    if db_url:
+        # Ambiente de produção (Render)
+        try:
+            print("Conectando ao banco de dados PostgreSQL...")
+            conn = psycopg2.connect(db_url)
+            # No psycopg2, o 'row_factory' é definido ao criar o cursor, não na conexão.
+            # E para o Pandas, não é necessário.
+            return conn
+        except psycopg2.Error as e:
+            print(f"Erro ao conectar ao PostgreSQL: {e}")
+            return None
+    else:
+        # Ambiente local
+        try:
+            print("Conectando ao banco de dados SQLite local...")
+            conn = sqlite3.connect(DATABASE_NAME)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except sqlite3.Error as e:
+            print(f"Erro ao conectar ao banco de dados SQLite: {e}")
+            return None
+
+# O resto do seu arquivo database.py (create_tables, etc.) pode continuar igual por enquanto.
+# Apenas a função de conexão precisa mudar.
 
 def create_tables():
     """
@@ -233,9 +257,14 @@ def create_tables():
             )
         ''')
 
-        # As duas linhas abaixo estão corretas
-        cursor.execute("INSERT OR IGNORE INTO static_expense_groups (group_name) VALUES ('VALOR QUEBRA')")
-        cursor.execute("INSERT OR IGNORE INTO static_expense_groups (group_name, is_despesa, is_custo_viagem) VALUES ('COMISSÃO DE MOTORISTA', 'S', 'N')")
+        # Insere valores padrão em static_expense_groups de forma compatível com SQLite e PostgreSQL
+        db_type = type(conn).__module__
+        if "sqlite3" in db_type:
+            cursor.execute("INSERT OR IGNORE INTO static_expense_groups (group_name) VALUES ('VALOR QUEBRA')")
+            cursor.execute("INSERT OR IGNORE INTO static_expense_groups (group_name, is_despesa, is_custo_viagem) VALUES ('COMISSÃO DE MOTORISTA', 'S', 'N')")
+        else:
+            cursor.execute("INSERT INTO static_expense_groups (group_name) VALUES ('VALOR QUEBRA') ON CONFLICT DO NOTHING")
+            cursor.execute("INSERT INTO static_expense_groups (group_name, is_despesa, is_custo_viagem) VALUES ('COMISSÃO DE MOTORISTA', 'S', 'N') ON CONFLICT DO NOTHING")
         
         # A linha com erro foi removida.
 
@@ -253,7 +282,7 @@ def reset_all_tables():
             try:
                 print(f"Apagando a tabela: {table_name}...")
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-            except sqlite3.Error as e:
+            except (sqlite3.Error, psycopg2.Error, Exception) as e:
                 print(f"Erro ao apagar a tabela {table_name}: {e}")
         conn.commit()
         create_tables()
@@ -308,13 +337,30 @@ def _clean_and_convert_data(df, table_key):
 
 
 def _validate_columns(df_columns, table_name):
-    """Valida as colunas do Excel contra uma lista mestra para garantir a consistência."""
+    """Valida as colunas da planilha contra as colunas da tabela do banco de dados."""
     print(f"\nValidando colunas da tabela '{table_name}'...")
     with get_db_connection() as conn:
-        if conn is None: return
+        if conn is None:
+            return
         cursor = conn.cursor()
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        db_columns = {row['name'] for row in cursor.fetchall()}
+        db_type = type(conn).__module__
+        db_columns = set()
+        try:
+            if "sqlite3" in db_type:
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                db_columns = {row['name'] if isinstance(row, sqlite3.Row) else row[1] for row in cursor.fetchall()}
+            elif "psycopg2" in db_type:
+                cursor.execute("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = %s
+                """, (table_name,))
+                db_columns = {row[0] for row in cursor.fetchall()}
+            else:
+                print("Tipo de banco de dados não suportado para validação de colunas.")
+                return list(df_columns)
+        except Exception as e:
+            print(f"Erro ao obter colunas da tabela '{table_name}': {e}")
+            return list(df_columns)
 
     excel_cols_set = set(df_columns)
 
