@@ -1,7 +1,14 @@
-# requirements.txt (para a aplicação web)
+# Web Server
 flask
+gunicorn
+
+# Data Handling
 pandas
 openpyxl
-matplotlib
+
+# Utilities
 requests
-gunicorn # Servidor web de produção
+semver
+
+# PostgreSQL Connector
+psycopg2-binary
