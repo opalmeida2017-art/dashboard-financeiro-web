@@ -1,10 +1,10 @@
 # render.yaml
 services:
   # Define um novo serviço.
-  - type: web # É um serviço web, acessível via HTTP.
-    name: python-dashboard # O nome do serviço na Render.
-    env: docker # Diz à Render para construir e executar a partir do nosso Dockerfile.
-    repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git # SUBSTITUA pelo URL do seu repositório GitHub.
+  - type:web # É um serviço web, acessível via HTTP.
+    name:python-dashboard # O nome do serviço na Render.
+    env:docker # Diz à Render para construir e executar a partir do nosso Dockerfile.
+    repo:https://github.com/opalmeida2017-art/dashboard-financeiro-web.git # SUBSTITUA pelo URL do seu repositório GitHub.
     autoDeploy:true # Implementa automaticamente novas alterações quando faz 'git push' para o branch principal.
     healthCheckPath: / # A Render irá verificar este URL para garantir que a sua app está saudável.
     
