@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciar Grupos de Despesa</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 12px; text-align: left; }
+        th { background-color: #f4f4f9; }
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-salvar { background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; float: right; margin-top: 20px;}
+        .btn-salvar:hover { background-color: #218838; }
+        a.voltar { display: inline-block; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="{{ url_for('index') }}">&larr; Voltar para o Dashboard</a>
+        <h1>Gerenciar Grupos de Despesa</h1>
+        <p>Classifique cada grupo. Um grupo pode ser um custo, uma despesa ou nenhum dos dois (ex: investimento), mas não ambos.</p>
+
+        <form method="POST" action="{{ url_for('gerenciar_grupos') }}">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome do Grupo de Despesa</th>
+                        <th>Classificação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group, group_flags in flags.items() %}
+                    <tr>
+                        <td>{{ group }}</td>
+                        <td>
+                            <label>
+                                <input type="checkbox" class="classification-cb" data-group="{{ group }}" data-type="custo" name="{{ group }}_custo"
+                                       {% if group_flags.custo_viagem == 'S' %}checked{% endif %}>
+                                É um Custo de Viagem
+                            </label>
+                            <br>
+                            <label>
+                                <input type="checkbox" class="classification-cb" data-group="{{ group }}" data-type="despesa" name="{{ group }}_despesa"
+                                       {% if group_flags.despesa == 'S' %}checked{% endif %}>
+                                É uma Despesa Geral
+                            </label>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <button type="submit" class="btn-salvar">Salvar Alterações</button>
+        </form>
+    </div>
+
+    <script>
+        // Adiciona a lógica para que os checkboxes de um mesmo grupo sejam exclusivos
+        document.addEventListener('DOMContentLoaded', function() {
+            const checkboxes = document.querySelectorAll('.classification-cb');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', function() {
+                    if (this.checked) {
+                        // Pega o grupo e o tipo do checkbox que foi clicado
+                        const currentGroup = this.dataset.group;
+                        const currentType = this.dataset.type;
+
+                        // Desmarca o outro checkbox do mesmo grupo
+                        checkboxes.forEach(otherCb => {
+                            if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
+                                otherCb.checked = false;
+                            }
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

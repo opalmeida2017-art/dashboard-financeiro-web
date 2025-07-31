@@ -6,6 +6,9 @@ gunicorn
 pandas
 openpyxl
 
+# Plotting & Graphics
+matplotlib
+
 # Utilities
 requests
 semver

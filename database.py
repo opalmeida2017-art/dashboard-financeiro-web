@@ -6,7 +6,8 @@ import pandas as pd
 import config
 from datetime import datetime
 
-DATABASE_NAME = config.DATABASE_NAME
+# CORREÇÃO AQUI: Definimos o nome do DB local diretamente.
+DATABASE_NAME = 'financeiro.db'
 
 # --- SUBSTITUA A FUNÇÃO ANTIGA POR ESTA ---
 def get_db_connection():

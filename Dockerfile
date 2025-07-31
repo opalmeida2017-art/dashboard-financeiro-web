@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Comando para iniciar a aplicação em produção usando Gunicorn
-# - Render define a variável de ambiente $PORT (que geralmente é 10000)
+# - O Render define a variável de ambiente $PORT
 # - '--bind 0.0.0.0:$PORT' faz o app ficar acessível externamente na porta correta
 # - '--workers 3' inicia 3 processos para lidar com múltiplas requisições
 # - 'app:app' diz ao Gunicorn para procurar no arquivo "app.py" a variável "app"

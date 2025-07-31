@@ -1,114 +1,129 @@
 # app.py
 import os
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
-from werkzeug.utils import secure_filename
-import logic  # Importa a nossa lógica refatorada
-import io
+from flask import Flask, render_template, jsonify, request, redirect, url_for
+from datetime import datetime
+import logic  # Importa a nossa lógica de busca de dados
+import database as db # Importa o database para a rota de importação
+import config # Importa as configurações
 
-# Configuração da Aplicação
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
-
+# Cria a aplicação Flask
 app = Flask(__name__)
-app.config = UPLOAD_FOLDER
 
-# Garante que a pasta de uploads existe
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# --- MANEIRA CORRETA DE CARREGAR A CONFIGURAÇÃO ---
+# Carrega as variáveis do arquivo config.py para dentro da configuração do Flask
+app.config.from_object(config)
+# ---------------------------------------------------
 
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1).lower() in ALLOWED_EXTENSIONS
 
-# Variável global para armazenar o DataFrame mais recente (simplificação para este exemplo)
-# Numa aplicação real, isto seria gerido de forma mais robusta (ex: por sessão de utilizador)
-latest_df = None
-
-@app.route('/', methods=)
+# --- ROTA PRINCIPAL ---
+@app.route('/')
 def index():
-    global latest_df
+    """
+    Busca os dados do dashboard usando nossa função em logic.py
+    e renderiza a página principal.
+    """
+    # Pega os filtros da URL
+    placa = request.args.get('placa', 'Todos')
+    filial = request.args.get('filial', 'Todos')
+    start_date_str = request.args.get('start_date', '') # Pega a data inicial como texto
+    end_date_str = request.args.get('end_date', '')   # Pega a data final como texto
+
+    # Converte o texto das datas para objetos datetime do Python
+    start_date_obj = None
+    if start_date_str:
+        start_date_obj = datetime.strptime(start_date_str, '%Y-%m-%d')
+
+    end_date_obj = None
+    if end_date_str:
+        end_date_obj = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+
+    # Busca o resumo dos dados já aplicando TODOS os filtros
+    summary_data = logic.get_dashboard_summary(
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        placa_filter=placa,
+        filial_filter=filial
+    )
+    
+    placas = logic.get_unique_plates()
+    filiais = logic.get_unique_filiais()
+
+    return render_template('index.html', 
+                           summary=summary_data,
+                           placas=placas,
+                           filiais=filiais,
+                           selected_placa=placa,
+                           selected_filial=filial,
+                           selected_start_date=start_date_str,
+                           selected_end_date=end_date_str)
+
+
+# --- ROTA DE GERENCIAMENTO DE GRUPOS ---
+# Em app.py, substitua a rota gerenciar_grupos inteira
+@app.route('/gerenciar-grupos', methods=['GET', 'POST'])
+def gerenciar_grupos():
+    """
+    Página para visualizar e atualizar a classificação dos grupos de despesa.
+    """
     if request.method == 'POST':
-        # Verifica se o pedido post tem a parte do ficheiro
-        if 'file' not in request.files:
-            return redirect(request.url)
-        file = request.files['file']
-        if file.filename == '':
-            return redirect(request.url)
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config, filename)
-            file.save(filepath)
-            
-            # Processa o ficheiro e armazena o DataFrame
-            latest_df = logic.processar_ficheiro_excel(filepath)
+        all_groups = logic.get_all_expense_groups()
+        update_data = {}
+        for group in all_groups:
+            # Verifica qual checkbox (ou nenhum) foi marcado para o grupo
+            if f"{group}_custo" in request.form:
+                update_data[group] = 'custo_viagem'
+            elif f"{group}_despesa" in request.form:
+                update_data[group] = 'despesa'
+            else:
+                update_data[group] = 'nenhum'
+        
+        logic.update_all_group_flags(update_data)
+        return redirect(url_for('gerenciar_grupos'))
 
-            return redirect(url_for('index'))
+    # Para GET, a lógica continua a mesma
+    flags = logic.get_all_group_flags()
+    return render_template('gerenciar_grupos.html', flags=flags)
 
-    # Para um pedido GET, renderiza a página com os dados (se existirem)
-    data_to_render = latest_df.to_dict(orient='records') if latest_df is not None else None
-    return render_template('index.html', data=data_to_render)
 
-@app.route('/plot.png')
-def plot_png():
-    """ Rota para gerar o gráfico matplotlib como uma imagem PNG. """
-    global latest_df
-    if latest_df is None:
-        return "Nenhum dado para gerar o gráfico.", 404
+# --- API ENDPOINTS ---
+@app.route('/api/monthly_summary')
+def api_monthly_summary():
+    """Endpoint de API que retorna o resumo mensal em JSON."""
+    monthly_data = logic.get_monthly_summary(start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos")
+    return jsonify(monthly_data.to_dict(orient='records'))
 
-    fig = logic.criar_grafico_matplotlib(latest_df)
-    
-    # Salva o gráfico num buffer de memória em vez de um ficheiro
-    output = io.BytesIO()
-    fig.savefig(output, format='png')
-    output.seek(0)
-    
-    return send_file(output, mimetype='image/png')
-
-@app.route('/api/data')
-def api_data():
-    """ Endpoint da API para fornecer dados para gráficos do lado do cliente. """
-    global latest_df
-    if latest_df is None:
-        return jsonify({"error": "Nenhum dado disponível"}), 404
-    
-    # Converte o DataFrame para um formato JSON adequado para bibliotecas de gráficos
-    json_data = latest_df.to_json(orient='records')
-    return json_data
 
 # --- ROTA SECRETA PARA IMPORTAÇÃO INICIAL DE DADOS ---
-# Adicione este bloco no final do seu arquivo app.py
-
 def _import_all_data():
-    """
-    Função auxiliar para importar dados de todos os arquivos Excel configurados.
-    Baseado na lógica do seu main.py original.
-    """
-    # É preciso garantir que os arquivos .xls estejam na pasta do projeto no GitHub
-    # para que o Render possa encontrá-los.
-    import os
-    import database as db # Garante que estamos usando o database.py atualizado
-    import config
+    """Função auxiliar para importar dados de todos os arquivos Excel configurados."""
+    base_path = os.path.dirname(os.path.abspath(__file__))
 
-    print("\n--- INICIANDO IMPORTAÇÃO DE DADOS EXCEL PARA O POSTGRESQL ---")
-    # O Dockerfile já define o WORKDIR como /app
-    base_path = "/app" 
-
-    for file_key, file_info in config.EXCEL_FILES_CONFIG.items():
+    for file_info in config.EXCEL_FILES_CONFIG.values():
         excel_path = os.path.join(base_path, file_info["path"])
         if os.path.exists(excel_path):
-            print(f"-> Importando '{excel_path}' para a tabela '{file_info['table_name']}'...")
+            print(f"-> Importando '{excel_path}'...")
             db.import_excel_to_db(excel_path, file_info["sheet_name"], file_info["table_name"])
         else:
-            print(f"-> AVISO: Arquivo '{file_info['path']}' não encontrado, importação ignorada.")
+            render_path = os.path.join("/app", file_info["path"])
+            if os.path.exists(render_path):
+                print(f"-> Importando '{render_path}' (ambiente Render)...")
+                db.import_excel_to_db(render_path, file_info["sheet_name"], file_info["table_name"])
+            else:
+                print(f"-> AVISO: Arquivo '{file_info['path']}' não encontrado, importação ignorada.")
     print("--- IMPORTAÇÃO DE DADOS CONCLUÍDA. ---")
 
 
-@app.route('/importar-dados-agora-12345') # A URL pode ser qualquer coisa difícil de adivinhar
+@app.route('/importar-dados-agora-12345')
 def trigger_import():
+    """Dispara a importação de dados para o banco de dados."""
     try:
-        # Primeiro, recria as tabelas para garantir que estejam limpas
-        db.create_tables() 
-        # Depois, importa os dados
+        db.create_tables()
         _import_all_data()
-        return "<h1>Importação de dados concluída com sucesso!</h1><p>Seu banco de dados PostgreSQL foi populado. Você já pode fechar esta aba e usar a aplicação normalmente.</p>"
+        return "<h1>Importação de dados concluída com sucesso!</h1>"
     except Exception as e:
         return f"<h1>Ocorreu um erro durante a importação:</h1><p>{e}</p>"
+
+
+# Bloco para rodar a aplicação localmente para testes
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)

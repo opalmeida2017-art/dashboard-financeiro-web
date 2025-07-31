@@ -1,33 +1,34 @@
 # logic.py
-import pandas as pd
-import matplotlib.pyplot as plt
-import io
+# Este arquivo serve como uma ponte entre o app.py (web) e o data_manager.py (dados).
 
-def processar_ficheiro_excel(caminho_ficheiro):
-    """
-    Lê um ficheiro Excel e retorna um DataFrame do pandas.
-    Esta função é idêntica à sua lógica de desktop.
-    """
-    try:
-        df = pd.read_excel(caminho_ficheiro)
-        #... aqui pode adicionar mais lógica de processamento de dados...
-        return df
-    except Exception as e:
-        print(f"Erro ao processar o ficheiro: {e}")
-        return None
+import data_manager as dm
 
-def criar_grafico_matplotlib(df):
-    """
-    Cria um gráfico matplotlib a partir de um DataFrame e retorna o objeto da figura.
-    """
-    fig, ax = plt.subplots()
-    # Exemplo simples: gráfico de barras da primeira coluna numérica
-    coluna_numerica = df.select_dtypes(include='number').columns.FirstOrDefault()
-    if coluna_numerica:
-        df.plot(kind='bar', x=df.columns, y=coluna_numerica, ax=ax)
-    else:
-        # Fallback se não houver colunas numéricas
-        ax.text(0.5, 0.5, 'Não foram encontrados dados numéricos para o gráfico', ha='center')
-    
-    plt.tight_layout()
-    return fig
+def get_dashboard_summary(start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
+    """Pega o resumo do dashboard do data_manager."""
+    return dm.get_dashboard_summary(start_date, end_date, placa_filter, filial_filter)
+
+def get_monthly_summary(start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
+    """Pega o resumo mensal do data_manager."""
+    return dm.get_monthly_summary(start_date, end_date, placa_filter, filial_filter)
+
+def get_unique_plates():
+    """Pega a lista de placas únicas do data_manager."""
+    return dm.get_unique_plates()
+
+def get_unique_filiais():
+    """Pega a lista de filiais únicas do data_manager."""
+    return dm.get_unique_filiais()
+
+# Adicione estas funções no final de logic.py
+
+def get_all_expense_groups():
+    """Pega a lista de todos os grupos de despesa."""
+    return dm.get_all_expense_groups()
+
+def get_all_group_flags():
+    """Pega as classificações (flags) de todos os grupos."""
+    return dm.get_all_group_flags()
+
+def update_all_group_flags(form_data):
+    """Envia os dados do formulário para atualizar as flags."""
+    return dm.update_all_group_flags(form_data)

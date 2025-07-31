@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financeiro</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <h1>Dashboard Financeiro</h1>
+
+    <div class="filters">
+        <form method="GET" action="/">
+            <label for="start_date">Data Início:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
+
+            <label for="end_date">Data Fim:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+
+            <label for="placa">Placa:</label>
+            <select name="placa" id="placa">
+                {% for placa in placas %}
+                    <option value="{{ placa }}" {% if placa == selected_placa %}selected{% endif %}>{{ placa }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="filial">Filial:</label>
+            <select name="filial" id="filial">
+                {% for filial in filiais %}
+                    <option value="{{ filial }}" {% if filial == selected_filial %}selected{% endif %}>{{ filial }}</option>
+                {% endfor %}
+            </select>
+            
+            <button type="submit">Aplicar Filtros</button>
+
+            <a href="{{ url_for('gerenciar_grupos') }}" class="manage-link">Gerenciar Grupos de Despesa &rarr;</a>
+        </form>
+    </div>
+
+    {% if summary %}
+        <div class="summary-cards">
+            <div class="card">
+                <h3>Faturamento Total</h3>
+                <p style="color: green;">R$ {{ "%.2f"|format(summary.faturamento_total_viagens|float) }}</p>
+            </div>
+            <div class="card">
+                <h3>Custo Total</h3>
+                <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.custo_total_viagem|float) }}</p>
+            </div>
+            <div class="card">
+                <h3>Total Despesas</h3>
+                <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.total_despesas_gerais|float) }}</p>
+            </div>
+            <div class="card">
+                <h3>Saldo Geral</h3>
+                <p style="color: {% if summary.saldo_geral >= 0 %}#2980B9{% else %}#C0392B{% endif %};">
+                    R$ {{ "%.2f"|format(summary.saldo_geral|float) }}
+                </p>
+            </div>
+             <div class="card">
+                <h3>Margem Frete</h3>
+                <p style="color: {% if summary.margem_frete >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">
+                    {{ "%.2f"|format(summary.margem_frete|float) }}%
+                </p>
+            </div>
+             <div class="card">
+                <h3>Contas a Pagar</h3>
+                <p style="color: #C0392B;">R$ {{ "%.2f"|format(summary.saldo_contas_a_pagar_pendentes|float) }}</p>
+            </div>
+            <div class="card">
+                <h3>Contas a Receber</h3>
+                <p style="color: #2980B9;">R$ {{ "%.2f"|format(summary.saldo_contas_a_receber_pendentes|float) }}</p>
+            </div>
+        </div>
+    {% else %}
+        <p style="text-align: center;">Não há dados para exibir. Tente importar os dados ou ajustar os filtros.</p>
+    {% endif %}
+
+    <div class="chart-container">
+        <h2>Faturamento vs. Despesas (Mensal)</h2>
+        <canvas id="faturamentoDespesasChart"></canvas>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Pede os dados para a API que já criamos no app.py
+            fetch('/api/monthly_summary')
+                .then(response => response.json())
+                .then(data => {
+                    // Prepara os dados para o gráfico
+                    const labels = data.map(item => item.AnoMes);
+                    const faturamentoData = data.map(item => item.Faturamento);
+                    const despesasData = data.map(item => item.Despesas);
+
+                    // Pega o elemento <canvas> do HTML
+                    const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
+
+                    // Cria o gráfico
+                    new Chart(ctx, {
+                        type: 'bar', // Tipo do gráfico: barras
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Faturamento',
+                                    data: faturamentoData,
+                                    backgroundColor: 'rgba(41, 128, 185, 0.7)', // Azul
+                                    borderColor: 'rgba(41, 128, 185, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'Despesas',
+                                    data: despesasData,
+                                    backgroundColor: 'rgba(192, 57, 43, 0.7)', // Vermelho
+                                    borderColor: 'rgba(192, 57, 43, 1)',
+                                    borderWidth: 1
+                                }
+                            ]
+                        },
+                        options: {
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        // Formata os números do eixo Y como moeda
+                                        callback: function(value, index, values) {
+                                            return 'R$ ' + value.toLocaleString('pt-BR');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(error => console.error('Erro ao buscar dados para o gráfico:', error));
+        });
+    </script>
+</body>
+</html>
