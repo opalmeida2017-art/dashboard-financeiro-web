@@ -4,40 +4,46 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard Financeiro</title>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-
     <h1>Dashboard Financeiro</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
 
     <div class="filters">
         <form method="GET" action="/">
             <label for="start_date">Data Início:</label>
             <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
-
             <label for="end_date">Data Fim:</label>
             <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
-
             <label for="placa">Placa:</label>
             <select name="placa" id="placa">
                 {% for placa in placas %}
                     <option value="{{ placa }}" {% if placa == selected_placa %}selected{% endif %}>{{ placa }}</option>
                 {% endfor %}
             </select>
-
             <label for="filial">Filial:</label>
             <select name="filial" id="filial">
                 {% for filial in filiais %}
                     <option value="{{ filial }}" {% if filial == selected_filial %}selected{% endif %}>{{ filial }}</option>
                 {% endfor %}
             </select>
-            
             <button type="submit">Aplicar Filtros</button>
-
-            <a href="{{ url_for('gerenciar_grupos') }}" class="manage-link">Gerenciar Grupos de Despesa &rarr;</a>
+            
+            <div class="action-buttons">
+                <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
+                <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
+            </div>
         </form>
     </div>
 
@@ -85,58 +91,145 @@
         <canvas id="faturamentoDespesasChart"></canvas>
     </div>
 
+    <div id="manageGroupsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button manage-close">&times;</span>
+            <h2>Gerenciar Grupos de Despesa</h2>
+            <p>Classifique cada grupo...</p>
+            <form method="POST" action="{{ url_for('gerenciar_grupos_salvar') }}">
+                <div id="manageGroupsTableContainer">
+                    <p>Carregando grupos...</p>
+                </div>
+                <button type="submit" class="btn-salvar">Salvar Alterações</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button upload-close">&times;</span>
+            <div id="uploadFormContainer">
+                <h2>Upload de Novas Planilhas</h2>
+                <p>Selecione uma ou mais planilhas...</p>
+                <form id="uploadForm" method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="files">1. Escolha os arquivos no seu computador:</label>
+                        <input type="file" name="files[]" id="files" multiple required>
+                    </div>
+                    <button type="submit" class="btn-salvar">Enviar e Importar</button>
+                </form>
+            </div>
+            <div id="progressContainer" style="display: none;">
+                <h4>Processando planilhas... Por favor, aguarde.</h4>
+                <div class="progress-road">
+                    <div class="progress-bar">
+                        <span class="truck-emoji">🚚</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // Pede os dados para a API que já criamos no app.py
+            // Lógica do Gráfico
             fetch('/api/monthly_summary')
                 .then(response => response.json())
                 .then(data => {
-                    // Prepara os dados para o gráfico
-                    const labels = data.map(item => item.AnoMes);
-                    const faturamentoData = data.map(item => item.Faturamento);
-                    const despesasData = data.map(item => item.Despesas);
-
-                    // Pega o elemento <canvas> do HTML
-                    const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
-
-                    // Cria o gráfico
-                    new Chart(ctx, {
-                        type: 'bar', // Tipo do gráfico: barras
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                {
-                                    label: 'Faturamento',
-                                    data: faturamentoData,
-                                    backgroundColor: 'rgba(41, 128, 185, 0.7)', // Azul
-                                    borderColor: 'rgba(41, 128, 185, 1)',
-                                    borderWidth: 1
-                                },
-                                {
-                                    label: 'Despesas',
-                                    data: despesasData,
-                                    backgroundColor: 'rgba(192, 57, 43, 0.7)', // Vermelho
-                                    borderColor: 'rgba(192, 57, 43, 1)',
-                                    borderWidth: 1
-                                }
-                            ]
-                        },
-                        options: {
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: {
-                                        // Formata os números do eixo Y como moeda
-                                        callback: function(value, index, values) {
-                                            return 'R$ ' + value.toLocaleString('pt-BR');
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
+                    if (data && data.length > 0) {
+                        const labels = data.map(item => item.AnoMes);
+                        const faturamentoData = data.map(item => item.Faturamento);
+                        const despesasData = data.map(item => item.Despesas);
+                        const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
+                        new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [ { label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(41, 128, 185, 0.7)' }, { label: 'Despesas', data: despesasData, backgroundColor: 'rgba(192, 57, 43, 0.7)' } ] }, options: { scales: { y: { beginAtZero: true, ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } } });
+                    }
                 })
                 .catch(error => console.error('Erro ao buscar dados para o gráfico:', error));
+
+            // Lógica do Popup (Modal) de Gerenciamento
+            const manageModal = document.getElementById('manageGroupsModal');
+            const manageBtn = document.getElementById('openModalBtn');
+            const manageCloseBtn = document.querySelector('.manage-close');
+            const tableContainer = document.getElementById('manageGroupsTableContainer');
+
+            if (manageBtn) {
+                manageBtn.onclick = function() {
+                    tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
+                    manageModal.style.display = 'block';
+
+                    fetch("{{ url_for('gerenciar_grupos_dados') }}")
+                        .then(response => response.json())
+                        .then(flags => {
+                            let tableHTML = `
+                                <table>
+                                    <thead>
+                                        <tr> <th>Nome do Grupo de Despesa</th> <th>Classificação</th> </tr>
+                                    </thead>
+                                    <tbody>`;
+                            
+                            for (const group in flags) {
+                                const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
+                                const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
+                                tableHTML += `
+                                    <tr>
+                                        <td>${group}</td>
+                                        <td>
+                                            <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
+                                            <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                                        </td>
+                                    </tr>`;
+                            }
+
+                            tableHTML += '</tbody></table>';
+                            tableContainer.innerHTML = tableHTML;
+                            
+                            setupExclusiveCheckboxes();
+                        });
+                }
+            }
+            if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
+            
+            // Lógica do Popup (Modal) de Upload
+            const uploadModal = document.getElementById('uploadModal');
+            const uploadBtn = document.getElementById('openUploadModalBtn');
+            const uploadCloseBtn = document.querySelector('.upload-close');
+            if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
+            if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
+            
+            // Fecha os modais se clicar fora
+            window.addEventListener('click', function(event) {
+                if (event.target == manageModal) { manageModal.style.display = 'none'; }
+                if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
+            });
+
+            function setupExclusiveCheckboxes() {
+                const checkboxes = document.querySelectorAll('.classification-cb');
+                checkboxes.forEach(cb => {
+                    cb.addEventListener('change', function() {
+                        if (this.checked) {
+                            const currentGroup = this.dataset.group;
+                            const currentType = this.dataset.type;
+                            checkboxes.forEach(otherCb => {
+                                if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
+                                    otherCb.checked = false;
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+            
+            // Lógica para mostrar a barra de progresso no Upload
+            const uploadForm = document.getElementById('uploadForm');
+            const uploadFormContainer = document.getElementById('uploadFormContainer');
+            const progressContainer = document.getElementById('progressContainer');
+
+            if (uploadForm) {
+                uploadForm.addEventListener('submit', function() {
+                    uploadFormContainer.style.display = 'none';
+                    progressContainer.style.display = 'block';
+                });
+            }
         });
     </script>
 </body>

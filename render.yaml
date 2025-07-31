@@ -1,4 +1,3 @@
-# render.yaml
 # Este arquivo descreve toda a infraestrutura da sua aplicação.
 
 services:
@@ -19,7 +18,7 @@ services:
           property: connectionString
 
   # 2. Define o Serviço de Banco de Dados (PostgreSQL)
-  - type: pserv # 'pserv' é o tipo para serviço de banco de dados persistente
+  - type: postgres # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL
     name: financeiro-db
     # A imagem do postgres já é gerenciada pelo Render
     # Não precisa de Dockerfile ou repo para o banco de dados.

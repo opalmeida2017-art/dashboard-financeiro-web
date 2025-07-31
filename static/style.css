@@ -4,12 +4,10 @@ body {
     background-color: #f4f4f9;
     color: #333;
 }
-
 h1, h2 {
     color: #333;
     text-align: center;
 }
-
 .summary-cards {
     display: flex;
     flex-wrap: wrap;
@@ -17,7 +15,6 @@ h1, h2 {
     margin-bottom: 30px;
     justify-content: center;
 }
-
 .card {
     background-color: white;
     padding: 20px;
@@ -27,19 +24,16 @@ h1, h2 {
     flex-basis: 180px;
     flex-grow: 1;
 }
-
 .card h3 {
     margin-top: 0;
     color: #555;
     font-size: 16px;
 }
-
 .card p {
     font-size: 24px;
     font-weight: bold;
     margin-bottom: 0;
 }
-
 .filters {
     background-color: white;
     padding: 20px;
@@ -47,36 +41,32 @@ h1, h2 {
     margin-bottom: 30px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-
 .filters form {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 15px;
 }
-
 .filters label {
     font-weight: bold;
 }
-
 .filters input, .filters select, .filters button {
     padding: 8px;
     border-radius: 4px;
     border: 1px solid #ccc;
+    font-size: 14px;
+    font-family: inherit;
 }
-
-.filters button {
+.filters button[type="submit"] {
     background-color: #007bff;
     color: white;
     font-weight: bold;
     cursor: pointer;
     border: none;
 }
-
-.filters button:hover {
+.filters button[type="submit"]:hover {
     background-color: #0056b3;
 }
-
 .chart-container {
     background-color: white;
     padding: 20px;
@@ -84,18 +74,133 @@ h1, h2 {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     margin-top: 30px;
 }
-
-.manage-link {
-    margin-left: auto; /* Joga o link para a direita */
-    padding: 8px;
-    text-decoration: none;
-    font-weight: 500;
-    color: #007bff;
-    border: 1px solid transparent;
-    border-radius: 4px;
+.action-buttons {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
 }
-
+.manage-link {
+    padding: 8px 12px;
+    background-color: #6c757d;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+}
 .manage-link:hover {
-    color: #0056b3;
-    text-decoration: underline;
+    background-color: #5a6268;
+}
+.upload-link {
+    padding: 8px 12px;
+    background-color: #17a2b8;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+}
+.upload-link:hover {
+    background-color: #138496;
+}
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.5);
+}
+.modal-content {
+    background-color: #fefefe;
+    margin: 10% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 700px;
+    border-radius: 8px;
+    position: relative;
+}
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+}
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+.modal-content table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+.modal-content th, .modal-content td { border: 1px solid #ccc; padding: 12px; text-align: left; }
+.modal-content th { background-color: #f4f4f9; }
+.btn-salvar { background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; float: right; margin-top: 20px;}
+.btn-salvar:hover { background-color: #218838; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+.form-group select, .form-group input { width: 100%; padding: 8px; box-sizing: border-box; }
+.flash-messages { margin-bottom: 20px; }
+.flash { padding: 15px; border-radius: 5px; }
+.flash.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.flash.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+#progressContainer h4 {
+    text-align: center;
+    color: #333;
+}
+.progress-road {
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 20px;
+    padding: 3px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+}
+.progress-bar {
+    height: 30px;
+    width: 0%;
+    background: repeating-linear-gradient(
+        -45deg,
+        #2980B9,
+        #2980B9 10px,
+        #3498DB 10px,
+        #3498DB 20px
+    );
+    border-radius: 20px;
+    position: relative;
+    animation: fillProgress 15s linear forwards;
+}
+.truck-emoji {
+    font-size: 24px;
+    position: absolute;
+    right: -15px;
+    top: -2px;
+    transform: scaleX(-1);
+    animation: moveTruck 15s linear forwards;
+}
+@keyframes fillProgress {
+    from { width: 0%; }
+    to { width: 100%; }
+}
+@keyframes moveTruck {
+    from {
+        right: calc(100% - 15px);
+    }
+    to {
+        right: -15px;
+    }
+}
+/* Adicione no final de style.css */
+.flash.warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
 }
