@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Financeiro</title>
+    <title>Dashboard Transporte</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Dashboard Financeiro</h1>
+    <h1>Dashboard Transporte</h1>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -58,7 +58,7 @@
                 <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.custo_total_viagem|float) }}</p>
             </div>
             <div class="card">
-                <h3>Total Despesas</h3>
+                <h3>Lucro Liquido</h3>
                 <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.total_despesas_gerais|float) }}</p>
             </div>
             <div class="card">
@@ -74,11 +74,11 @@
                 </p>
             </div>
              <div class="card">
-                <h3>Contas a Pagar</h3>
+                <h3>Contas a Pagar |Pendentes</h3>
                 <p style="color: #C0392B;">R$ {{ "%.2f"|format(summary.saldo_contas_a_pagar_pendentes|float) }}</p>
             </div>
             <div class="card">
-                <h3>Contas a Receber</h3>
+                <h3>Contas a Receber Pendentes</h3>
                 <p style="color: #2980B9;">R$ {{ "%.2f"|format(summary.saldo_contas_a_receber_pendentes|float) }}</p>
             </div>
         </div>
