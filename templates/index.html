@@ -47,39 +47,39 @@
         </form>
     </div>
 
-    {% if summary %}
+{% if summary %}
         <div class="summary-cards">
             <div class="card">
                 <h3>Faturamento Total</h3>
-                <p style="color: green;">R$ {{ "%.2f"|format(summary.faturamento_total_viagens|float) }}</p>
+                <p style="color: #2980B9;">{{ summary.faturamento_total_viagens | currency }}</p>
             </div>
             <div class="card">
                 <h3>Custo Total</h3>
-                <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.custo_total_viagem|float) }}</p>
+                <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
             </div>
             <div class="card">
                 <h3>Despesa Gerais</h3>
-                <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.total_despesas_gerais|float) }}</p>
+                <p style="color: #C0392B;">{{ summary.total_despesas_gerais | currency }}</p>
             </div>
             <div class="card">
                 <h3>Lucro Liquido</h3>
-                <p style="color: {% if summary.saldo_geral >= 0 %}#2980B9{% else %}#C0392B{% endif %};">
-                    R$ {{ "%.2f"|format(summary.saldo_geral|float) }}
+                <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">
+                    {{ summary.saldo_geral | currency }}
                 </p>
             </div>
              <div class="card">
                 <h3>Margem Frete</h3>
                 <p style="color: {% if summary.margem_frete >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">
-                    {{ "%.2f"|format(summary.margem_frete|float) }}%
+                    {{ summary.margem_frete | percentage }}
                 </p>
             </div>
              <div class="card">
                 <h3>Contas a Pagar Pendentes</h3>
-                <p style="color: #C0392B;">R$ {{ "%.2f"|format(summary.saldo_contas_a_pagar_pendentes|float) }}</p>
+                <p style="color: #C0392B;">{{ summary.saldo_contas_a_pagar_pendentes | currency }}</p>
             </div>
             <div class="card">
                 <h3>Contas a Receber Pendentes</h3>
-                <p style="color: #2980B9;">R$ {{ "%.2f"|format(summary.saldo_contas_a_receber_pendentes|float) }}</p>
+                <p style="color: #2980B9;">{{ summary.saldo_contas_a_receber_pendentes | currency }}</p>
             </div>
         </div>
     {% else %}
@@ -131,106 +131,154 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            // Lógica do Gráfico
-            fetch('/api/monthly_summary')
-                .then(response => response.json())
-                .then(data => {
-                    if (data && data.length > 0) {
-                        const labels = data.map(item => item.AnoMes);
-                        const faturamentoData = data.map(item => item.Faturamento);
-                        const despesasData = data.map(item => item.Despesas);
-                        const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
-                        new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [ { label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(41, 128, 185, 0.7)' }, { label: 'Despesas', data: despesasData, backgroundColor: 'rgba(192, 57, 43, 0.7)' } ] }, options: { scales: { y: { beginAtZero: true, ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } } });
-                    }
-                })
-                .catch(error => console.error('Erro ao buscar dados para o gráfico:', error));
+    document.addEventListener('DOMContentLoaded', function () {
+        // --- Lógica do Gráfico ---
+        // Constrói a URL com os filtros atuais da página.
+        const params = new URLSearchParams(window.location.search);
+        fetch(`/api/monthly_summary?${params.toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.length > 0) {
+                    // Ponto Chave 1: Lendo as chaves corretas que o Python envia
+                    const labels = data.map(item => item.PeriodoLabel);
+                    const faturamentoData = data.map(item => item.Faturamento);
+                    const custoData = data.map(item => item.Custo);
+                    const despesasGeraisData = data.map(item => item.DespesasGerais);
 
-            // Lógica do Popup (Modal) de Gerenciamento
-            const manageModal = document.getElementById('manageGroupsModal');
-            const manageBtn = document.getElementById('openModalBtn');
-            const manageCloseBtn = document.querySelector('.manage-close');
-            const tableContainer = document.getElementById('manageGroupsTableContainer');
-
-            if (manageBtn) {
-                manageBtn.onclick = function() {
-                    tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
-                    manageModal.style.display = 'block';
-
-                    fetch("{{ url_for('gerenciar_grupos_dados') }}")
-                        .then(response => response.json())
-                        .then(flags => {
-                            let tableHTML = `
-                                <table>
-                                    <thead>
-                                        <tr> <th>Nome do Grupo de Despesa</th> <th>Classificação</th> </tr>
-                                    </thead>
-                                    <tbody>`;
-                            
-                            for (const group in flags) {
-                                const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
-                                const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
-                                tableHTML += `
-                                    <tr>
-                                        <td>${group}</td>
-                                        <td>
-                                            <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
-                                            <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
-                                        </td>
-                                    </tr>`;
-                            }
-
-                            tableHTML += '</tbody></table>';
-                            tableContainer.innerHTML = tableHTML;
-                            
-                            setupExclusiveCheckboxes();
-                        });
-                }
-            }
-            if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
-            
-            // Lógica do Popup (Modal) de Upload
-            const uploadModal = document.getElementById('uploadModal');
-            const uploadBtn = document.getElementById('openUploadModalBtn');
-            const uploadCloseBtn = document.querySelector('.upload-close');
-            if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
-            if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
-            
-            // Fecha os modais se clicar fora
-            window.addEventListener('click', function(event) {
-                if (event.target == manageModal) { manageModal.style.display = 'none'; }
-                if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
-            });
-
-            function setupExclusiveCheckboxes() {
-                const checkboxes = document.querySelectorAll('.classification-cb');
-                checkboxes.forEach(cb => {
-                    cb.addEventListener('change', function() {
-                        if (this.checked) {
-                            const currentGroup = this.dataset.group;
-                            const currentType = this.dataset.type;
-                            checkboxes.forEach(otherCb => {
-                                if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
-                                    otherCb.checked = false;
+                    const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
+                    
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Faturamento',
+                                    data: faturamentoData,
+                                    backgroundColor: 'rgba(41, 128, 185, 0.7)'
+                                },
+                                {
+                                    label: 'Custo de Viagem',
+                                    data: custoData,
+                                    backgroundColor: '#E67E22', // Cor laranja
+                                    stack: 'GastoOperacional' // Agrupa Custo e Despesa
+                                },
+                                // Ponto Chave 2: Criando o dataset para a Despesa Geral
+                                {
+                                    label: 'Despesa Geral',
+                                    data: despesasGeraisData,
+                                    backgroundColor: 'rgba(192, 57, 43, 0.7)', // Cor vermelha
+                                    stack: 'GastoOperacional' // Agrupa Custo e Despesa
                                 }
-                            });
+                            ]
+                        },
+                        options: {
+                            scales: {
+                                x: {
+                                    stacked: true,
+                                },
+                                y: {
+                                    stacked: true,
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return 'R$ ' + value.toLocaleString('pt-BR');
+                                        }
+                                    }
+                                }
+                            }
                         }
                     });
-                });
-            }
-            
-            // Lógica para mostrar a barra de progresso no Upload
-            const uploadForm = document.getElementById('uploadForm');
-            const uploadFormContainer = document.getElementById('uploadFormContainer');
-            const progressContainer = document.getElementById('progressContainer');
+                }
+            })
+            .catch(error => console.error('Erro ao buscar dados para o gráfico:', error));
 
-            if (uploadForm) {
-                uploadForm.addEventListener('submit', function() {
-                    uploadFormContainer.style.display = 'none';
-                    progressContainer.style.display = 'block';
+        // --- Lógica dos Popups (Modals) ---
+ // Lógica do Popup (Modal) de Gerenciamento - VERSÃO CORRETA COM CHECKBOXES
+const manageModal = document.getElementById('manageGroupsModal');
+const manageBtn = document.getElementById('openModalBtn');
+const manageCloseBtn = document.querySelector('.manage-close');
+const tableContainer = document.getElementById('manageGroupsTableContainer');
+
+if (manageBtn) {
+    manageBtn.onclick = function() {
+        tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
+        manageModal.style.display = 'block';
+
+        fetch("{{ url_for('gerenciar_grupos_dados') }}")
+            .then(response => response.json())
+            .then(flags => {
+                let tableHTML = `
+                    <table>
+                        <thead>
+                            <tr> <th>Nome do Grupo de Despesa</th> <th>Classificação</th> </tr>
+                        </thead>
+                        <tbody>`;
+                
+                for (const group in flags) {
+                    const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
+                    const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
+                    // VOLTANDO A USAR CHECKBOXES
+                    tableHTML += `
+                        <tr>
+                            <td>${group}</td>
+                            <td>
+                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
+                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                            </td>
+                        </tr>`;
+                }
+
+                tableHTML += '</tbody></table>';
+                tableContainer.innerHTML = tableHTML;
+                
+                // Esta função é necessária para que os checkboxes sejam exclusivos
+                setupExclusiveCheckboxes();
+            });
+    }
+}
+if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
+
+// Função que garante que apenas um checkbox por grupo possa ser marcado
+function setupExclusiveCheckboxes() {
+    const checkboxes = document.querySelectorAll('.classification-cb');
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', function() {
+            if (this.checked) {
+                const currentGroup = this.dataset.group;
+                const currentType = this.dataset.type;
+                checkboxes.forEach(otherCb => {
+                    if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
+                        otherCb.checked = false;
+                    }
                 });
             }
         });
-    </script>
+    });
+}
+        
+        const uploadModal = document.getElementById('uploadModal');
+        const uploadBtn = document.getElementById('openUploadModalBtn');
+        const uploadCloseBtn = document.querySelector('.upload-close');
+        if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
+        if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
+        
+        window.addEventListener('click', function(event) {
+            if (event.target == manageModal) { manageModal.style.display = 'none'; }
+            if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
+        });
+        
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadFormContainer = document.getElementById('uploadFormContainer');
+        const progressContainer = document.getElementById('progressContainer');
+
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function() {
+                uploadFormContainer.style.display = 'none';
+                progressContainer.style.display = 'block';
+            });
+        }
+    });
+</script>
 </body>
 </html>

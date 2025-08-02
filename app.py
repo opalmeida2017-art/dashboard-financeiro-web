@@ -1,4 +1,3 @@
-# app.py (Versão com criação de tabelas na inicialização)
 import os
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
 from datetime import datetime
@@ -6,21 +5,39 @@ import logic
 import database as db
 import config
 
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
+
+# --- FILTROS PERSONALIZADOS PARA FORMATAÇÃO ---
+@app.template_filter('currency')
+def format_currency(value):
+    """Formata um número como moeda no padrão brasileiro (R$ 1.234,56)."""
+    if value is None:
+        value = 0
+    formatted_value = f"{value:,.2f}"
+    formatted_value = formatted_value.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {formatted_value}"
+
+@app.template_filter('percentage')
+def format_percentage(value):
+    """Formata um número como porcentagem no padrão brasileiro (12,34%)."""
+    if value is None:
+        value = 0
+    formatted_value = f"{value:.2f}"
+    formatted_value = formatted_value.replace(".", ",")
+    return f"{formatted_value}%"
+# --- FIM DOS FILTROS ---
+
 # --- CRIAÇÃO DAS TABELAS NO INÍCIO ---
-# Este comando será executado uma vez, assim que o app.py for chamado.
 print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
 db.create_tables()
 print("Verificação do banco de dados concluída.")
 # ----------------------------------------
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
-
 FILENAME_TO_KEY_MAP = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # A chamada para create_tables foi removida daqui, pois agora acontece no início.
     uploaded_files = request.files.getlist('files[]')
     if not uploaded_files or uploaded_files[0].filename == '':
         flash('Erro: Nenhum arquivo selecionado.', 'error')
@@ -43,17 +60,21 @@ def upload_file():
 
 @app.route('/')
 def index():
-    if not db.table_exists("relFilViagensFatCliente"):
-        return render_template('index.html', summary=None, placas=["Todos"], filiais=["Todos"])
-
     placa = request.args.get('placa', 'Todos')
     filial = request.args.get('filial', 'Todos')
     start_date_str = request.args.get('start_date', '')
     end_date_str = request.args.get('end_date', '')
+    
     start_date_obj = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
     end_date_obj = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59) if end_date_str else None
     
-    summary_data = logic.get_dashboard_summary(start_date_obj, end_date_obj, placa_filter=placa, filial_filter=filial)
+    summary_data = logic.get_dashboard_summary(
+        start_date=start_date_obj, 
+        end_date=end_date_obj, 
+        placa_filter=placa, 
+        filial_filter=filial
+    )
+    
     placas = logic.get_unique_plates()
     filiais = logic.get_unique_filiais()
     
@@ -78,18 +99,33 @@ def gerenciar_grupos_salvar():
     all_groups = logic.get_all_expense_groups()
     update_data = {}
     for group in all_groups:
-        if f"{group}_custo" in request.form: update_data[group] = 'custo_viagem'
-        elif f"{group}_despesa" in request.form: update_data[group] = 'despesa'
-        else: update_data[group] = 'nenhum'
+        if f"{group}_custo" in request.form: 
+            update_data[group] = 'custo_viagem'
+        elif f"{group}_despesa" in request.form: 
+            update_data[group] = 'despesa'
+        else: 
+            update_data[group] = 'nenhum'
+
     logic.update_all_group_flags(update_data)
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
 
 @app.route('/api/monthly_summary')
 def api_monthly_summary():
-    if not db.table_exists("relFilViagensFatCliente"):
-        return jsonify([])
-    monthly_data = logic.get_monthly_summary(None, None, "Todos", "Todos")
+    placa = request.args.get('placa', 'Todos')
+    filial = request.args.get('filial', 'Todos')
+    start_date_str = request.args.get('start_date', '')
+    end_date_str = request.args.get('end_date', '')
+    
+    start_date_obj = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+    end_date_obj = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59) if end_date_str else None
+
+    monthly_data = logic.get_monthly_summary(
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        placa_filter=placa,
+        filial_filter=filial
+    )
     return jsonify(monthly_data.to_dict(orient='records'))
 
 if __name__ == '__main__':
