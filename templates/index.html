@@ -58,11 +58,11 @@
                 <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.custo_total_viagem|float) }}</p>
             </div>
             <div class="card">
-                <h3>Lucro Liquido</h3>
+                <h3>Despesa Gerais</h3>
                 <p style="color: #E67E22;">R$ {{ "%.2f"|format(summary.total_despesas_gerais|float) }}</p>
             </div>
             <div class="card">
-                <h3>Saldo Geral</h3>
+                <h3>Lucro Liquido</h3>
                 <p style="color: {% if summary.saldo_geral >= 0 %}#2980B9{% else %}#C0392B{% endif %};">
                     R$ {{ "%.2f"|format(summary.saldo_geral|float) }}
                 </p>
@@ -74,7 +74,7 @@
                 </p>
             </div>
              <div class="card">
-                <h3>Contas a Pagar |Pendentes</h3>
+                <h3>Contas a Pagar Pendentes</h3>
                 <p style="color: #C0392B;">R$ {{ "%.2f"|format(summary.saldo_contas_a_pagar_pendentes|float) }}</p>
             </div>
             <div class="card">
