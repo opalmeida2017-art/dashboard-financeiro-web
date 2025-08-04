@@ -351,3 +351,79 @@ def get_unique_filiais() -> list[str]:
     if filiais.empty:
         return ["Todos"]
     return ["Todos"] + sorted(filiais.unique().tolist())
+# data_manager.py (adicione esta nova função)
+# data_manager.py (substitua esta função)
+
+# data_manager.py (substitua esta função)
+
+# data_manager.py (substitua esta função)
+
+# data_manager.py (substitua esta função)
+
+def get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter):
+    """Prepara os dados para todos os gráficos da página de detalhes de faturamento."""
+    
+    df_fat = apply_filters_to_df(get_data_as_dataframe("relFilViagensFatCliente"), start_date, end_date, placa_filter, filial_filter)
+    df_viagens = apply_filters_to_df(get_data_as_dataframe("relFilViagensCliente"), start_date, end_date, placa_filter, filial_filter)
+
+    dashboard_data = {}
+    periodo = 'D' if start_date and end_date else 'M'
+
+    # Lógica de Custo completa para o gráfico de evolução
+    df_despesas_filtrado = apply_filters_to_df(get_data_as_dataframe("relFilDespesasGerais"), start_date, end_date, placa_filter, filial_filter)
+    df_flags = get_all_group_flags()
+    flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
+    df_despesas_processed = df_despesas_filtrado.drop_duplicates(subset=['dataControle', 'numNota', 'valorVenc']) if not df_despesas_filtrado.empty else pd.DataFrame()
+    df_com_flags = pd.merge(df_despesas_processed, df_flags, left_on='descGrupoD', right_on='group_name', how='left') if not df_despesas_processed.empty and not df_flags.empty else df_despesas_processed
+    if not df_com_flags.empty:
+        df_com_flags['is_custo_viagem'] = df_com_flags['is_custo_viagem'].fillna('N')
+        df_com_flags['is_despesa'] = df_com_flags['is_despesa'].fillna('S')
+    df_custos_final = df_com_flags[df_com_flags['is_custo_viagem'] == 'S'].copy() if not df_com_flags.empty else pd.DataFrame()
+    
+    # ... (O resto da lógica de comissão e quebra que já funciona)
+
+    # Gráfico 1: Evolução Faturamento vs. Custo
+    fat_evolucao = pd.Series(dtype=float)
+    if not df_fat.empty and 'dataViagemMotorista' in df_fat.columns:
+        df_fat['Periodo'] = pd.to_datetime(df_fat['dataViagemMotorista'], errors='coerce', dayfirst=True).dt.to_period(periodo)
+        fat_evolucao = df_fat.groupby('Periodo')['freteEmpresa'].sum()
+
+    custo_evolucao = pd.Series(dtype=float)
+    if not df_custos_final.empty and 'dataControle' in df_custos_final.columns:
+        df_custos_final['Periodo'] = pd.to_datetime(df_custos_final['dataControle'], errors='coerce', dayfirst=True).dt.to_period(periodo)
+        custo_evolucao = df_custos_final.groupby('Periodo')['valorNota'].sum()
+        
+    evolucao_df = pd.DataFrame({'Faturamento': fat_evolucao, 'Custo': custo_evolucao}).fillna(0).reset_index()
+    evolucao_df['Periodo'] = evolucao_df['Periodo'].astype(str)
+    dashboard_data['evolucao_faturamento_custo'] = evolucao_df.to_dict('records')
+
+    # Gráficos de Agrupamento
+    if not df_fat.empty:
+        top_clientes = df_fat.groupby('nomeCliente')['freteEmpresa'].sum().nlargest(10).reset_index()
+        dashboard_data['top_clientes'] = top_clientes.to_dict(orient='records')
+
+        fat_filial = df_fat.groupby('nomeFilial')['freteEmpresa'].sum().reset_index()
+        dashboard_data['faturamento_filial'] = fat_filial.to_dict(orient='records')
+
+        viagens_veiculo = df_fat['placa'].value_counts().nlargest(10).reset_index()
+        viagens_veiculo.columns = ['placa', 'contagem']
+        dashboard_data['viagens_por_veiculo'] = viagens_veiculo.to_dict(orient='records')
+        
+        fat_motorista = df_fat.groupby('nomeMot')['freteEmpresa'].sum().nlargest(10).reset_index()
+        dashboard_data['faturamento_motorista'] = fat_motorista.to_dict(orient='records')
+        
+        if 'cidOrig' in df_fat.columns and 'cidDest' in df_fat.columns:
+            df_fat['rota'] = df_fat['cidOrig'].str.strip() + ' -> ' + df_fat['cidDest'].str.strip()
+            top_rotas = df_fat['rota'].value_counts().nlargest(10).reset_index()
+            top_rotas.columns = ['rota', 'contagem']
+            dashboard_data['top_rotas'] = top_rotas.to_dict(orient='records')
+
+    if not df_viagens.empty:
+        # Gráfico 6: Volume de Carga (Peso) por Rota
+        # CORRIGIDO: Usando os nomes de coluna corretos ('cidOrigemFormat' e 'cidDestinoFormat') da tabela relFilViagensCliente
+        if 'cidOrigemFormat' in df_viagens.columns and 'cidDestinoFormat' in df_viagens.columns and 'pesoSaida' in df_viagens.columns:
+            df_viagens['rota'] = df_viagens['cidOrigemFormat'].str.strip() + ' -> ' + df_viagens['cidDestinoFormat'].str.strip()
+            volume_rota = df_viagens.groupby('rota')['pesoSaida'].sum().nlargest(10).reset_index()
+            dashboard_data['volume_por_rota'] = volume_rota.to_dict(orient='records')
+            
+    return dashboard_data

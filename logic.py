@@ -52,3 +52,8 @@ def _import_all_data():
             else:
                 print(f"-> AVISO: Arquivo '{file_info['path']}' não encontrado, importação ignorada.")
     print("--- IMPORTAÇÃO DE DADOS (DO REPOSITÓRIO) CONCLUÍDA. ---")
+
+# logic.py (adicione esta função)
+
+def get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter):
+    return dm.get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter)
