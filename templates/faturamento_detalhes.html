@@ -69,7 +69,7 @@
         </div>
     </div>
 
- <script>
+<script>
 document.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
     // Chama a API que traz todos os dados de uma vez
@@ -120,8 +120,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
-                // --- CÓDIGO FALTANTE ADICIONADO ABAIXO ---
-
                 // Gráfico 4: Top 10 Rotas Mais Frequentes
                 if (data.top_rotas && data.top_rotas.length > 0) {
                     const rotasCtx = document.getElementById('topRotasChart').getContext('2d');
@@ -172,6 +170,25 @@ document.addEventListener('DOMContentLoaded', function () {
                         options: { indexAxis: 'y', scales: { x: { ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
                     });
                 }
+
+                // LÓGICA PARA REORDENAR GRÁFICOS AO CLICAR
+                const gridContainer = document.querySelector('.grid-container');
+                const gridItems = document.querySelectorAll('.grid-item');
+
+                gridItems.forEach(item => {
+                    item.style.cursor = 'pointer';
+                    item.addEventListener('click', function() {
+                        if (this.classList.contains('grid-item-full')) {
+                            return;
+                        }
+                        const currentTopItem = document.querySelector('.grid-item-full');
+                        if (currentTopItem) {
+                            currentTopItem.classList.remove('grid-item-full');
+                        }
+                        this.classList.add('grid-item-full');
+                        gridContainer.insertBefore(this, gridContainer.firstChild);
+                    });
+                });
 
             } else {
                 const gridContainer = document.querySelector('.grid-container');

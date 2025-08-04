@@ -8,13 +8,16 @@ h1, h2 {
     color: #333;
     text-align: center;
 }
+
 .summary-cards {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
     margin-bottom: 30px;
     justify-content: center;
+    /* A propriedade 'position: relative' foi removida daqui */
 }
+
 .card {
     background-color: white;
     padding: 20px;
@@ -153,6 +156,7 @@ h1, h2 {
 .flash { padding: 15px; border-radius: 5px; }
 .flash.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
 .flash.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.flash.warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
 #progressContainer h4 {
     text-align: center;
     color: #333;
@@ -166,17 +170,11 @@ h1, h2 {
 }
 .progress-bar {
     height: 30px;
-    width: 0%;
-    background: repeating-linear-gradient(
-        -45deg,
-        #2980B9,
-        #2980B9 10px,
-        #3498DB 10px,
-        #3498DB 20px
-    );
+    width: 100%;
+    background: repeating-linear-gradient(-45deg, #2980B9, #2980B9 10px, #3498DB 10px, #3498DB 20px);
     border-radius: 20px;
     position: relative;
-    animation: fillProgress 15s linear forwards;
+    animation: slide 2s linear infinite;
 }
 .truck-emoji {
     font-size: 24px;
@@ -184,23 +182,37 @@ h1, h2 {
     right: -15px;
     top: -2px;
     transform: scaleX(-1);
-    animation: moveTruck 15s linear forwards;
 }
-@keyframes fillProgress {
-    from { width: 0%; }
-    to { width: 100%; }
+@keyframes slide {
+    from { background-position: 0 0; }
+    to { background-position: 40px 0; }
 }
-@keyframes moveTruck {
-    from {
-        right: calc(100% - 15px);
-    }
-    to {
-        right: -15px;
-    }
+
+/* --- AJUSTE CIRÚRGICO PARA O LINK FLUTUANTE --- */
+/* 1. A regra de posicionamento agora é específica para o card que terá o link */
+.card-com-link-hover {
+    position: relative;
 }
-/* Adicione no final de style.css */
-.flash.warning {
-    background-color: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeeba;
+
+/* 2. A estilização do link em si permanece a mesma */
+.link-detalhes-container {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(41, 128, 185, 0.9);
+    color: white;
+    padding: 8px 15px;
+    border-radius: 20px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 10;
+    opacity: 0; /* Começa invisível */
+    transition: opacity 0.3s ease-in-out;
+}
+
+/* 3. O seletor de "hover" agora é específico para o card de faturamento */
+.card-com-link-hover:hover .link-detalhes-container {
+    opacity: 1; /* Fica visível com o mouse em cima */
 }

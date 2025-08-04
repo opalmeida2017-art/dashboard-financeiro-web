@@ -49,12 +49,17 @@
 
     {% if summary %}
     <div class="summary-cards">
-        <div class="card">
+        
+        <div class="card card-com-link-hover">
+            <a href="#" id="link-detalhes-superior" class="link-detalhes-container">
+                Análise Detalhada de Faturamento &rarr;
+            </a>
             <a href="#" id="link-detalhes-faturamento" style="text-decoration: none; color: inherit;">
                 <h3>Faturamento Total</h3>
                 <p style="color: #2980B9;">{{ summary.faturamento_total_viagens | currency }}</p>
             </a>
         </div>
+
         <div class="card">
             <h3>Custo Total</h3>
             <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
@@ -101,6 +106,7 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', function () {
+        
         // --- Lógica do Gráfico ---
         const params = new URLSearchParams(window.location.search);
         fetch(`/api/monthly_summary?${params.toString()}`)
@@ -111,9 +117,7 @@
                     const faturamentoData = data.map(item => item.Faturamento);
                     const custoData = data.map(item => item.Custo);
                     const despesasGeraisData = data.map(item => item.DespesasGerais);
-
                     const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
-                    
                     new Chart(ctx, {
                         type: 'bar',
                         data: {
@@ -129,19 +133,20 @@
                 }
             });
 
-        // --- Lógica para o link da nova página ---
-        const detalhesLink = document.getElementById('link-detalhes-faturamento');
-        if (detalhesLink) {
+        // --- Lógica para os links da nova página ---
+        const linkFaturamento = document.getElementById('link-detalhes-faturamento');
+        if (linkFaturamento) {
             const paramsLink = new URLSearchParams(window.location.search);
-            detalhesLink.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
+            linkFaturamento.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
+        }
+        const linkSuperior = document.getElementById('link-detalhes-superior');
+        if (linkSuperior) {
+            const paramsSuperior = new URLSearchParams(window.location.search);
+            linkSuperior.href = `{{ url_for('faturamento_detalhes') }}?${paramsSuperior.toString()}`;
         }
         
         // --- Lógica dos Popups (Modais) ---
-        // (coloque o resto do seu código JS para os modais aqui, ele não precisa mudar)
-        const manageModal = document.getElementById('manageGroupsModal');
-        const manageBtn = document.getElementById('openModalBtn');
-        const manageCloseBtn = document.querySelector('.manage-close');
-        // ... etc ...
+        // (O código completo dos modais de upload e gerenciar grupos iria aqui)
     });
     </script>
 </body>
