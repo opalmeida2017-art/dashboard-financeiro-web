@@ -43,6 +43,8 @@
             <div class="action-buttons">
                 <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
                 <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
+                <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
+                <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
             </div>
         </form>
     </div>
@@ -70,15 +72,11 @@
         </div>
         <div class="card">
             <h3>Lucro Liquido</h3>
-            <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">
-                {{ summary.saldo_geral | currency }}
-            </p>
+            <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">{{ summary.saldo_geral | currency }}</p>
         </div>
         <div class="card">
             <h3>Margem Frete</h3>
-            <p style="color: {% if summary.margem_frete >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">
-                {{ summary.margem_frete | percentage }}
-            </p>
+            <p style="color: {% if summary.margem_frete >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">{{ summary.margem_frete | percentage }}</p>
         </div>
         <div class="card">
             <h3>Contas a Pagar Pendentes</h3>
@@ -94,15 +92,46 @@
     {% endif %}
 
     <div class="chart-container" id="secao-grafico">
-        <h2>Faturamento vs. Despesas (Mensal)</h2>
+        <h2>Faturamento vs. Despesas (Mensal/Diário)</h2>
         <canvas id="faturamentoDespesasChart"></canvas>
     </div>
 
     <div id="manageGroupsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button manage-close">&times;</span>
+            <h2>Gerenciar Grupos de Despesa</h2>
+            <p>Classifique cada grupo...</p>
+            <form method="POST" action="{{ url_for('gerenciar_grupos_salvar') }}">
+                <div id="manageGroupsTableContainer"><p>Carregando grupos...</p></div>
+                <button type="submit" class="btn-salvar">Salvar Alterações</button>
+            </form>
         </div>
+    </div>
     
     <div id="uploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button upload-close">&times;</span>
+            <div id="uploadFormContainer">
+                <h2>Upload de Novas Planilhas</h2>
+                <p>Selecione uma ou mais planilhas...</p>
+                <form id="uploadForm" method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="files">1. Escolha os arquivos no seu computador:</label>
+                        <input type="file" name="files[]" id="files" multiple required>
+                    </div>
+                    <button type="submit" class="btn-salvar">Enviar e Importar</button>
+                </form>
+            </div>
+            <div id="progressContainer" style="display: none;">
+                <h4>Processando planilhas... Por favor, aguarde.</h4>
+                <div class="progress-road">
+                    <div class="progress-bar">
+                        <span class="truck-emoji">🚚</span>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -134,10 +163,10 @@
             });
 
         // --- Lógica para os links da nova página ---
-        const linkFaturamento = document.getElementById('link-detalhes-faturamento');
-        if (linkFaturamento) {
+        const detalhesLink = document.getElementById('link-detalhes-faturamento');
+        if (detalhesLink) {
             const paramsLink = new URLSearchParams(window.location.search);
-            linkFaturamento.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
+            detalhesLink.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
         }
         const linkSuperior = document.getElementById('link-detalhes-superior');
         if (linkSuperior) {
@@ -146,7 +175,98 @@
         }
         
         // --- Lógica dos Popups (Modais) ---
-        // (O código completo dos modais de upload e gerenciar grupos iria aqui)
+        const manageModal = document.getElementById('manageGroupsModal');
+        const manageBtn = document.getElementById('openModalBtn');
+        const manageCloseBtn = document.querySelector('.manage-close');
+        const tableContainer = document.getElementById('manageGroupsTableContainer');
+
+        if (manageBtn) {
+            manageBtn.onclick = function() {
+                tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
+                manageModal.style.display = 'block';
+                fetch("{{ url_for('gerenciar_grupos_dados') }}")
+                    .then(response => response.json())
+                    .then(flags => {
+                        let tableHTML = `<table><thead><tr><th>Nome do Grupo de Despesa</th><th>Classificação</th></tr></thead><tbody>`;
+                        for (const group in flags) {
+                            const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
+                            const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
+                            tableHTML += `<tr><td>${group}</td><td>
+                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
+                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                            </td></tr>`;
+                        }
+                        tableHTML += '</tbody></table>';
+                        tableContainer.innerHTML = tableHTML;
+                        setupExclusiveCheckboxes();
+                    });
+            }
+        }
+        if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
+
+        function setupExclusiveCheckboxes() {
+            const checkboxes = document.querySelectorAll('.classification-cb');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', function() {
+                    if (this.checked) {
+                        const currentGroup = this.dataset.group;
+                        const currentType = this.dataset.type;
+                        checkboxes.forEach(otherCb => {
+                            if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
+                                otherCb.checked = false;
+                            }
+                        });
+                    }
+                });
+            });
+        }
+        
+        const uploadModal = document.getElementById('uploadModal');
+        const uploadBtn = document.getElementById('openUploadModalBtn');
+        const uploadCloseBtn = document.querySelector('.upload-close');
+        if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
+        if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
+        
+        window.addEventListener('click', function(event) {
+            if (event.target == manageModal) { manageModal.style.display = 'none'; }
+            if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
+        });
+        
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadFormContainer = document.getElementById('uploadFormContainer');
+        const progressContainer = document.getElementById('progressContainer');
+
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function() {
+                uploadFormContainer.style.display = 'none';
+                progressContainer.style.display = 'block';
+            });
+        }
+
+        const btnColeta = document.getElementById('btn-iniciar-coleta');
+        if (btnColeta) {
+            btnColeta.addEventListener('click', function() {
+                if (confirm('Isso iniciará a busca automática por novos relatórios. O processo pode levar alguns minutos. Deseja continuar?')) {
+                    btnColeta.disabled = true;
+                    btnColeta.textContent = 'Atualizando...';
+                    fetch('/iniciar-coleta', { method: 'POST' })
+                        .then(response => response.json())
+                        .then(data => {
+                            alert(data.mensagem);
+                            alert("A página será recarregada em aproximadamente 3 minutos para exibir os dados atualizados. Por favor, aguarde.");
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 180000); // 3 minutos
+                        })
+                        .catch(error => {
+                            console.error('Erro ao iniciar a coleta:', error);
+                            alert('Ocorreu um erro ao tentar iniciar a coleta. O botão foi reativado.');
+                            btnColeta.disabled = false;
+                            btnColeta.textContent = 'Atualizar Dados';
+                        });
+                }
+            });
+        }
     });
     </script>
 </body>

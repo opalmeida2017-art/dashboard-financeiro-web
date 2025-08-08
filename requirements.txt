@@ -1,9 +1,9 @@
 # Web Server
-flask==3.0.3
-gunicorn==22.0.0
+flask
+gunicorn
 
 # Data Handling
-pandas==2.2.2
+pandas
 openpyxl
 xlrd
 
@@ -16,3 +16,5 @@ semver
 
 # PostgreSQL Connector
 psycopg2-binary
+
+selenium

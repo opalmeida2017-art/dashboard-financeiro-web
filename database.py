@@ -3,7 +3,10 @@ import psycopg2
 import sqlite3
 import pandas as pd
 import config
+import glob 
 from datetime import datetime
+
+
 
 DATABASE_NAME = 'financeiro.db'
 
@@ -232,7 +235,21 @@ def create_tables():
         else:
             cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (%s) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
             cursor.execute('INSERT INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s) ON CONFLICT("group_name") DO NOTHING', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
+    with get_db_connection() as conn:
+        if conn is None:
+            return
+        cursor = conn.cursor()
+        print("Verificando e criando esquema do banco de dados com nomes exatos...")
+
+        # ... (código que cria as suas tabelas existentes, como relFilViagensFatCliente) ...
         
+        # --- NOVO: Adiciona a tabela para as configurações do robô ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
+                "chave" TEXT PRIMARY KEY,
+                "valor" TEXT
+            )
+        ''')
         conn.commit()
         print("Esquema do banco de dados verificado/criado com sucesso.")
 
@@ -327,3 +344,58 @@ def table_exists(table_name: str) -> bool:
             return result is not None and result[0] is not None
     except Exception:
         return False
+    
+
+
+def processar_downloads_na_pasta():
+    """
+    Verifica a pasta do projeto por planilhas baixadas, importa-as,
+    renomeia com data/hora e limpa versões antigas.
+    """
+    print("\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD NA PASTA ---")
+    caminho_base = os.getcwd()
+    
+    # Mapeia o nome de cada arquivo para a sua chave de configuração (ex: "relFil...xls": "contas_pagar")
+    mapa_arquivos_config = {info['path']: chave for chave, info in config.EXCEL_FILES_CONFIG.items()}
+    
+    # Para cada tipo de relatório que conhecemos do config.py...
+    for nome_arquivo_base, chave_config in mapa_arquivos_config.items():
+        
+        caminho_novo_arquivo = os.path.join(caminho_base, nome_arquivo_base)
+        
+        # 1. Verifica se o robô realmente baixou um novo arquivo deste tipo
+        if os.path.exists(caminho_novo_arquivo):
+            print(f"\nArquivo novo encontrado: '{nome_arquivo_base}'")
+
+            # 2. Procura e exclui QUALQUER versão antiga e já renomeada deste mesmo relatório
+            nome_sem_ext, extensao = os.path.splitext(nome_arquivo_base)
+            padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_*{extensao}")
+            arquivos_antigos_encontrados = glob.glob(padrao_busca_antigos)
+            
+            if arquivos_antigos_encontrados:
+                print(f" -> Excluindo {len(arquivos_antigos_encontrados)} versão(ões) antiga(s)...")
+                for arquivo_antigo in arquivos_antigos_encontrados:
+                    os.remove(arquivo_antigo)
+
+            # 3. Importa os dados do novo arquivo para o banco de dados
+            try:
+                print(f" -> Importando dados para a tabela '{config.EXCEL_FILES_CONFIG[chave_config]['table_name']}'...")
+                # Reutiliza a função de importação que já existe no seu projeto
+                import_single_excel_to_db(caminho_novo_arquivo, chave_config)
+                print(" -> Importação bem-sucedida.")
+            except Exception as e:
+                print(f" -> ERRO! Falha ao importar os dados: {e}")
+                # Se a importação falhar, paramos o processo para este arquivo para evitar renomeá-lo incorretamente
+                continue
+
+            # 4. Renomeia o novo arquivo com data e hora para guardá-lo como "antigo"
+            try:
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                novo_nome_renomeado = f"{nome_sem_ext}_{timestamp}{extensao}"
+                caminho_renomeado = os.path.join(caminho_base, novo_nome_renomeado)
+                print(f" -> Renomeando arquivo para '{novo_nome_renomeado}'...")
+                os.rename(caminho_novo_arquivo, caminho_renomeado)
+            except Exception as e:
+                print(f" -> ERRO! Falha ao renomear o arquivo: {e}")
+
+    print("\n--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")

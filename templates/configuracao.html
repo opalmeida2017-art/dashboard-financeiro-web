@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurações do Robô</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .config-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .config-card h3 {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div style="max-width: 900px; margin: 20px auto; padding: 20px;">
+        <div class="page-header">
+            <h1>Configurações do Robô de Coleta</h1>
+            <a href="{{ url_for('index') }}" class="back-link">&larr; Voltar ao Dashboard</a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('configuracao') }}">
+            <div class="config-grid">
+
+                <div class="config-card">
+                    <h3>Conexão do Site SAT</h3>
+                    <div class="form-group">
+                        <label for="url_login">Link do Site (URL)</label>
+                        <input type="text" id="url_login" name="URL_LOGIN" value="{{ configs.get('URL_LOGIN', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="usuario">Usuário</label>
+                        <input type="text" id="usuario" name="USUARIO_ROBO" value="{{ configs.get('USUARIO_ROBO', '') }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="senha">Senha</label>
+                        <input type="password" id="senha" name="SENHA_ROBO" value="{{ configs.get('SENHA_ROBO', '') }}">
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h3>Parâmetros para Robôs</h3>
+                    <div class="form-group">
+                        <label for="codigo_viagens_cliente">Base: Viagens por Cliente (Código)</label>
+                        <input type="text" id="codigo_viagens_cliente" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}" maxlength="2" size="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="codigo_viagens_fat_cliente">Base: Fat.Viagens por Cliente (Código)</label>
+                        <input type="text" id="codigo_viagens_fat_cliente" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}" maxlength="2" size="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="codigo_contas_pagar">Base: Conta a Pagar/Pagas (Código)</label>
+                        <input type="text" id="codigo_contas_pagar" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}" maxlength="2" size="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="codigo_contas_receber">Base: Conta Rec/Recebidas (Código)</label>
+                        <input type="text" id="codigo_contas_receber" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}" maxlength="2" size="5">
+                    </div>
+                    <div class="form-group">
+                        <label for="codigo_despesas">Base: Despesas Contas a Pagar (Código)</label>
+                        <input type="text" id="codigo_despesas" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}" maxlength="2" size="5">
+                    </div>
+                </div>
+
+                <div class="config-card">
+                    <h3>Período Padrão de Exportação</h3>
+                     <div class="form-group">
+                        <label for="data_inicial">Data Inicial</label>
+                        <input type="text" id="data_inicial" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO', '01/01/2000') }}" placeholder="dd/mm/aaaa">
+                    </div>
+                     <div class="form-group">
+                        <label for="data_final">Data Final</label>
+                        <input type="text" id="data_final" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO', '31/12/2999') }}" placeholder="dd/mm/aaaa">
+                    </div>
+                </div>
+
+            </div>
+            <button type="submit" class="btn-salvar" style="margin-top: 20px;">Salvar Todas as Configurações</button>
+        </form>
+    </div>
+</body>
+</html>

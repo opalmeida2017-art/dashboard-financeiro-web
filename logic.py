@@ -57,3 +57,14 @@ def _import_all_data():
 
 def get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter):
     return dm.get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter)
+
+# logic.py (adicione estas funções)
+
+def ler_configuracoes_robo():
+    return dm.ler_configuracoes_robo()
+
+def salvar_configuracoes_robo(configs: dict):
+    return dm.salvar_configuracoes_robo(configs)
+
+def processar_downloads_na_pasta():
+    return db.processar_downloads_na_pasta()

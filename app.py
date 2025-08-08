@@ -155,6 +155,49 @@ def api_faturamento_dashboard_data():
         filial_filter=filters['filial']
     )
     return jsonify(dashboard_data)
+# app.py (adicione estas linhas)
 
+# No topo do arquivo, adicione a importação de 'threading' e do nosso novo script
+import threading
+import coletor_automatico
+
+# Adicione esta nova rota ao seu app.py
+@app.route('/iniciar-coleta', methods=['POST'])
+def iniciar_coleta():
+    """
+    Inicia o processo de coleta de dados em uma thread separada.
+    """
+    print("Requisição para iniciar coleta recebida.")
+    # Criamos uma thread para que o robô rode em segundo plano
+    thread = threading.Thread(target=coletor_automatico.executar_coleta)
+    thread.start()
+    
+    # Retorna uma resposta imediata para o navegador
+    return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano. Os dados serão atualizados em alguns minutos.'})
+
+# app.py (adicione esta nova rota)
+
+@app.route('/configuracao', methods=['GET', 'POST'])
+def configuracao():
+    if request.method == 'POST':
+        # Pega todos os campos do formulário e salva no banco
+        configs = {
+            'URL_LOGIN': request.form.get('URL_LOGIN'),
+            'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
+            'SENHA_ROBO': request.form.get('SENHA_ROBO'),
+            'CODIGO_VIAGENS_CLIENTE': request.form.get('CODIGO_VIAGENS_CLIENTE'),
+            'CODIGO_VIAGENS_FAT_CLIENTE': request.form.get('CODIGO_VIAGENS_FAT_CLIENTE'),
+            'CODIGO_CONTAS_PAGAR': request.form.get('CODIGO_CONTAS_PAGAR'),
+            'CODIGO_CONTAS_RECEBER': request.form.get('CODIGO_CONTAS_RECEBER'),
+            'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
+            'DATA_INICIAL_ROBO': request.form.get('DATA_INICIAL_ROBO'),
+            'DATA_FINAL_ROBO': request.form.get('DATA_FINAL_ROBO'),
+        }
+        logic.salvar_configuracoes_robo(configs)
+        flash('Configurações salvas com sucesso!', 'success')
+        return redirect(url_for('configuracao'))
+    
+    configs_salvas = logic.ler_configuracoes_robo()
+    return render_template('configuracao.html', configs=configs_salvas)
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
