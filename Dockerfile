@@ -6,16 +6,17 @@ FROM python:3.11-slim-bullseye
 # Define o diretório de trabalho
 WORKDIR /app
 
-# Define o ambiente como não-interativo para evitar prompts
+# Define o ambiente como não-interativo para evitar prompts durante a instalação
 ENV DEBIAN_FRONTEND=noninteractive
 
-# --- Instala o Chromium e o Driver (Método Simplificado) ---
+# --- Instala o Chromium e o Driver correspondente (Método Simplificado) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
+    # Limpa o cache para manter a imagem pequena
     && rm -rf /var/lib/apt/lists/*
 
-# Copia e instala as dependências Python
+# Copia e instale as dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
