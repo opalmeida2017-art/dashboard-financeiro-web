@@ -24,4 +24,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # --- CORREÇÃO: Comando para iniciar a aplicação no formato "exec" ---
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "app:app"]
+CMD gunicorn --bind "0.0.0.0:$PORT" --workers 3 app:app
