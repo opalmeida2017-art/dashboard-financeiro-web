@@ -1,13 +1,12 @@
 # Dockerfile (versão final, limpa e organizada)
 
-# --- CORREÇÃO: Usa uma imagem base do Python mais recente (Bullseye) ---
+# Usa uma imagem base do Python mais recente (Bullseye)
 FROM python:3.11-slim-bullseye
 
 # Define o diretório de trabalho
 WORKDIR /app
 
 # --- Instala o Google Chrome e o ChromeDriver (Método Moderno e Robusto) ---
-# Não precisa mais corrigir os repositórios para Bullseye
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
