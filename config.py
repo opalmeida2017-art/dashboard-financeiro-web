@@ -31,3 +31,13 @@ EXCEL_FILES_CONFIG = {
 }
 
 FILTER_COLUMN_MAPS = { "placa": ['placaVeiculo', 'placa'], "filial": ['nomeFilial', 'nomeFil'] }
+
+
+# NOVO: Define as colunas que identificam uma linha única em cada tabela
+TABLE_PRIMARY_KEYS = {
+    "relFilViagensCliente": ["numConhec"],
+    "relFilViagensFatCliente": ["numConhec"],
+    "relFilDespesasGerais": ["numNota", "dataControle", "nomeForn"],
+    "relFilContasPagarDet": ["numNota", "dataVenc", "nomeForn"],
+    "relFilContasReceber": ["numConhec"]
+}
