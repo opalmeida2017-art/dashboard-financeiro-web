@@ -35,4 +35,4 @@ COPY . .
 
 # Comando para iniciar a aplicação web (Gunicorn)
 # Certifique-se de ter 'gunicorn' no seu arquivo requirements.txt
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "app:app"]
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 3 app:app

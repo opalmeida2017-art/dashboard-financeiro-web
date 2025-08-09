@@ -1,4 +1,6 @@
 # robos/coletor_fat_viagens.py (Robô completo e independente)
+
+# --- Adiciona a pasta principal ao caminho para encontrar os outros módulos ---
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,8 +19,6 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
-
-
 def executar_coleta_fat_viagens():
     """
     Função principal que executa todo o processo de coleta de dados para Faturamento de Viagens por Cliente.
@@ -32,7 +32,7 @@ def executar_coleta_fat_viagens():
     SENHA = configs.get('SENHA_ROBO')
     URL_LOGIN = configs.get('URL_LOGIN')
     # Usa o código para "Fat.Viagens por Cliente"
-    CODIGO_RELATORIO = configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') 
+    CODIGO_RELATORIO = configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '5') 
     DATA_INICIAL = configs.get('DATA_INICIAL_ROBO', '01/01/2000')
     DATA_FINAL = configs.get('DATA_FINAL_ROBO', '31/12/2999')
     
@@ -65,14 +65,14 @@ def executar_coleta_fat_viagens():
         # --- ETAPA DE LOGIN ---
         print(f"Acessando: {URL_LOGIN}")
         driver.get(URL_LOGIN)
-        time.sleep(1)
+        time.sleep(2)
         try:
             WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Limpar Cache e Continuar')]"))).click()
-            time.sleep(1)
+            time.sleep(3)
         except: pass
         try:
             WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Fechar']"))).click()
-            time.sleep(1)
+            time.sleep(2)
         except: pass
         
         print("Preenchendo credenciais...")
@@ -80,7 +80,7 @@ def executar_coleta_fat_viagens():
         driver.find_element(By.CSS_SELECTOR, SELECTOR_CAMPO_SENHA).send_keys(SENHA)
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SELECTOR_BOTAO_ENTRAR))).click()
         print("Aguardando login...")
-        time.sleep(1)
+        time.sleep(7)
         
         # --- ROTEIRO DE CLIQUES E DOWNLOADS ---
         print("Passo 1-2: Acessando 'Cadastro de Exportações'...")
@@ -89,7 +89,7 @@ def executar_coleta_fat_viagens():
         time.sleep(1)
         submenu_cadastro = wait.until(EC.element_to_be_clickable((By.ID, "formMenu:j_idt603")))
         submenu_cadastro.click()
-        time.sleep(1)
+        time.sleep(3)
         
         print(f"Passo 3: Preenchendo código '{CODIGO_RELATORIO}'...")
         SELECTOR_CAMPO_CODIGO = "input[id='formexpFil:ExpFil_codExp']"
@@ -100,7 +100,7 @@ def executar_coleta_fat_viagens():
         
         print("Passo 4: Pesquisando com Ctrl+Enter...")
         actions.key_down(Keys.CONTROL).send_keys(Keys.ENTER).key_up(Keys.CONTROL).perform()
-        time.sleep(1)
+        time.sleep(5)
         
          # --- PASSO 5 CORRIGIDO: Clicando pelo Código ---
         print(f"Passo 5: Procurando o link do relatório com código '{CODIGO_RELATORIO}'...")
@@ -111,8 +111,7 @@ def executar_coleta_fat_viagens():
         link_relatorio.click()
         # --- FIM DA CORREÇÃO ---
         time.sleep(1)
-        
-          # --- PASSO 6 CORRIGIDO: Clicar para abrir a nova aba ---
+         # --- PASSO 6 CORRIGIDO: Clicar para abrir a nova aba ---
         print("Passo 6: Clicando em 'Exportar Dados' para abrir a nova aba...")
         
         # Guarda o identificador da aba original para podermos voltar depois
@@ -159,7 +158,7 @@ def executar_coleta_fat_viagens():
 
         #
         # --- O PRÓXIMO PASSO SERÁ PREENCHER O FORMULÁRIO FINAL ---
-        #
+            
         print("Passo 8: Preenchendo o formulário de Faturamento de Viagens...")
         
         # Preenche as datas
@@ -183,8 +182,6 @@ def executar_coleta_fat_viagens():
         Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_somentePedidosNaoFinalizados')).select_by_value('0')
         
         time.sleep(1)
-        
-        time.sleep(1)
         # --- PASSO 9 CORRIGIDO: Gerar o link de download ---
         print("Passo 9: Pressionando Ctrl + Enter para gerar o link de download...")
         actions.key_down(Keys.CONTROL).send_keys(Keys.ENTER).key_up(Keys.CONTROL).perform()
@@ -196,7 +193,7 @@ def executar_coleta_fat_viagens():
         link_final.click()
         
         # --- LÓGICA DE ESPERA INTELIGENTE PELO ARQUIVO ---
-        nome_do_arquivo_esperado = "relFilViagensFatCliente.xls"
+        nome_do_arquivo_esperado = "relFilViagensCliente.xls"
         pasta_downloads = pasta_principal  # Define pasta_downloads corretamente
         caminho_do_arquivo = os.path.join(pasta_downloads, nome_do_arquivo_esperado)
         
