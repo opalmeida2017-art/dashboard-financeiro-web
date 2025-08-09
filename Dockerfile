@@ -6,6 +6,11 @@ FROM python:3.11-slim-buster
 # Define o diretório de trabalho
 WORKDIR /app
 
+# --- NOVO: Corrige os repositórios do Debian Buster para usar o arquivo morto ---
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+    sed -i '/buster-updates/d' /etc/apt/sources.list
+
 # --- Instala o Google Chrome e o ChromeDriver (Método Moderno e Robusto) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
