@@ -1,6 +1,6 @@
 # Dockerfile (versão final, limpa e organizada)
 
-# Usa uma imagem base do Python que é Debian-based (Buster é uma boa escolha)
+# Usa uma imagem base do Python que seja Debian-based (Buster é uma boa escolha)
 FROM python:3.11-slim-buster
 
 # Define o diretório de trabalho
@@ -35,4 +35,4 @@ COPY . .
 
 # Comando para iniciar a aplicação web (Gunicorn)
 # Certifique-se de ter 'gunicorn' no seu arquivo requirements.txt
-CMD gunicorn --bind 0.0.0.0:$PORT --workers 3 app:app
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "app:app"]
