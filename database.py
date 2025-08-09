@@ -298,39 +298,69 @@ def _validate_columns(excel_columns, table_name, conn):
     valid_columns_original_case = [col for col in excel_columns if col.lower() in db_columns_lower]
     return valid_columns_original_case, extra_cols_names
 
-def import_excel_to_db(excel_source, sheet_name: str, table_name: str):
+# database.py (substitua esta função)
+
+def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list):
+    """
+    Importa dados do Excel, apagando apenas registros correspondentes para atualizar.
+    """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
         df_novo, cleaned_excel_columns = _clean_and_convert_data(df_novo, table_name)
         
         with get_db_connection() as conn:
-            valid_columns, extra_columns = _validate_columns(cleaned_excel_columns, table_name, conn)
-            
-            df_import = df_novo[[col for col in df_novo.columns if col in valid_columns]]
-            
-            if conn is None: return extra_columns
+            if conn is None: return []
 
-            cursor = conn.cursor()
-            delete_sql = f'DELETE FROM "{table_name}"'
-            print(f"Limpando dados antigos da tabela '{table_name}'...")
-            cursor.execute(delete_sql)
+            valid_columns, extra_columns = _validate_columns(cleaned_excel_columns, table_name, conn)
+            df_import = df_novo[[col for col in df_novo.columns if col in valid_columns]]
+
+            if df_import.empty:
+                print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
+                return extra_columns
             
-            print(f"Inserindo {len(df_import)} novos registros em '{table_name}'...")
+            # --- LÓGICA DE ATUALIZAÇÃO CORRIGIDA ---
+            print(f"Iniciando importação com atualização para a tabela '{table_name}'...")
+            
+            df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
+
+            where_clauses = [f'"{col}" IN (SELECT DISTINCT "{col}" FROM temp_import)' for col in key_columns]
+            where_str = ' AND '.join(where_clauses)
+            
+            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str};'
+            
+            cursor = conn.cursor()
+            print(f" -> Removendo {len(df_import)} registros antigos/correspondentes para evitar duplicatas...")
+            cursor.execute(sql_delete)
+            print(f" -> {cursor.rowcount} registros antigos foram removidos.")
+            
+            print(f" -> Inserindo {len(df_import)} novos/atualizados registros...")
             df_import.to_sql(table_name, conn, if_exists='append', index=False)
+            
+            cursor.execute('DROP TABLE temp_import')
             conn.commit()
-            print(f"Dados da planilha '{sheet_name}' importados para a tabela '{table_name}'.")
+            print(f" -> Importação para a tabela '{table_name}' concluída com sucesso.")
+            # --- FIM DA LÓGICA DE ATUALIZAÇÃO ---
 
         return extra_columns
     except Exception as e:
         print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
         raise e
+# database.py (substitua esta função)
 
 def import_single_excel_to_db(excel_source, file_key: str):
     file_info = config.EXCEL_FILES_CONFIG.get(file_key)
     if not file_info:
         raise ValueError(f"Chave de arquivo '{file_key}' não encontrada na configuração.")
-    return import_excel_to_db(excel_source, file_info["sheet_name"], file_info["table_name"])
+    
+    table_name = file_info["table_name"]
+    # NOVO: Pega as colunas-chave do config
+    key_columns = config.TABLE_PRIMARY_KEYS.get(table_name, [])
+    if not key_columns:
+        raise ValueError(f"Colunas-chave não definidas para a tabela '{table_name}' no config.py")
+
+    # Passa as colunas-chave para a função de importação
+    return import_excel_to_db(excel_source, file_info["sheet_name"], table_name, key_columns)
 
 def table_exists(table_name: str) -> bool:
     """Verifica se uma tabela existe no banco de dados."""

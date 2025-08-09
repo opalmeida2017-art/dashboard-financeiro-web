@@ -1,9 +1,11 @@
 import os
+import threading
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
 from datetime import datetime
 import logic
 import database as db
 import config
+import coletor_principal # Importa o orquestrador principal
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
@@ -28,7 +30,7 @@ def format_percentage(value):
     return f"{formatted_value}%"
 # --- FIM DOS FILTROS ---
 
-# --- CRIAÇÃO DAS TABELAS NO INÍCIO ---
+# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
 print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
 db.create_tables()
 print("Verificação do banco de dados concluída.")
@@ -36,7 +38,6 @@ print("Verificação do banco de dados concluída.")
 
 FILENAME_TO_KEY_MAP = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}
 
-# --- NOVA FUNÇÃO AJUDANTE PARA CENTRALIZAR A LÓGICA DE FILTROS ---
 def _parse_filters():
     """Lê os filtros da URL e retorna um dicionário com os valores processados."""
     filters = {
@@ -51,7 +52,6 @@ def _parse_filters():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # ... (código inalterado) ...
     uploaded_files = request.files.getlist('files[]')
     if not uploaded_files or uploaded_files[0].filename == '':
         flash('Erro: Nenhum arquivo selecionado.', 'error')
@@ -75,19 +75,15 @@ def upload_file():
 
 @app.route('/')
 def index():
-    # ALTERADO: Usa a função ajudante para pegar os filtros
     filters = _parse_filters()
-    
     summary_data = logic.get_dashboard_summary(
         start_date=filters['start_date_obj'], 
         end_date=filters['end_date_obj'], 
         placa_filter=filters['placa'], 
         filial_filter=filters['filial']
     )
-    
     placas = logic.get_unique_plates()
     filiais = logic.get_unique_filiais()
-    
     return render_template('index.html', 
                            summary=summary_data,
                            placas=placas,
@@ -99,7 +95,6 @@ def index():
 
 @app.route('/gerenciar-grupos-dados')
 def gerenciar_grupos_dados():
-    # ... (código inalterado) ...
     logic.sync_expense_groups() 
     df_flags = logic.get_all_group_flags()
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
@@ -107,7 +102,6 @@ def gerenciar_grupos_dados():
 
 @app.route('/gerenciar-grupos-salvar', methods=['POST'])
 def gerenciar_grupos_salvar():
-    # ... (código inalterado) ...
     all_groups = logic.get_all_expense_groups()
     update_data = {}
     for group in all_groups:
@@ -117,17 +111,13 @@ def gerenciar_grupos_salvar():
             update_data[group] = 'despesa'
         else: 
             update_data[group] = 'nenhum'
-
     logic.update_all_group_flags(update_data)
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
 
-
 @app.route('/api/monthly_summary')
 def api_monthly_summary():
-    # ALTERADO: Usa a função ajudante para pegar os filtros
     filters = _parse_filters()
-    
     monthly_data = logic.get_monthly_summary(
         start_date=filters['start_date_obj'],
         end_date=filters['end_date_obj'],
@@ -138,16 +128,12 @@ def api_monthly_summary():
 
 @app.route('/faturamento_detalhes')
 def faturamento_detalhes():
-    # ALTERADO: Usa a função ajudante para pegar os filtros
     filters = _parse_filters()
-    # Passa os filtros para o template
     return render_template('faturamento_detalhes.html', **filters)
-
-# app.py (adicione esta nova rota)
 
 @app.route('/api/faturamento_dashboard_data')
 def api_faturamento_dashboard_data():
-    filters = _parse_filters() # Reutiliza nossa função de filtros
+    filters = _parse_filters()
     dashboard_data = logic.get_faturamento_details_dashboard_data(
         start_date=filters['start_date_obj'],
         end_date=filters['end_date_obj'],
@@ -155,32 +141,20 @@ def api_faturamento_dashboard_data():
         filial_filter=filters['filial']
     )
     return jsonify(dashboard_data)
-# app.py (adicione estas linhas)
 
-# No topo do arquivo, adicione a importação de 'threading' e do nosso novo script
-import threading
-import coletor_automatico
-
-# Adicione esta nova rota ao seu app.py
 @app.route('/iniciar-coleta', methods=['POST'])
 def iniciar_coleta():
     """
-    Inicia o processo de coleta de dados em uma thread separada.
+    Inicia o ORQUESTRADOR de coleta em uma thread separada.
     """
-    print("Requisição para iniciar coleta recebida.")
-    # Criamos uma thread para que o robô rode em segundo plano
-    thread = threading.Thread(target=coletor_automatico.executar_coleta)
+    print("Requisição para iniciar o orquestrador de coleta recebida.")
+    thread = threading.Thread(target=coletor_principal.executar_todas_as_coletas)
     thread.start()
-    
-    # Retorna uma resposta imediata para o navegador
     return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano. Os dados serão atualizados em alguns minutos.'})
-
-# app.py (adicione esta nova rota)
 
 @app.route('/configuracao', methods=['GET', 'POST'])
 def configuracao():
     if request.method == 'POST':
-        # Pega todos os campos do formulário e salva no banco
         configs = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
             'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
@@ -199,5 +173,6 @@ def configuracao():
     
     configs_salvas = logic.ler_configuracoes_robo()
     return render_template('configuracao.html', configs=configs_salvas)
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

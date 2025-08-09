@@ -10,6 +10,7 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+            margin-top: 20px;
         }
         .config-card {
             background-color: white;
@@ -19,25 +20,42 @@
         }
         .config-card h3 {
             margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .header-actions {
+            display: flex;
+            gap: 10px;
         }
     </style>
 </head>
 <body>
     <div style="max-width: 900px; margin: 20px auto; padding: 20px;">
-        <div class="page-header">
-            <h1>Configurações do Robô de Coleta</h1>
-            <a href="{{ url_for('index') }}" class="back-link">&larr; Voltar ao Dashboard</a>
-        </div>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="flash {{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
+        
         <form method="POST" action="{{ url_for('configuracao') }}">
+            <div class="page-header">
+                <h1>Configurações do Robô de Coleta</h1>
+                <div class="header-actions">
+                    <button type="submit" class="btn-salvar">Salvar Configurações</button>
+                    <a href="{{ url_for('index') }}" class="manage-link" style="text-decoration: none;">Voltar ao Dashboard Principal</a>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}" style="margin-top: 15px;">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
             <div class="config-grid">
 
                 <div class="config-card">
@@ -57,25 +75,25 @@
                 </div>
 
                 <div class="config-card">
-                    <h3>Parâmetros para Robôs</h3>
+                    <h3>Parâmetros para Robôs (Códigos)</h3>
                     <div class="form-group">
-                        <label for="codigo_viagens_cliente">Base: Viagens por Cliente (Código)</label>
+                        <label for="codigo_viagens_cliente">Base: Viagens por Cliente</label>
                         <input type="text" id="codigo_viagens_cliente" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}" maxlength="2" size="5">
                     </div>
                     <div class="form-group">
-                        <label for="codigo_viagens_fat_cliente">Base: Fat.Viagens por Cliente (Código)</label>
+                        <label for="codigo_viagens_fat_cliente">Base: Fat.Viagens por Cliente</label>
                         <input type="text" id="codigo_viagens_fat_cliente" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}" maxlength="2" size="5">
                     </div>
                     <div class="form-group">
-                        <label for="codigo_contas_pagar">Base: Conta a Pagar/Pagas (Código)</label>
+                        <label for="codigo_contas_pagar">Base: Conta a Pagar/Pagas</label>
                         <input type="text" id="codigo_contas_pagar" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}" maxlength="2" size="5">
                     </div>
                     <div class="form-group">
-                        <label for="codigo_contas_receber">Base: Conta Rec/Recebidas (Código)</label>
+                        <label for="codigo_contas_receber">Base: Conta Rec/Recebidas</label>
                         <input type="text" id="codigo_contas_receber" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}" maxlength="2" size="5">
                     </div>
                     <div class="form-group">
-                        <label for="codigo_despesas">Base: Despesas Contas a Pagar (Código)</label>
+                        <label for="codigo_despesas">Base: Despesas Contas a Pagar</label>
                         <input type="text" id="codigo_despesas" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}" maxlength="2" size="5">
                     </div>
                 </div>
@@ -84,17 +102,46 @@
                     <h3>Período Padrão de Exportação</h3>
                      <div class="form-group">
                         <label for="data_inicial">Data Inicial</label>
-                        <input type="text" id="data_inicial" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO', '01/01/2000') }}" placeholder="dd/mm/aaaa">
+                        <input type="text" id="data_inicial" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO', '01/01/2000') }}" placeholder="dd/mm/aaaa" maxlength="10">
                     </div>
                      <div class="form-group">
                         <label for="data_final">Data Final</label>
-                        <input type="text" id="data_final" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO', '31/12/2999') }}" placeholder="dd/mm/aaaa">
+                        <input type="text" id="data_final" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO', '31/12/2999') }}" placeholder="dd/mm/aaaa" maxlength="10">
                     </div>
                 </div>
 
             </div>
-            <button type="submit" class="btn-salvar" style="margin-top: 20px;">Salvar Todas as Configurações</button>
         </form>
     </div>
+
+    <script>
+        function mascaraData(input) {
+            let value = input.value.replace(/\D/g, '');
+            if (value.length > 2) {
+                value = value.substring(0, 2) + '/' + value.substring(2);
+            }
+            if (value.length > 5) {
+                value = value.substring(0, 5) + '/' + value.substring(5, 9);
+            }
+            input.value = value;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const dataInicialInput = document.getElementById('data_inicial');
+            const dataFinalInput = document.getElementById('data_final');
+
+            if (dataInicialInput) {
+                dataInicialInput.addEventListener('input', function() {
+                    mascaraData(this);
+                });
+            }
+
+            if (dataFinalInput) {
+                dataFinalInput.addEventListener('input', function() {
+                    mascaraData(this);
+                });
+            }
+        });
+    </script>
 </body>
 </html>
