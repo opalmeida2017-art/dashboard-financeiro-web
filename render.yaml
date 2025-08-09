@@ -18,8 +18,10 @@ services:
           property: connectionString
 
   # 2. Define o Serviço de Banco de Dados (PostgreSQL)
-  - type: postgres # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL
+  - type: pserv # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'pserv'
     name: financeiro-db
     # A imagem do postgres já é gerenciada pelo Render
     # Não precisa de Dockerfile ou repo para o banco de dados.
     # O Render lida com backup, segurança, etc.
+    postgres:
+      version: "14" # Especificar a versão é uma boa prática
