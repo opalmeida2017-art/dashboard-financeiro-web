@@ -23,5 +23,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia o resto do seu projeto
 COPY . .
 
-# Comando para iniciar a aplicação web (Gunicorn)
+# --- CORREÇÃO: Comando para iniciar a aplicação no formato "exec" ---
 CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "3", "app:app"]
