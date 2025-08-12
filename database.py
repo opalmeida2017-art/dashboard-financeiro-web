@@ -112,7 +112,7 @@ def create_tables():
             )
         ''')
 
-      cursor.execute('''
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilViagensCliente" (
                 "apartamento_id" INTEGER NOT NULL, 
                 "acertoICMS" TEXT, "acertoSaldo" REAL, "adValor" REAL, "adiantamentoMotorista" REAL, "adtoMot2" REAL,
