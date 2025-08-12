@@ -19,3 +19,7 @@ psycopg2-binary
 
 selenium
 
+Flask-Login
+
+Flask-Bcrypt
+

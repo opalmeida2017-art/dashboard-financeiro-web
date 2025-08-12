@@ -43,6 +43,11 @@
             <div class="action-buttons">
                 <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
                 <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
+
+                {% if current_user.role == 'admin' %}
+                    <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
+                {% endif %}
+                
                 <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
                 <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
             </div>
@@ -133,141 +138,180 @@
         </div>
     </div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        
-        // --- Lógica do Gráfico ---
-        const params = new URLSearchParams(window.location.search);
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    
+    // --- LÓGICA DO GRÁFICO (CORRIGIDA E ROBUSTA) ---
+    const params = new URLSearchParams(window.location.search);
+    const chartCanvas = document.getElementById('faturamentoDespesasChart');
+    
+    if (chartCanvas) {
         fetch(`/api/monthly_summary?${params.toString()}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data && data.length > 0) {
-                    const labels = data.map(item => item.PeriodoLabel);
-                    const faturamentoData = data.map(item => item.Faturamento);
-                    const custoData = data.map(item => item.Custo);
-                    const despesasGeraisData = data.map(item => item.DespesasGerais);
-                    const ctx = document.getElementById('faturamentoDespesasChart').getContext('2d');
-                    new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                { label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(41, 128, 185, 0.7)' },
-                                { label: 'Custo de Viagem', data: custoData, backgroundColor: '#E67E22', stack: 'GastoOperacional' },
-                                { label: 'Despesa Geral', data: despesasGeraisData, backgroundColor: 'rgba(192, 57, 43, 0.7)', stack: 'GastoOperacional' }
-                            ]
-                        },
-                        options: { scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
-                    });
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro na resposta da rede.');
                 }
-            });
+                return response.json();
+            })
+            .then(data => {
+                // Adicionamos este log para depuração. Verifique o console do navegador (F12).
+                console.log('Dados recebidos da API para o gráfico:', data);
 
-        // --- Lógica para os links da nova página ---
-        const detalhesLink = document.getElementById('link-detalhes-faturamento');
-        if (detalhesLink) {
-            const paramsLink = new URLSearchParams(window.location.search);
-            detalhesLink.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
-        }
-        const linkSuperior = document.getElementById('link-detalhes-superior');
-        if (linkSuperior) {
-            const paramsSuperior = new URLSearchParams(window.location.search);
-            linkSuperior.href = `{{ url_for('faturamento_detalhes') }}?${paramsSuperior.toString()}`;
-        }
-        
-        // --- Lógica dos Popups (Modais) ---
-        const manageModal = document.getElementById('manageGroupsModal');
-        const manageBtn = document.getElementById('openModalBtn');
-        const manageCloseBtn = document.querySelector('.manage-close');
-        const tableContainer = document.getElementById('manageGroupsTableContainer');
+                const chartContainer = document.getElementById('secao-grafico');
 
-        if (manageBtn) {
-            manageBtn.onclick = function() {
-                tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
-                manageModal.style.display = 'block';
-                fetch("{{ url_for('gerenciar_grupos_dados') }}")
-                    .then(response => response.json())
-                    .then(flags => {
-                        let tableHTML = `<table><thead><tr><th>Nome do Grupo de Despesa</th><th>Classificação</th></tr></thead><tbody>`;
-                        for (const group in flags) {
-                            const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
-                            const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
-                            tableHTML += `<tr><td>${group}</td><td>
-                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
-                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
-                            </td></tr>`;
-                        }
-                        tableHTML += '</tbody></table>';
-                        tableContainer.innerHTML = tableHTML;
-                        setupExclusiveCheckboxes();
-                    });
-            }
-        }
-        if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
+                // Se não houver dados, exibe uma mensagem no lugar do gráfico.
+                if (!data || data.length === 0) {
+                    if(chartContainer) {
+                        chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; padding-top: 20px;">Nenhum dado disponível para o período selecionado.</p>';
+                    }
+                    return; 
+                }
 
-        function setupExclusiveCheckboxes() {
-            const checkboxes = document.querySelectorAll('.classification-cb');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', function() {
-                    if (this.checked) {
-                        const currentGroup = this.dataset.group;
-                        const currentType = this.dataset.type;
-                        checkboxes.forEach(otherCb => {
-                            if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
-                                otherCb.checked = false;
-                            }
-                        });
+                const labels = data.map(item => item.PeriodoLabel);
+                const faturamentoData = data.map(item => item.Faturamento);
+                const custoData = data.map(item => item.Custo);
+                const despesasGeraisData = data.map(item => item.DespesasGerais);
+                
+                const ctx = chartCanvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(41, 128, 185, 0.7)' },
+                            { label: 'Custo de Viagem', data: custoData, backgroundColor: '#E67E22', stack: 'GastoOperacional' },
+                            { label: 'Despesa Geral', data: despesasGeraisData, backgroundColor: 'rgba(192, 57, 43, 0.7)', stack: 'GastoOperacional' }
+                        ]
+                    },
+                    options: { 
+                        scales: { 
+                            x: { stacked: true }, 
+                            y: { 
+                                stacked: true, 
+                                beginAtZero: true, 
+                                ticks: { 
+                                    callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } 
+                                } 
+                            } 
+                        } 
                     }
                 });
-            });
-        }
-        
-        const uploadModal = document.getElementById('uploadModal');
-        const uploadBtn = document.getElementById('openUploadModalBtn');
-        const uploadCloseBtn = document.querySelector('.upload-close');
-        if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
-        if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
-        
-        window.addEventListener('click', function(event) {
-            if (event.target == manageModal) { manageModal.style.display = 'none'; }
-            if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
-        });
-        
-        const uploadForm = document.getElementById('uploadForm');
-        const uploadFormContainer = document.getElementById('uploadFormContainer');
-        const progressContainer = document.getElementById('progressContainer');
-
-        if (uploadForm) {
-            uploadForm.addEventListener('submit', function() {
-                uploadFormContainer.style.display = 'none';
-                progressContainer.style.display = 'block';
-            });
-        }
-
-        const btnColeta = document.getElementById('btn-iniciar-coleta');
-        if (btnColeta) {
-            btnColeta.addEventListener('click', function() {
-                if (confirm('Isso iniciará a busca automática por novos relatórios. O processo pode levar alguns minutos. Deseja continuar?')) {
-                    btnColeta.disabled = true;
-                    btnColeta.textContent = 'Atualizando...';
-                    fetch('/iniciar-coleta', { method: 'POST' })
-                        .then(response => response.json())
-                        .then(data => {
-                            alert(data.mensagem);
-                            alert("A página será recarregada em aproximadamente 3 minutos para exibir os dados atualizados. Por favor, aguarde.");
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 180000); // 3 minutos
-                        })
-                        .catch(error => {
-                            console.error('Erro ao iniciar a coleta:', error);
-                            alert('Ocorreu um erro ao tentar iniciar a coleta. O botão foi reativado.');
-                            btnColeta.disabled = false;
-                            btnColeta.textContent = 'Atualizar Dados';
-                        });
+            })
+            .catch(error => {
+                console.error('Erro ao buscar dados para o gráfico:', error);
+                const chartContainer = document.getElementById('secao-grafico');
+                if(chartContainer) {
+                    chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; color: red; padding-top: 20px;">Ocorreu um erro ao carregar os dados do gráfico.</p>';
                 }
             });
+    }
+
+    // --- Lógica para os links da nova página ---
+    const detalhesLink = document.getElementById('link-detalhes-faturamento');
+    if (detalhesLink) {
+        const paramsLink = new URLSearchParams(window.location.search);
+        detalhesLink.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
+    }
+    const linkSuperior = document.getElementById('link-detalhes-superior');
+    if (linkSuperior) {
+        const paramsSuperior = new URLSearchParams(window.location.search);
+        linkSuperior.href = `{{ url_for('faturamento_detalhes') }}?${paramsSuperior.toString()}`;
+    }
+    
+    // --- Lógica dos Popups (Modais) ---
+    const manageModal = document.getElementById('manageGroupsModal');
+    const manageBtn = document.getElementById('openModalBtn');
+    const manageCloseBtn = document.querySelector('.manage-close');
+    const tableContainer = document.getElementById('manageGroupsTableContainer');
+
+    if (manageBtn) {
+        manageBtn.onclick = function() {
+            tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
+            manageModal.style.display = 'block';
+            fetch("{{ url_for('gerenciar_grupos_dados') }}")
+                .then(response => response.json())
+                .then(flags => {
+                    let tableHTML = `<table><thead><tr><th>Nome do Grupo de Despesa</th><th>Classificação</th></tr></thead><tbody>`;
+                    for (const group in flags) {
+                        const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
+                        const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
+                        tableHTML += `<tr><td>${group}</td><td>
+                            <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
+                            <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                        </td></tr>`;
+                    }
+                    tableHTML += '</tbody></table>';
+                    tableContainer.innerHTML = tableHTML;
+                    setupExclusiveCheckboxes();
+                });
         }
+    }
+    if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
+
+    function setupExclusiveCheckboxes() {
+        const checkboxes = document.querySelectorAll('.classification-cb');
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (this.checked) {
+                    const currentGroup = this.dataset.group;
+                    const currentType = this.dataset.type;
+                    checkboxes.forEach(otherCb => {
+                        if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
+                            otherCb.checked = false;
+                        }
+                    });
+                }
+            });
+        });
+    }
+    
+    const uploadModal = document.getElementById('uploadModal');
+    const uploadBtn = document.getElementById('openUploadModalBtn');
+    const uploadCloseBtn = document.querySelector('.upload-close');
+    if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
+    if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
+    
+    window.addEventListener('click', function(event) {
+        if (event.target == manageModal) { manageModal.style.display = 'none'; }
+        if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
     });
-    </script>
+    
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadFormContainer = document.getElementById('uploadFormContainer');
+    const progressContainer = document.getElementById('progressContainer');
+
+    if (uploadForm) {
+        uploadForm.addEventListener('submit', function() {
+            uploadFormContainer.style.display = 'none';
+            progressContainer.style.display = 'block';
+        });
+    }
+
+    const btnColeta = document.getElementById('btn-iniciar-coleta');
+    if (btnColeta) {
+        btnColeta.addEventListener('click', function() {
+            if (confirm('Isso iniciará a busca automática por novos relatórios. O processo pode levar alguns minutos. Deseja continuar?')) {
+                btnColeta.disabled = true;
+                btnColeta.textContent = 'Atualizando...';
+                fetch('/iniciar-coleta', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.mensagem);
+                        alert("A página será recarregada em aproximadamente 3 minutos para exibir os dados atualizados. Por favor, aguarde.");
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 180000); // 3 minutos
+                    })
+                    .catch(error => {
+                        console.error('Erro ao iniciar a coleta:', error);
+                        alert('Ocorreu um erro ao tentar iniciar a coleta. O botão foi reativado.');
+                        btnColeta.disabled = false;
+                        btnColeta.textContent = 'Atualizar Dados';
+                    });
+            }
+        });
+    }
+});
+</script>
 </body>
 </html>

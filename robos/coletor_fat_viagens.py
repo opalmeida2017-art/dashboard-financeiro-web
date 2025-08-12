@@ -19,15 +19,14 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
-def executar_coleta_fat_viagens():
-    """
-    Função principal que executa todo o processo de coleta de dados para Faturamento de Viagens por Cliente.
-    """
-    print("\n--- INICIANDO ROBÔ: FATURAMENTO VIAGENS POR CLIENTE ---")
+
+def executar_coleta_fat_viagens(apartamento_id: int):
+    print(f"\n--- INICIANDO ROBÔ: FAT VIAGENS PARA APARTAMENTO ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
     print("Lendo configurações do banco de dados...")
-    configs = logic.ler_configuracoes_robo()
+    # MODIFICADO: Lê as configurações para o apartamento específico
+    configs = logic.ler_configuracoes_robo(apartamento_id)
     USUARIO = configs.get('USUARIO_ROBO')
     SENHA = configs.get('SENHA_ROBO')
     URL_LOGIN = configs.get('URL_LOGIN')
@@ -193,7 +192,7 @@ def executar_coleta_fat_viagens():
         link_final.click()
         
         # --- LÓGICA DE ESPERA INTELIGENTE PELO ARQUIVO ---
-        nome_do_arquivo_esperado = "relFilViagensCliente.xls"
+        nome_do_arquivo_esperado = "relFilViagensFatCliente.xls"
         pasta_downloads = pasta_principal  # Define pasta_downloads corretamente
         caminho_do_arquivo = os.path.join(pasta_downloads, nome_do_arquivo_esperado)
         
@@ -240,4 +239,8 @@ def executar_coleta_fat_viagens():
 
 # Bloco para permitir que este arquivo seja executado sozinho para testes
 if __name__ == '__main__':
-    executar_coleta_fat_viagens()
+    if len(sys.argv) > 1:
+        apartamento_id_arg = int(sys.argv[1])
+        executar_coleta_fat_viagens(apartamento_id_arg)
+    else:
+        print("Erro: ID do apartamento não fornecido.")

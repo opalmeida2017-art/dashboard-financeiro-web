@@ -34,11 +34,37 @@ def create_tables():
             return
         cursor = conn.cursor()
         print("Verificando e criando esquema do banco de dados com nomes exatos...")
+        
+        # --- NOVAS TABELAS PARA MULTI-TENANCY ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS "apartamentos" (
+                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                "nome_empresa" TEXT NOT NULL,
+                "status" TEXT DEFAULT 'ativo',
+                "data_criacao" TEXT NOT NULL,
+                "data_vencimento" TEXT, 
+                "notas_admin" TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS "usuarios" (
+                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                "apartamento_id" INTEGER NOT NULL,
+                "email" TEXT UNIQUE NOT NULL,
+                "password_hash" TEXT NOT NULL,
+                "nome" TEXT,
+                "role" TEXT DEFAULT 'usuario',
+                FOREIGN KEY("apartamento_id") REFERENCES "apartamentos"("id")
+            )
+        ''')
+        # --- FIM DAS NOVAS TABELAS ---
 
         # Nomes de tabelas e colunas são colocados entre aspas para preservar maiúsculas/minúsculas.
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilViagensFatCliente" (
+                "apartamento_id" INTEGER NOT NULL,
                 "COFINS" REAL, "CSLL" REAL, "PIS" REAL, "acertoSaldo" REAL, "adiantamentoEmp2" REAL, "adiantamentoEmpresa" REAL,
                 "adiantamentoMotorista" REAL, "adtoMot2" REAL, "agregado" TEXT, "baseISS" REAL, "cargaDescarga" REAL,
                 "cepCliente" TEXT, "cidCliente" TEXT, "cidDest" TEXT, "cidEmpresas" TEXT, "cidOrig" TEXT, "cidadeClientePrincipal" TEXT,
@@ -86,8 +112,9 @@ def create_tables():
             )
         ''')
 
-        cursor.execute('''
+      cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilViagensCliente" (
+                "apartamento_id" INTEGER NOT NULL, 
                 "acertoICMS" TEXT, "acertoSaldo" REAL, "adValor" REAL, "adiantamentoMotorista" REAL, "adtoMot2" REAL,
                 "aliquotaCofins" REAL, "aliquotaIss" REAL, "aliquotaPis" REAL, "arqXMLAss" TEXT, "baseICMS" REAL,
                 "baseICMSDireta" REAL, "baseImpostos" REAL, "baseIss" REAL, "cancelado" TEXT, "cargaDescarga" REAL,
@@ -127,12 +154,15 @@ def create_tables():
                 "valorClassificacao" REAL, "valorCofins" REAL, "valorEstadia" REAL, "valorFreteFiscal" REAL,
                 "valorICMS" REAL, "valorINSS" REAL, "valorIRRF" REAL, "valorIss" REAL, "valorMercadoria" REAL,
                 "valorPedagio" REAL, "valorPis" REAL, "valorQuebra" REAL, "valorSeguro" REAL, "valorSeguro2" REAL,
-                "valorSestSenat" REAL, "valorTotalnf" REAL, "versaoCte" TEXT, "vlTotalPrestacaoDacte" REAL
+                "valorSestSenat" REAL, "valorTotalnf" REAL, "versaoCte" TEXT, "vlTotalPrestacaoDacte" REAL,
+                "adiantamentoEmpresa" REAL, "cidadeClientePrincipal" TEXT, "dataVencSaldo" TEXT, "descSeguroSaldoMot" REAL,
+                "freteEmpresaComp" REAL, "numeroConhecimento" INTEGER, "saldoEmp" REAL, "vlIcms" REAL
             )
         ''')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilDespesasGerais" (
+                "apartamento_id" INTEGER NOT NULL, 
                 "VED" TEXT, "afaturar" TEXT, "agencia" TEXT, "ano" TEXT, "anoMes" TEXT, "banco" TEXT, "box" TEXT, "cadNota" TEXT,
                 "cavalo" TEXT, "cep" TEXT, "chaveNfe" TEXT, "cidadeEmpresas" TEXT, "cidadeFilial" TEXT,
                 "cidadeForn" TEXT, "cnpjCpf" TEXT, "cnpjCpfEmpresas" TEXT, "cnpjCpfFil" TEXT,
@@ -185,6 +215,7 @@ def create_tables():
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilContasReceber" (
+                "apartamento_id" INTEGER NOT NULL, 
                 "chaveJurosDescontos" TEXT, "cidCliente" TEXT, "cidFilial" TEXT, "codAcertoProprietario" INTEGER,
                 "codBaixa" INTEGER, "codCliente" INTEGER, "codDuplicataReceber" INTEGER, "codEmpresas" INTEGER,
                 "codFatura" INTEGER, "codFilial" INTEGER, "codTransacao" TEXT, "dataEmissao" TEXT, "dataPagto" TEXT,
@@ -199,6 +230,7 @@ def create_tables():
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilContasPagarDet" (
+                "apartamento_id" INTEGER NOT NULL,  
                 "VED" TEXT, "agencia" TEXT, "banco" TEXT, "chaveJurosDescontos" TEXT, "chavePix" TEXT,
                 "cidFilial" TEXT, "cidForn" TEXT, "cnpjCpfForn" TEXT, "codAcertoProprietario" INTEGER,
                 "codBaixa" INTEGER, "codCheque" TEXT, "codDuplicataPagar" INTEGER, "codEmpresas" INTEGER,
@@ -222,6 +254,7 @@ def create_tables():
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "static_expense_groups" (
+                "apartamento_id" INTEGER NOT NULL, 
                 "group_name" TEXT PRIMARY KEY,
                 "is_despesa" TEXT DEFAULT 'S',
                 "is_custo_viagem" TEXT DEFAULT 'N'
@@ -246,6 +279,7 @@ def create_tables():
         # --- NOVO: Adiciona a tabela para as configurações do robô ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
+                "apartamento_id" INTEGER NOT NULL,  
                 "chave" TEXT PRIMARY KEY,
                 "valor" TEXT
             )
@@ -253,7 +287,9 @@ def create_tables():
         conn.commit()
         print("Esquema do banco de dados verificado/criado com sucesso.")
 
+
 def _clean_and_convert_data(df, table_key):
+    # Esta função não precisa de alterações
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
     
@@ -300,67 +336,69 @@ def _validate_columns(excel_columns, table_name, conn):
 
 # database.py (substitua esta função)
 
-def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list):
+# MODIFICADO: Adicionado 'apartamento_id' para associar os dados ao inquilino correto.
+def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list, apartamento_id: int):
     """
-    Importa dados do Excel, apagando apenas registros correspondentes para atualizar.
+    Importa dados do Excel, associa ao apartamento_id e atualiza o banco.
     """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
         df_novo, cleaned_excel_columns = _clean_and_convert_data(df_novo, table_name)
         
+        # MODIFICADO: Adiciona a coluna apartamento_id ao DataFrame antes de importar
+        df_novo['apartamento_id'] = apartamento_id
+
         with get_db_connection() as conn:
             if conn is None: return []
 
-            valid_columns, extra_columns = _validate_columns(cleaned_excel_columns, table_name, conn)
-            df_import = df_novo[[col for col in df_novo.columns if col in valid_columns]]
+            # Valida colunas (agora incluindo apartamento_id)
+            valid_columns, extra_columns = _validate_columns(df_novo.columns, table_name, conn)
+            df_import = df_novo[valid_columns]
 
             if df_import.empty:
                 print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
                 return extra_columns
             
-            # --- LÓGICA DE ATUALIZAÇÃO CORRIGIDA ---
-            print(f"Iniciando importação com atualização para a tabela '{table_name}'...")
-            
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
-
+            
+            # MODIFICADO: A cláusula WHERE agora também precisa filtrar pelo apartamento_id
             where_clauses = [f'"{col}" IN (SELECT DISTINCT "{col}" FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
-            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str};'
+            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = ?;'
             
             cursor = conn.cursor()
-            print(f" -> Removendo {len(df_import)} registros antigos/correspondentes para evitar duplicatas...")
-            cursor.execute(sql_delete)
-            print(f" -> {cursor.rowcount} registros antigos foram removidos.")
+            cursor.execute(sql_delete, (apartamento_id,))
+            print(f" -> {cursor.rowcount} registros antigos foram removidos para o apartamento {apartamento_id}.")
             
-            print(f" -> Inserindo {len(df_import)} novos/atualizados registros...")
             df_import.to_sql(table_name, conn, if_exists='append', index=False)
             
             cursor.execute('DROP TABLE temp_import')
             conn.commit()
             print(f" -> Importação para a tabela '{table_name}' concluída com sucesso.")
-            # --- FIM DA LÓGICA DE ATUALIZAÇÃO ---
 
         return extra_columns
     except Exception as e:
         print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
         raise e
+    except Exception as e:
+        print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
+        raise e
 # database.py (substitua esta função)
 
-def import_single_excel_to_db(excel_source, file_key: str):
+def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
     file_info = config.EXCEL_FILES_CONFIG.get(file_key)
     if not file_info:
         raise ValueError(f"Chave de arquivo '{file_key}' não encontrada na configuração.")
     
     table_name = file_info["table_name"]
-    # NOVO: Pega as colunas-chave do config
     key_columns = config.TABLE_PRIMARY_KEYS.get(table_name, [])
     if not key_columns:
         raise ValueError(f"Colunas-chave não definidas para a tabela '{table_name}' no config.py")
 
-    # Passa as colunas-chave para a função de importação
-    return import_excel_to_db(excel_source, file_info["sheet_name"], table_name, key_columns)
+    return import_excel_to_db(excel_source, file_info["sheet_name"], table_name, key_columns, apartamento_id)
+
 
 def table_exists(table_name: str) -> bool:
     """Verifica se uma tabela existe no banco de dados."""
@@ -377,27 +415,22 @@ def table_exists(table_name: str) -> bool:
     
 
 
-def processar_downloads_na_pasta():
+
+def processar_downloads_na_pasta(apartamento_id: int):
     """
-    Verifica a pasta do projeto por planilhas baixadas, importa-as,
-    renomeia com data/hora e limpa versões antigas.
+    Verifica a pasta do projeto por planilhas baixadas e as importa para o apartamento_id especificado.
     """
-    print("\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD NA PASTA ---")
+    print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA O APARTAMENTO ID: {apartamento_id} ---")
     caminho_base = os.getcwd()
     
-    # Mapeia o nome de cada arquivo para a sua chave de configuração (ex: "relFil...xls": "contas_pagar")
     mapa_arquivos_config = {info['path']: chave for chave, info in config.EXCEL_FILES_CONFIG.items()}
     
-    # Para cada tipo de relatório que conhecemos do config.py...
     for nome_arquivo_base, chave_config in mapa_arquivos_config.items():
-        
         caminho_novo_arquivo = os.path.join(caminho_base, nome_arquivo_base)
         
-        # 1. Verifica se o robô realmente baixou um novo arquivo deste tipo
         if os.path.exists(caminho_novo_arquivo):
             print(f"\nArquivo novo encontrado: '{nome_arquivo_base}'")
 
-            # 2. Procura e exclui QUALQUER versão antiga e já renomeada deste mesmo relatório
             nome_sem_ext, extensao = os.path.splitext(nome_arquivo_base)
             padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_*{extensao}")
             arquivos_antigos_encontrados = glob.glob(padrao_busca_antigos)
@@ -407,18 +440,14 @@ def processar_downloads_na_pasta():
                 for arquivo_antigo in arquivos_antigos_encontrados:
                     os.remove(arquivo_antigo)
 
-            # 3. Importa os dados do novo arquivo para o banco de dados
             try:
                 print(f" -> Importando dados para a tabela '{config.EXCEL_FILES_CONFIG[chave_config]['table_name']}'...")
-                # Reutiliza a função de importação que já existe no seu projeto
-                import_single_excel_to_db(caminho_novo_arquivo, chave_config)
+                import_single_excel_to_db(caminho_novo_arquivo, chave_config, apartamento_id)
                 print(" -> Importação bem-sucedida.")
             except Exception as e:
                 print(f" -> ERRO! Falha ao importar os dados: {e}")
-                # Se a importação falhar, paramos o processo para este arquivo para evitar renomeá-lo incorretamente
                 continue
 
-            # 4. Renomeia o novo arquivo com data e hora para guardá-lo como "antigo"
             try:
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 novo_nome_renomeado = f"{nome_sem_ext}_{timestamp}{extensao}"

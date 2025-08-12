@@ -1,10 +1,7 @@
-# robos/coletor_despesas.py (Robô completo e independente)
 
-# --- Adiciona a pasta principal ao caminho para encontrar os outros módulos ---
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# --- Fim da adição ---
 
 import time
 import logic
@@ -19,20 +16,24 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
-def executar_coleta_despesas():
+# (outras importações do selenium)
+
+# MODIFICADO: A função agora aceita o apartamento_id
+def executar_coleta_despesas(apartamento_id: int):
     """
-    Função principal que executa todo o processo de coleta de dados para Despesas.
+    Função principal que executa a coleta de dados para Despesas para um apartamento específico.
     """
-    print("\n--- INICIANDO ROBÔ: DESPESAS CONTAS A PAGAR ---")
+    print(f"\n--- INICIANDO ROBÔ: DESPESAS PARA APARTAMENTO ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
     print("Lendo configurações do banco de dados...")
-    configs = logic.ler_configuracoes_robo()
+    # MODIFICADO: Lê as configurações para o apartamento específico
+    configs = logic.ler_configuracoes_robo(apartamento_id)
     USUARIO = configs.get('USUARIO_ROBO')
     SENHA = configs.get('SENHA_ROBO')
     URL_LOGIN = configs.get('URL_LOGIN')
     # Usa o código para "Despesas Contas a Pagar"
-    CODIGO_RELATORIO = configs.get('CODIGO_DESPESAS', '') 
+    CODIGO_RELATORIO = configs.get('CODIGO_DESPESAS', '4') 
     DATA_INICIAL = configs.get('DATA_INICIAL_ROBO', '01/01/2000')
     DATA_FINAL = configs.get('DATA_FINAL_ROBO', '31/12/2999')
     
@@ -237,4 +238,8 @@ def executar_coleta_despesas():
         print("Fechando o navegador.")
         driver.quit()
 if __name__ == '__main__':
-    executar_coleta_despesas()
+    if len(sys.argv) > 1:
+        apartamento_id_arg = int(sys.argv[1])
+        executar_coleta_despesas(apartamento_id_arg)
+    else:
+        print("Erro: ID do apartamento não fornecido.")

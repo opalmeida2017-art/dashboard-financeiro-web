@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt">
 <head>
-    <meta charset="utf-8">
+    <meta charset="utf-t">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard Web</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
@@ -10,7 +10,27 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">Dashboard Python na Web</a>
+            <a class="navbar-brand" href="/">Dashboard Transporte</a>
+            
+            <!-- INÍCIO DO BLOCO MODIFICADO -->
+            <div class="d-flex align-items-center">
+                {% if current_user.is_authenticated %}
+                    <!-- Mostra o nome do utilizador logado -->
+                    <span class="navbar-text me-3">
+                        Olá, {{ current_user.nome or current_user.email }}
+                    </span>
+
+                    <!-- Mostra o link do Painel do Síndico APENAS para o super admin -->
+                    {% if current_user.email == config.SUPER_ADMIN_EMAIL %}
+                        <a href="{{ url_for('admin_dashboard') }}" class="nav-link text-warning me-3">Painel do Síndico</a>
+                    {% endif %}
+
+                    <!-- Mostra o botão de Sair -->
+                    <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">Sair</a>
+                {% endif %}
+            </div>
+            <!-- FIM DO BLOCO MODIFICADO -->
+
         </div>
     </nav>
     <main class="container mt-4">

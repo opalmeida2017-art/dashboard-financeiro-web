@@ -1,70 +1,118 @@
-# logic.py
+# logic.py (versão do usuário com prints para depuração)
 import data_manager as dm
 import database as db
 import os
 import config
+def get_dashboard_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
+    print(f">>> [LOGIC] Chamando get_dashboard_summary para o apartamento ID: {apartamento_id}")
+    summary_data = dm.get_dashboard_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    print(f"<<< [LOGIC] Retornando dados do summary: {'Dados calculados' if summary_data else 'Vazio'}")
+    return summary_data
 
-# --- Funções do Dashboard ---
-def get_dashboard_summary(start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
-    return dm.get_dashboard_summary(start_date, end_date, placa_filter, filial_filter)
+def get_monthly_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
+    print(f">>> [LOGIC] Chamando get_monthly_summary para o apartamento ID: {apartamento_id}")
+    monthly_data = dm.get_monthly_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    print(f"<<< [LOGIC] Retornando dados mensais: {'DataFrame com dados' if not monthly_data.empty else 'DataFrame vazio'}")
+    return monthly_data
 
-def get_monthly_summary(start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
-    return dm.get_monthly_summary(start_date, end_date, placa_filter, filial_filter)
+def get_unique_plates(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando get_unique_plates para o apartamento ID: {apartamento_id}")
+    return dm.get_unique_plates(apartamento_id)
 
-def get_unique_plates():
-    return dm.get_unique_plates()
-
-def get_unique_filiais():
-    return dm.get_unique_filiais()
+def get_unique_filiais(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando get_unique_filiais para o apartamento ID: {apartamento_id}")
+    return dm.get_unique_filiais(apartamento_id)
 
 # --- Funções de Gerenciamento de Grupo ---
-def sync_expense_groups():
-    """Ponte para a função de sincronização de grupos."""
-    return dm.sync_expense_groups()
+def sync_expense_groups(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando sync_expense_groups para o apartamento ID: {apartamento_id}")
+    return dm.sync_expense_groups(apartamento_id)
 
-def get_all_expense_groups():
-    return dm.get_all_expense_groups()
+def get_all_expense_groups(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando get_all_expense_groups para o apartamento ID: {apartamento_id}")
+    return dm.get_all_expense_groups(apartamento_id)
 
-def get_all_group_flags():
-    return dm.get_all_group_flags()
+def get_all_group_flags(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando get_all_group_flags para o apartamento ID: {apartamento_id}")
+    return dm.get_all_group_flags(apartamento_id)
 
-def update_all_group_flags(form_data):
-    return dm.update_all_group_flags(form_data)
+def update_all_group_flags(apartamento_id: int, form_data):
+    print(f">>> [LOGIC] Chamando update_all_group_flags para o apartamento ID: {apartamento_id}")
+    return dm.update_all_group_flags(apartamento_id, form_data)
 
 # --- Funções de Importação ---
-def import_single_excel_to_db(excel_source, file_key):
-    """Ponte para a função de importação de arquivo único."""
-    return db.import_single_excel_to_db(excel_source, file_key)
+def import_single_excel_to_db(excel_source, file_key, apartamento_id: int):
+    print(f">>> [LOGIC] Chamando import_single_excel_to_db para o apartamento ID: {apartamento_id}")
+    return db.import_single_excel_to_db(excel_source, file_key, apartamento_id)
 
-def _import_all_data():
-    """Função auxiliar para a rota de importação antiga (lê do repositório)."""
+def _import_all_data(apartamento_id: int):
+    """Função auxiliar para importar um conjunto de arquivos do repositório para um apartamento específico."""
+    print(f">>> [LOGIC] Chamando _import_all_data para o apartamento ID: {apartamento_id}")
     base_path = os.path.dirname(os.path.abspath(__file__))
+    print(f"--- INICIANDO IMPORTAÇÃO DE DADOS PARA O APARTAMENTO ID: {apartamento_id} ---")
+    
     for file_info in config.EXCEL_FILES_CONFIG.values():
         excel_path = os.path.join(base_path, file_info["path"])
         if os.path.exists(excel_path):
             print(f"-> Importando '{excel_path}'...")
-            db.import_excel_to_db(excel_path, file_info["sheet_name"], file_info["table_name"])
+            db.import_excel_to_db(excel_path, file_info["sheet_name"], file_info["table_name"], apartamento_id=apartamento_id)
         else:
             render_path = os.path.join("/app", file_info["path"])
             if os.path.exists(render_path):
                 print(f"-> Importando '{render_path}' (ambiente Render)...")
-                db.import_excel_to_db(render_path, file_info["sheet_name"], file_info["table_name"])
+                db.import_excel_to_db(render_path, file_info["sheet_name"], file_info["table_name"], apartamento_id=apartamento_id)
             else:
                 print(f"-> AVISO: Arquivo '{file_info['path']}' não encontrado, importação ignorada.")
     print("--- IMPORTAÇÃO DE DADOS (DO REPOSITÓRIO) CONCLUÍDA. ---")
 
-# logic.py (adicione esta função)
+def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter):
+    print(f">>> [LOGIC] Chamando get_faturamento_details_dashboard_data para o apartamento ID: {apartamento_id}")
+    return dm.get_faturamento_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
 
-def get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter):
-    return dm.get_faturamento_details_dashboard_data(start_date, end_date, placa_filter, filial_filter)
+# --- Funções de Configuração do Robô ---
+def ler_configuracoes_robo(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando ler_configuracoes_robo para o apartamento ID: {apartamento_id}")
+    return dm.ler_configuracoes_robo(apartamento_id)
 
-# logic.py (adicione estas funções)
+def salvar_configuracoes_robo(apartamento_id: int, configs: dict):
+    print(f">>> [LOGIC] Chamando salvar_configuracoes_robo para o apartamento ID: {apartamento_id}")
+    return dm.salvar_configuracoes_robo(apartamento_id, configs)
 
-def ler_configuracoes_robo():
-    return dm.ler_configuracoes_robo()
+def processar_downloads_na_pasta(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando processar_downloads_na_pasta para o apartamento ID: {apartamento_id}")
+    return db.processar_downloads_na_pasta(apartamento_id)
 
-def salvar_configuracoes_robo(configs: dict):
-    return dm.salvar_configuracoes_robo(configs)
+# --- Função de Log de Atualizações (se mantida) ---
+def get_last_updates():
+    print(">>> [LOGIC] Chamando get_last_updates (função global)")
+    return dm.get_last_updates()
 
-def processar_downloads_na_pasta():
-    return db.processar_downloads_na_pasta()
+def get_users_for_apartment(apartamento_id: int):
+    return dm.get_users_for_apartment(apartamento_id)
+
+def add_user_to_apartment(apartamento_id: int, nome: str, email: str, password_hash: str, role: str):
+    return dm.add_user_to_apartment(apartamento_id, nome, email, password_hash, role)
+
+def update_user_in_apartment(user_id: int, apartamento_id: int, nome: str, email: str, role: str, new_password_hash: str = None):
+    return dm.update_user_in_apartment(user_id, apartamento_id, nome, email, role, new_password_hash)
+
+def delete_user_from_apartment(user_id: int, apartamento_id: int):
+    return dm.delete_user_from_apartment(user_id, apartamento_id)
+
+def get_user_by_id(user_id: int, apartamento_id: int):
+    return dm.get_user_by_id(user_id, apartamento_id)
+
+def create_apartment_and_admin(nome_empresa: str, admin_nome: str, admin_email: str, password_hash: str):
+    return dm.create_apartment_and_admin(nome_empresa, admin_nome, admin_email, password_hash)
+
+def get_apartment_details(apartamento_id: int):
+    return dm.get_apartment_details(apartamento_id)
+
+def update_apartment_details(apartamento_id: int, nome_empresa: str, status: str, data_vencimento: str, notas: str):
+    return dm.update_apartment_details(apartamento_id, nome_empresa, status, data_vencimento, notas)
+
+def get_apartments_with_usage_stats():
+    """Função de ponte para buscar apartamentos com estatísticas de uso."""
+    print(">>> [LOGIC] Chamando get_apartments_with_usage_stats")
+    return dm.get_apartments_with_usage_stats()
+

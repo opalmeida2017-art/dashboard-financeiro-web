@@ -22,15 +22,13 @@ from selenium.webdriver.support.ui import Select
 
 
 
-def executar_coleta_viagens():
-
-    #Função principal que executa todo o processo de coleta de dados para Viagens.
-
-    print("\n--- INICIANDO ROBÔ: VIAGENS (FATURAMENTO) ---")
+def executar_coleta_viagens(apartamento_id: int):
+    print(f"\n--- INICIANDO ROBÔ: VIAGENS PARA APARTAMENTO ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
     print("Lendo configurações do banco de dados...")
-    configs = logic.ler_configuracoes_robo()
+    # MODIFICADO: Lê as configurações para o apartamento específico
+    configs = logic.ler_configuracoes_robo(apartamento_id)
     USUARIO = configs.get('USUARIO_ROBO')
     SENHA = configs.get('SENHA_ROBO')
     URL_LOGIN = configs.get('URL_LOGIN')
@@ -257,4 +255,8 @@ def executar_coleta_viagens():
         driver.quit()
 
 if __name__ == '__main__':
-    executar_coleta_viagens()
+    if len(sys.argv) > 1:
+        apartamento_id_arg = int(sys.argv[1])
+        executar_coleta_viagens(apartamento_id_arg)
+    else:
+        print("Erro: ID do apartamento não fornecido.")

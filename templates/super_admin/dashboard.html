@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel do Administrador</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="page-container">
+        <div class="page-header">
+            <h1>Painel do Síndico</h1>
+            <div class="header-actions">
+                <!-- Futuramente, este botão levará para a página de criação -->
+                <a href="{{ url_for('criar_apartamento') }}" class="btn-salvar" style="text-decoration: none;">Criar Novo Apartamento</a>                <a href="{{ url_for('index') }}" class="manage-link" style="text-decoration: none;">Voltar ao Dashboard</a>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <h3>Apartamentos Registados</h3>
+                    <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nome da Empresa</th>
+                        <th>Status</th>
+                        <!-- NOVA COLUNA -->
+                        <th>Uso de Dados (Registos)</th>
+                        <th>Data de Criação</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for apt in apartamentos %}
+                    <tr>
+                        <td>{{ apt.id }}</td>
+                        <td>{{ apt.nome_empresa }}</td>
+                        <td>{{ apt.status }}</td>
+                        <!-- NOVO DADO -->
+                        <td>{{ "{:,.0f}".format(apt.total_registos or 0).replace(",", ".") }}</td>
+                        <td>{{ apt.data_criacao }}</td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <!-- Colspan aumentado para 6 -->
+                        <td colspan="6" style="text-align: center;">Nenhum apartamento encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+        </div>
+    </div>
+</body>
+</html>

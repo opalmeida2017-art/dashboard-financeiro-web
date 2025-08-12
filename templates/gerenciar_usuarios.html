@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerir Utilizadores</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="page-container">
+        <div class="page-header">
+            <h1>Gerir Utilizadores</h1>
+            <div class="header-actions">
+                <button id="addUserBtn" class="btn-salvar">Adicionar Novo Utilizador</button>
+                <a href="{{ url_for('index') }}" class="manage-link" style="text-decoration: none;">Voltar ao Dashboard</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}" style="margin-top: 15px;">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>Cargo</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.nome }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>{{ user.role }}</td>
+                        <td class="actions-cell">
+                            <button class="btn-action edit" data-userid="{{ user.id }}">Editar</button>
+                            <form action="{{ url_for('apagar_usuario', user_id=user.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem a certeza que deseja apagar este utilizador?');">
+                                <button type="submit" class="btn-action delete">Apagar</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" style="text-align: center;">Nenhum utilizador encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal para Adicionar/Editar Utilizador -->
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="modalTitle">Adicionar Novo Utilizador</h2>
+            <form id="userForm" method="POST">
+                <input type="hidden" id="userId" name="userId">
+                <div class="form-group">
+                    <label for="nome">Nome Completo</label>
+                    <input type="text" id="nome" name="nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" name="password">
+                    <small id="passwordHelp">Deixe em branco para não alterar a senha existente.</small>
+                </div>
+                <div class="form-group">
+                    <label for="role">Cargo</label>
+                    <select id="role" name="role">
+                        <option value="usuario">Utilizador</option>
+                        <option value="admin">Administrador</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-salvar">Salvar</button>
+            </form>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('userModal');
+    const addUserBtn = document.getElementById('addUserBtn');
+    const closeBtn = document.querySelector('.close-button');
+    const userForm = document.getElementById('userForm');
+    const modalTitle = document.getElementById('modalTitle');
+    const passwordHelp = document.getElementById('passwordHelp');
+    const passwordInput = document.getElementById('password');
+
+    // Abrir modal para adicionar novo utilizador
+    addUserBtn.onclick = function() {
+        userForm.reset();
+        userForm.action = "{{ url_for('adicionar_usuario') }}";
+        modalTitle.textContent = 'Adicionar Novo Utilizador';
+        passwordInput.required = true;
+        passwordHelp.style.display = 'none';
+        modal.style.display = 'block';
+    }
+
+    // Fechar modal
+    closeBtn.onclick = function() {
+        modal.style.display = 'none';
+    }
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Abrir modal para editar utilizador
+    document.querySelectorAll('.edit').forEach(button => {
+        button.addEventListener('click', function() {
+            const userId = this.dataset.userid;
+            
+            // Buscar dados do utilizador via API
+            fetch(`/gerenciar-usuarios/dados/${userId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if(data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    userForm.reset();
+                    userForm.action = `/gerenciar-usuarios/editar/${userId}`;
+                    modalTitle.textContent = 'Editar Utilizador';
+                    
+                    document.getElementById('nome').value = data.nome;
+                    document.getElementById('email').value = data.email;
+                    document.getElementById('role').value = data.role;
+                    
+                    passwordInput.required = false;
+                    passwordHelp.style.display = 'block';
+                    
+                    modal.style.display = 'block';
+                });
+        });
+    });
+});
+</script>
+</body>
+</html>

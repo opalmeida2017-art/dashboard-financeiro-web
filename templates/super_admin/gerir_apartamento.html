@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerir Apartamento</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="page-container" style="max-width: 700px;">
+        <div class="page-header">
+            <h1>Gerir Apartamento: {{ apartamento.nome_empresa }}</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('admin_dashboard') }}" class="manage-link" style="text-decoration: none;">Voltar ao Painel</a>
+            </div>
+        </div>
+
+        <div class="form-container" style="background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <form method="POST" action="{{ url_for('gerir_apartamento', apartamento_id=apartamento.id) }}">
+                <div class="form-group">
+                    <label for="nome_empresa">Nome da Empresa</label>
+                    <input type="text" id="nome_empresa" name="nome_empresa" value="{{ apartamento.nome_empresa }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option value="ativo" {% if apartamento.status == 'ativo' %}selected{% endif %}>Ativo</option>
+                        <option value="inativo" {% if apartamento.status == 'inativo' %}selected{% endif %}>Inativo</option>
+                        <option value="suspenso" {% if apartamento.status == 'suspenso' %}selected{% endif %}>Suspenso</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="data_vencimento">Data de Vencimento da Cobrança</label>
+                    <input type="date" id="data_vencimento" name="data_vencimento" value="{{ apartamento.data_vencimento or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="notas_admin">Suas Anotações (privado)</label>
+                    <textarea id="notas_admin" name="notas_admin" rows="4">{{ apartamento.notas_admin or '' }}</textarea>
+                </div>
+                
+                <button type="submit" class="btn-salvar" style="width: 100%; margin-top: 20px;">Salvar Alterações</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
