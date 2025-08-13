@@ -9,34 +9,40 @@ h1, h2 {
     text-align: center;
 }
 
+/* Contêiner dos Cartões de Resumo - CORREÇÃO PRINCIPAL */
 .summary-cards {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    /* Cria colunas responsivas: cada uma terá no mínimo 220px 
+       e elas se ajustarão para preencher o espaço disponível. */
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 20px;
     margin-bottom: 30px;
-    justify-content: center;
-    /* A propriedade 'position: relative' foi removida daqui */
 }
 
+/* Estilo Individual dos Cartões */
 .card {
     background-color: white;
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     text-align: center;
-    flex-basis: 180px;
-    flex-grow: 1;
+    border: none; /* Garante que não há bordas indesejadas */
 }
+
+/* Melhoria: Ajusta os tamanhos de fonte para serem mais consistentes */
 .card h3 {
     margin-top: 0;
     color: #555;
-    font-size: 16px;
+    font-size: 1rem; /* Usa unidades relativas para melhor responsividade */
+    font-weight: 600;
 }
+
 .card p {
-    font-size: 24px;
+    font-size: 1.75rem; /* Usa unidades relativas */
     font-weight: bold;
     margin-bottom: 0;
 }
+
 .filters {
     background-color: white;
     padding: 20px;

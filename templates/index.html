@@ -7,8 +7,10 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
     <h1>Dashboard Transporte</h1>
+
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
