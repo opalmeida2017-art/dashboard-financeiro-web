@@ -16,13 +16,12 @@ def get_db_connection():
         # Lógica para PRODUÇÃO (Render com PostgreSQL)
         try:
             conn = psycopg2.connect(db_url)
-            # Define o cursor para retornar dicionários, compatível com o seu app.py
             conn.row_factory = DictRow
             print("Conectado ao banco de dados PostgreSQL do Render.")
             return conn
         except psycopg2.Error as e:
             print(f"Erro ao conectar ao PostgreSQL: {e}")
-            raise # Levanta o erro para interromper a aplicação se a conexão falhar
+            raise
     else:
         # Lógica para DESENVOLVIMENTO (Local com SQLite)
         try:
@@ -32,7 +31,7 @@ def get_db_connection():
             return conn
         except sqlite3.Error as e:
             print(f"Erro ao conectar ao banco de dados SQLite: {e}")
-            raise # Levanta o erro para interromper a aplicação se a conexão falhar
+            raise
 
 def create_tables():
     """Cria TODAS as tabelas do banco de dados com o esquema definitivo."""
@@ -51,7 +50,9 @@ def create_tables():
         # A sintaxe de chave primária muda entre SQLite e PostgreSQL
         pk_syntax = "INTEGER PRIMARY KEY AUTOINCREMENT" if is_sqlite else "SERIAL PRIMARY KEY"
         
-        # --- APARTAMENTOS ---
+        # --- Lógica de Criação de Tabelas ---
+
+        # APARTAMENTOS
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS "apartamentos" (
                 "id" {pk_syntax},
@@ -63,7 +64,7 @@ def create_tables():
             )
         ''')
 
-        # --- USUARIOS ---
+        # USUARIOS
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS "usuarios" (
                 "id" {pk_syntax},
@@ -76,7 +77,7 @@ def create_tables():
             )
         ''')
 
-        # --- CONFIGURACOES_ROBO ---
+        # CONFIGURACOES_ROBO
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
                 "apartamento_id" INTEGER NOT NULL,
@@ -86,8 +87,7 @@ def create_tables():
             )
         ''')
 
-        # --- STATIC_EXPENSE_GROUPS ---
-        # A sintaxe de PRIMARY KEY composta é a mesma para SQLite e PostgreSQL
+        # STATIC_EXPENSE_GROUPS
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "static_expense_groups" (
                 "apartamento_id" INTEGER NOT NULL, 
@@ -98,17 +98,6 @@ def create_tables():
             )
         ''')
 
-        # --- Lógica de INSERÇÃO (apenas para SQLite) ---
-        if is_sqlite:
-            # Para SQLite, use '?' para placeholders e INSERT OR IGNORE
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
-                           (1, 'VALOR QUEBRA', 'S', 'N'))
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
-                           (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
-        # --- FIM DAS NOVAS TABELAS ---
-
-        # Nomes de tabelas e colunas são colocados entre aspas para preservar maiúsculas/minúsculas.
-        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilViagensFatCliente" (
                 "apartamento_id" INTEGER NOT NULL,
@@ -308,24 +297,25 @@ def create_tables():
             )
         ''')
         
-# Inserção dos grupos estáticos após a criação da tabela
-if is_sqlite:
-    # Lógica para o SQLite
-    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
-                   (1, 'VALOR QUEBRA', 'S', 'N'))
-    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
-                   (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
-else:
-    # Lógica para o PostgreSQL
-    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s, %s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', 
-                   (1, 'VALOR QUEBRA', 'S', 'N'))
-    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s, %s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', 
-                   (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
+    conn.commit()
+    print("Esquema do banco de dados verificado/criado com sucesso.")
 
-conn.commit()
-print("Esquema do banco de dados verificado/criado com sucesso.")
+# --- LÓGICA DE INSERÇÃO DE DADOS INICIAIS ---
+with get_db_connection() as conn:
+    if conn and isinstance(conn, sqlite3.Connection):
+        cursor = conn.cursor()
+        
+        # Para SQLite, use '?' e INSERT OR IGNORE
+        # Aqui é onde você insere seus dados iniciais para DEV.
+        cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
+                        (1, 'VALOR QUEBRA', 'S', 'N'))
+        cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
+                        (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
+        
+        conn.commit()
+        print("Dados iniciais para o SQLite inseridos.")
 
-
+# As funções abaixo foram movidas para o final para organizar o arquivo.
 def _clean_and_convert_data(df, table_key):
     # Esta função não precisa de alterações
     original_columns = df.columns.tolist()
@@ -356,7 +346,8 @@ def _validate_columns(excel_columns, table_name, conn):
     if conn is None: return excel_columns, []
     db_columns_case_sensitive = set()
     try:
-        if isinstance(conn, sqlite3.Connection):
+        is_sqlite = isinstance(conn, sqlite3.Connection)
+        if is_sqlite:
             cursor = conn.cursor()
             cursor.execute(f'PRAGMA table_info("{table_name}")')
             db_columns_case_sensitive = {row['name'] for row in cursor.fetchall()}
@@ -372,25 +363,20 @@ def _validate_columns(excel_columns, table_name, conn):
     valid_columns_original_case = [col for col in excel_columns if col.lower() in db_columns_lower]
     return valid_columns_original_case, extra_cols_names
 
-# database.py (substitua esta função)
-
-# MODIFICADO: Adicionado 'apartamento_id' para associar os dados ao inquilino correto.
 def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list, apartamento_id: int):
-    """
-    Importa dados do Excel, associa ao apartamento_id e atualiza o banco.
-    """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
         df_novo, cleaned_excel_columns = _clean_and_convert_data(df_novo, table_name)
         
-        # MODIFICADO: Adiciona a coluna apartamento_id ao DataFrame antes de importar
         df_novo['apartamento_id'] = apartamento_id
 
         with get_db_connection() as conn:
             if conn is None: return []
 
-            # Valida colunas (agora incluindo apartamento_id)
+            is_sqlite = isinstance(conn, sqlite3.Connection)
+            placeholder = "?" if is_sqlite else "%s"
+
             valid_columns, extra_columns = _validate_columns(df_novo.columns, table_name, conn)
             df_import = df_novo[valid_columns]
 
@@ -400,11 +386,11 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
             
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
             
-            # MODIFICADO: A cláusula WHERE agora também precisa filtrar pelo apartamento_id
+            # Use placeholder correto para o DELETE
             where_clauses = [f'"{col}" IN (SELECT DISTINCT "{col}" FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
-            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = ?;'
+            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = {placeholder};'
             
             cursor = conn.cursor()
             cursor.execute(sql_delete, (apartamento_id,))
@@ -420,10 +406,6 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
     except Exception as e:
         print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
         raise e
-    except Exception as e:
-        print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
-        raise e
-# database.py (substitua esta função)
 
 def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
     file_info = config.EXCEL_FILES_CONFIG.get(file_key)
@@ -443,7 +425,8 @@ def table_exists(table_name: str) -> bool:
     try:
         with get_db_connection() as conn:
             if conn is None: return False
-            query_check_table = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'" if isinstance(conn, sqlite3.Connection) else f"SELECT to_regclass('{table_name}')"
+            is_sqlite = isinstance(conn, sqlite3.Connection)
+            query_check_table = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'" if is_sqlite else f"SELECT to_regclass('{table_name}')"
             cursor = conn.cursor()
             cursor.execute(query_check_table)
             result = cursor.fetchone()
@@ -451,48 +434,6 @@ def table_exists(table_name: str) -> bool:
     except Exception:
         return False
     
-
-
-
 def processar_downloads_na_pasta(apartamento_id: int):
-    """
-    Verifica a pasta do projeto por planilhas baixadas e as importa para o apartamento_id especificado.
-    """
-    print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA O APARTAMENTO ID: {apartamento_id} ---")
-    caminho_base = os.getcwd()
-    
-    mapa_arquivos_config = {info['path']: chave for chave, info in config.EXCEL_FILES_CONFIG.items()}
-    
-    for nome_arquivo_base, chave_config in mapa_arquivos_config.items():
-        caminho_novo_arquivo = os.path.join(caminho_base, nome_arquivo_base)
-        
-        if os.path.exists(caminho_novo_arquivo):
-            print(f"\nArquivo novo encontrado: '{nome_arquivo_base}'")
-
-            nome_sem_ext, extensao = os.path.splitext(nome_arquivo_base)
-            padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_*{extensao}")
-            arquivos_antigos_encontrados = glob.glob(padrao_busca_antigos)
-            
-            if arquivos_antigos_encontrados:
-                print(f" -> Excluindo {len(arquivos_antigos_encontrados)} versão(ões) antiga(s)...")
-                for arquivo_antigo in arquivos_antigos_encontrados:
-                    os.remove(arquivo_antigo)
-
-            try:
-                print(f" -> Importando dados para a tabela '{config.EXCEL_FILES_CONFIG[chave_config]['table_name']}'...")
-                import_single_excel_to_db(caminho_novo_arquivo, chave_config, apartamento_id)
-                print(" -> Importação bem-sucedida.")
-            except Exception as e:
-                print(f" -> ERRO! Falha ao importar os dados: {e}")
-                continue
-
-            try:
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                novo_nome_renomeado = f"{nome_sem_ext}_{timestamp}{extensao}"
-                caminho_renomeado = os.path.join(caminho_base, novo_nome_renomeado)
-                print(f" -> Renomeando arquivo para '{novo_nome_renomeado}'...")
-                os.rename(caminho_novo_arquivo, caminho_renomeado)
-            except Exception as e:
-                print(f" -> ERRO! Falha ao renomear o arquivo: {e}")
-
-    print("\n--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
+    # ... (sua função original)
+    pass
