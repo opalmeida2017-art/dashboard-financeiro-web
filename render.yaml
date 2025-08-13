@@ -1,5 +1,4 @@
 services:
-  # 1. Define o Serviço Web (sua aplicação Python/Flask)
   - type: web
     name: python-dashboard
     env: docker
@@ -7,7 +6,7 @@ services:
     autoDeploy: true
     healthCheckPath: /
 
-    startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
+    # A linha 'startCommand' foi removida aqui
 
     envVars:
       - key: DATABASE_URL

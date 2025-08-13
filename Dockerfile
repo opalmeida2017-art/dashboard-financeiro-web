@@ -24,4 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # --- CORREÇÃO: Comando para iniciar a aplicação no formato "exec" ---
-CMD gunicorn --bind "0.0.0.0:$PORT" --workers 3 app:app
+# Primeiro, executa as migrações do Alembic, depois inicia o Gunicorn.
+# O '&&' garante que gunicorn só roda se alembic for sucesso.
+# Usamos /bin/bash -c para que o '&&' funcione como comando de shell.
+CMD ["/bin/bash", "-c", "python3 -m alembic upgrade head && gunicorn --bind \"0.0.0.0:$PORT\" --workers 3 --chdir /app app:app"]
