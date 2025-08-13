@@ -9,7 +9,7 @@ services:
     autoDeploy: true # Ativa o deploy automático a cada push
     healthCheckPath: /
     
-    # --- MELHORIA: Comando de inicialização que executa as migrações automaticamente ---
+    # --- Comando de inicialização que executa as migrações automaticamente ---
     startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
 
     # Define as variáveis de ambiente necessárias para o serviço web
@@ -21,7 +21,7 @@ services:
           property: connectionString
 
   # 2. Define o Serviço de Banco de Dados (PostgreSQL)
-  - type: pserv # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'pserv'
+  - type: postgres # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'postgres'
     name: financeiro-db
     # A imagem do postgres já é gerenciada pelo Render
     # Não precisa de Dockerfile ou repo para o banco de dados.
