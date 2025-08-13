@@ -44,7 +44,7 @@ class User(UserMixin):
 def load_user(user_id):
     with db.get_db_connection() as conn:
         cursor = conn.cursor()
-        user_data = cursor.execute('SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = %s', (user_id,)).fetchone()
+        user_data = cursor.execute('SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = ?', (user_id,)).fetchone()
         if user_data:
             # Acessa os dados pelo nome da coluna, pois conn.row_factory = sqlite3.Row
             return User(id=user_data['id'], email=user_data['email'], nome=user_data['nome'], apartamento_id=user_data['apartamento_id'], role=user_data['role'])
@@ -100,7 +100,7 @@ def login():
         password = request.form.get('password')
         with db.get_db_connection() as conn:
             cursor = conn.cursor()
-            user_data = cursor.execute('SELECT id, password_hash FROM usuarios WHERE email = %s', (email,)).fetchone()
+            user_data = cursor.execute('SELECT id, password_hash FROM usuarios WHERE email = ?', (email,)).fetchone()
             if user_data and bcrypt.check_password_hash(user_data['password_hash'], password):
                 user = load_user(user_data['id'])
                 if user:

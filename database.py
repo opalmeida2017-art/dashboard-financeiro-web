@@ -277,7 +277,7 @@ def create_tables():
             cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name") VALUES (?)', ('VALOR QUEBRA',))
             cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?)', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
         else:
-            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (%s) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
+            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (?) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
             cursor.execute('INSERT INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s) ON CONFLICT("group_name") DO NOTHING', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
     with get_db_connection() as conn:
         if conn is None:
@@ -377,7 +377,7 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
             where_clauses = [f'"{col}" IN (SELECT DISTINCT "{col}" FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
-            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = %s;'
+            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = ?;'
             
             cursor = conn.cursor()
             cursor.execute(sql_delete, (apartamento_id,))
