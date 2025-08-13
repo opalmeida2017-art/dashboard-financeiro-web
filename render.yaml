@@ -23,4 +23,4 @@ services:
     # Não precisa de Dockerfile ou repo para o banco de dados.
     # O Render lida com backup, segurança, etc.
     postgres:
-      version: "14" # Especificar a versão é uma boa prática
+      version: "15" # Especificar a versão é uma boa prática
