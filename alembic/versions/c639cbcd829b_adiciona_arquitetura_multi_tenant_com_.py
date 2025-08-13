@@ -131,4 +131,6 @@ def downgrade() -> None:
     op.execute('DROP TABLE "usuarios";')
     op.execute('DROP TABLE "apartamentos";')
 
-    print("Reversão da migração concluída.")
+    print("Reversão da migração concluída teste.")
+    
+    
