@@ -1,15 +1,25 @@
-# render.yaml
+# Este arquivo descreve toda a infraestrutura da sua aplicação.
+
 services:
-  # Define um novo serviço.
-  - type: web # É um serviço web, acessível via HTTP.
-    name: python-dashboard # O nome do serviço na Render.
-    env: docker # Diz à Render para construir e executar a partir do nosso Dockerfile.
-    repo:https://github.com/opalmeida2017-art/dashboard-financeiro-web.git # SUBSTITUA pelo URL do seu repositório GitHub.
-    autoDeploy: true # Implementa automaticamente novas alterações quando faz 'git push' para o branch principal.
-    healthCheckPath: / # A Render irá verificar este URL para garantir que a sua app está saudável.
-    
-    # Configuração do Disco Persistente para lidar com uploads de ficheiros.
-    disk:
-      name: uploaded-data # Um nome para o disco.
-      mountPath: /app/uploads # Monta o disco neste caminho DENTRO do contentor.
-      sizeGB: 1 # O tamanho do disco. 1 GB é suficiente para começar.
+  # 1. Define o Serviço Web (sua aplicação Python/Flask)
+  - type: web
+    name: python-dashboard
+    env: docker # Usa o Dockerfile para construir e rodar
+    repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git
+    autoDeploy: true
+    healthCheckPath: /
+
+    # Comando de inicialização que executa as migrações e inicia o servidor
+    startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
+
+    # Define as variáveis de ambiente necessárias para o serviço web
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: financeiro-db
+          property: connectionString
+
+  # 2. Define o Serviço de Banco de Dados (PostgreSQL)
+  - type: postgres
+    name: financeiro-db
+    version: "15"
