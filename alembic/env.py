@@ -64,31 +64,23 @@ def run_migrations_online() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    # Pega a URL do banco de dados do alembic.ini
-    # O Alembic substitui %(DB_URL)s pela variável de ambiente DATABASE_URL
-    alembic_config = config.get_section(config.config_ini_section)
-    db_url = alembic_config.get('DB_URL')
-
-    # Se a URL não foi definida via variável de ambiente, usa a conexão local
-    if not db_url:
-        print("DATABASE_URL não encontrada, usando conexão local com financeiro.db")
-        connectable = database.get_db_connection()
-    else:
-        print(f"Conectando à base de dados via DATABASE_URL...")
-        connectable = create_engine(db_url)
-
-    with connectable.connect() as connection:
+    """Run migrations in 'online' mode."""
+    # A variável `connectable` deve ser a URL, não uma conexão já aberta.
+    connectable = os.environ.get('DATABASE_URL')
+    
+    if connectable is None:
+        # Se a variável de ambiente não estiver definida, use a URL local.
+        # Isto é apenas um fallback para o ambiente local.
+        print("DATABASE_URL não encontrada, usando conexão local...")
+        connectable = "sqlite:///financeiro.db"
+    
+    # A partir daqui, o Alembic usa a URL (string) para criar a conexão
+    # Ele sabe como lidar com a string 'postgres://...' ou 'sqlite://...'
+    with create_engine(connectable).connect() as connection:
         context.configure(
-            connection=connection, 
-            target_metadata = None
+            connection=connection,
+            target_metadata=target_metadata
         )
-
         with context.begin_transaction():
             context.run_migrations()
 
