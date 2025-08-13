@@ -1,50 +1,39 @@
 import os
 import psycopg2
 import sqlite3
-from psycopg2.extras import DictRow # Importa para que o cursor retorne dicionários
 import pandas as pd
 import config
-import glob
+import glob 
 from datetime import datetime
+
+
 
 DATABASE_NAME = 'financeiro.db'
 
 def get_db_connection():
     db_url = os.getenv('DATABASE_URL')
-    
     if db_url:
-        # Lógica para PRODUÇÃO (Render com PostgreSQL)
         try:
-            conn = psycopg2.connect(db_url)
-            # Define o cursor para retornar dicionários, compatível com o seu app.py
-            conn.row_factory = DictRow 
-            print("Conectado ao banco de dados PostgreSQL do Render.")
-            return conn
+            return psycopg2.connect(db_url)
         except psycopg2.Error as e:
             print(f"Erro ao conectar ao PostgreSQL: {e}")
-            raise # Levanta o erro para interromper a aplicação se a conexão falhar
+            return None
     else:
-        # Lógica para DESENVOLVIMENTO (Local com SQLite)
         try:
             conn = sqlite3.connect(DATABASE_NAME)
             conn.row_factory = sqlite3.Row
-            print("Conectado ao banco de dados SQLite local.")
             return conn
         except sqlite3.Error as e:
             print(f"Erro ao conectar ao banco de dados SQLite: {e}")
-            raise # Levanta o erro para interromper a aplicação se a conexão falhar
+            return None
 
 def create_tables():
-    # Esta função só deve ser executada no ambiente de desenvolvimento local.
-    # Em produção, o Alembic gerencia as tabelas.
-    db_url = os.getenv('DATABASE_URL')
-    if db_url:
-        print("Ambiente de produção detectado. Migrações do Alembic serão usadas. Ignorando create_tables().")
-        return
-
-    print("Criando tabelas para o banco de dados SQLite local...")
+    """Cria TODAS as tabelas do banco de dados com o esquema definitivo."""
     with get_db_connection() as conn:
+        if conn is None:
+            return
         cursor = conn.cursor()
+        print("Verificando e criando esquema do banco de dados com nomes exatos...")
         
         # --- NOVAS TABELAS PARA MULTI-TENANCY ---
         cursor.execute('''

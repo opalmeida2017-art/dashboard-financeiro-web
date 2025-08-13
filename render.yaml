@@ -8,9 +8,6 @@ services:
     repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git # Seu repositório
     autoDeploy: true # Ativa o deploy automático a cada push
     healthCheckPath: /
-    
-    # --- Comando de inicialização que executa as migrações automaticamente ---
-    startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
 
     # Define as variáveis de ambiente necessárias para o serviço web
     envVars:
@@ -21,10 +18,10 @@ services:
           property: connectionString
 
   # 2. Define o Serviço de Banco de Dados (PostgreSQL)
-  - type: postgres # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'postgres'
+  - type: pserv # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'pserv'
     name: financeiro-db
     # A imagem do postgres já é gerenciada pelo Render
     # Não precisa de Dockerfile ou repo para o banco de dados.
     # O Render lida com backup, segurança, etc.
     postgres:
-      version: "15" # Especificar a versão é uma boa prática
+      version: "14" # Especificar a versão é uma boa prática
