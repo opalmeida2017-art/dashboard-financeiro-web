@@ -1,39 +1,50 @@
 import os
 import psycopg2
 import sqlite3
+from psycopg2.extras import DictRow # Importa para que o cursor retorne dicionários
 import pandas as pd
 import config
-import glob 
+import glob
 from datetime import datetime
-
-
 
 DATABASE_NAME = 'financeiro.db'
 
 def get_db_connection():
     db_url = os.getenv('DATABASE_URL')
+    
     if db_url:
+        # Lógica para PRODUÇÃO (Render com PostgreSQL)
         try:
-            return psycopg2.connect(db_url)
+            conn = psycopg2.connect(db_url)
+            # Define o cursor para retornar dicionários, compatível com o seu app.py
+            conn.row_factory = DictRow 
+            print("Conectado ao banco de dados PostgreSQL do Render.")
+            return conn
         except psycopg2.Error as e:
             print(f"Erro ao conectar ao PostgreSQL: {e}")
-            return None
+            raise # Levanta o erro para interromper a aplicação se a conexão falhar
     else:
+        # Lógica para DESENVOLVIMENTO (Local com SQLite)
         try:
             conn = sqlite3.connect(DATABASE_NAME)
             conn.row_factory = sqlite3.Row
+            print("Conectado ao banco de dados SQLite local.")
             return conn
         except sqlite3.Error as e:
             print(f"Erro ao conectar ao banco de dados SQLite: {e}")
-            return None
+            raise # Levanta o erro para interromper a aplicação se a conexão falhar
 
 def create_tables():
-    """Cria TODAS as tabelas do banco de dados com o esquema definitivo."""
+    # Esta função só deve ser executada no ambiente de desenvolvimento local.
+    # Em produção, o Alembic gerencia as tabelas.
+    db_url = os.getenv('DATABASE_URL')
+    if db_url:
+        print("Ambiente de produção detectado. Migrações do Alembic serão usadas. Ignorando create_tables().")
+        return
+
+    print("Criando tabelas para o banco de dados SQLite local...")
     with get_db_connection() as conn:
-        if conn is None:
-            return
         cursor = conn.cursor()
-        print("Verificando e criando esquema do banco de dados com nomes exatos...")
         
         # --- NOVAS TABELAS PARA MULTI-TENANCY ---
         cursor.execute('''
@@ -366,7 +377,7 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
             where_clauses = [f'"{col}" IN (SELECT DISTINCT "{col}" FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
-            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = ?;'
+            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = %s;'
             
             cursor = conn.cursor()
             cursor.execute(sql_delete, (apartamento_id,))
