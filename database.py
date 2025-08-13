@@ -27,15 +27,35 @@ def get_db_connection():
             print(f"Erro ao conectar ao banco de dados SQLite: {e}")
             return None
 
+
 def create_tables():
     """Cria TODAS as tabelas do banco de dados com o esquema definitivo."""
+    print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
+    
+    # Esta função só deve tentar criar tabelas se o Alembic não estiver ativo (ambiente local).
+    # Em produção, o Alembic (rodando no CMD do Dockerfile) já gerencia as tabelas.
+    # O comando 'alembic upgrade head' no Dockerfile cuida da criação das tabelas em produção.
+    # Se você está vendo este erro, é porque o create_tables() está sendo chamado
+    # e tentando criar tabelas em um DB PostgreSQL, o que deve ser evitado.
+    # No entanto, para garantir que as tabelas sejam criadas no ambiente LOCAL (SQLite),
+    # manteremos a lógica aqui, mas com SQL específico para SQLite.
+    
     with get_db_connection() as conn:
         if conn is None:
+            print("Erro: Não foi possível obter conexão com o banco de dados para criar tabelas.")
             return
+
         cursor = conn.cursor()
         print("Verificando e criando esquema do banco de dados com nomes exatos...")
+
+        # A variável 'is_sqlite' DEVE ser definida aqui dentro, depois que 'conn' é obtida
+        is_sqlite = isinstance(conn, sqlite3.Connection)
+
+        # --- APARTAMENTOS ---
+        # PostgreSQL usa SERIAL PRIMARY KEY
+        # SQLite usa INTEGER PRIMARY KEY AUTOINCREMENT
+        pk_syntax = "INTEGER PRIMARY KEY AUTOINCREMENT" if is_sqlite else "SERIAL PRIMARY KEY"
         
-        # --- NOVAS TABELAS PARA MULTI-TENANCY ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "apartamentos" (
                 "id" SERIAL PRIMARY KEY,
