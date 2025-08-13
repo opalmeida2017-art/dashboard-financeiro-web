@@ -262,16 +262,20 @@ def create_tables():
         ''')
         
         is_sqlite = isinstance(conn, sqlite3.Connection)
-        if is_sqlite:
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name") VALUES (%s)', ('VALOR QUEBRA',))
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s)', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
-        else:
-            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (%s) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
-            cursor.execute('INSERT INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s) ON CONFLICT("group_name") DO NOTHING', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
-    with get_db_connection() as conn:
-        if conn is None:
-            return
-        cursor = conn.cursor()
+if is_sqlite:
+    # Lógica para o SQLite
+    # INSERT OR IGNORE é a forma correta aqui.
+    # Corrigido: o 'apartamento_id' é um valor inteiro
+    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id","group_name") VALUES (?,?)', (1, 'VALOR QUEBRA'))
+    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id","group_name", "is_despesa", "is_custo_viagem") VALUES (?,?,?,?)', (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
+else:
+    # Lógica para o PostgreSQL
+    # ON CONFLICT é a forma correta aqui.
+    # Corrigido: 'apartamento_id' deve ser um valor e não uma string.
+    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id","group_name") VALUES (%s,%s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', (1, 'VALOR QUEBRA'))
+    # Corrigido: Adiciona a coluna e o valor do 'apartamento_id' na segunda query.
+    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s, %s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
+with get_db_connection() as conn:
         print("Verificando e criando esquema do banco de dados com nomes exatos...")
 
         # ... (código que cria as suas tabelas existentes, como relFilViagensFatCliente) ...
