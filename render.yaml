@@ -1,4 +1,5 @@
 services:
+  # 1. Define o Serviço Web (sua aplicação Python/Flask)
   - type: web
     name: python-dashboard
     env: docker
@@ -6,15 +7,12 @@ services:
     autoDeploy: true
     healthCheckPath: /
 
+    # --- Comando de inicialização que executa as migrações automaticamente ---
     startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
 
     envVars:
       - key: DATABASE_URL
         fromDatabase:
+          # CORREÇÃO: Certifique-se de que este nome corresponde ao nome do banco de dados que você criou manualmente.
           name: financeiro-db
           property: connectionString
-
-  - type: postgres
-    name: financeiro-db
-    postgres:
-      version: "15"
