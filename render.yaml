@@ -13,9 +13,8 @@ services:
     envVars:
       - key: DATABASE_URL
         # Pega a URL de conexão diretamente do banco de dados definido abaixo
-        fromDatabase:
-          name: financeiro-db # O nome do serviço de banco de dados
-          property: connectionString
+      - type: postgres # O tipo correto é 'postgres'
+    name: financeiro-db
 
   # 2. Define o Serviço de Banco de Dados (PostgreSQL)
   - type: pserv # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'pserv'
