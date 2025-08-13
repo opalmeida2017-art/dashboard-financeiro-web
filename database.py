@@ -38,7 +38,7 @@ def create_tables():
         # --- NOVAS TABELAS PARA MULTI-TENANCY ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "apartamentos" (
-                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                "id" SERIAL PRIMARY KEY,
                 "nome_empresa" TEXT NOT NULL,
                 "status" TEXT DEFAULT 'ativo',
                 "data_criacao" TEXT NOT NULL,
