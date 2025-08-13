@@ -5,40 +5,38 @@ import pandas as pd
 import config
 import glob 
 from datetime import datetime
-
-
+from psycopg2.extras import DictRow # Importa para que o cursor do PostgreSQL retorne dicionários
 
 DATABASE_NAME = 'financeiro.db'
 
 def get_db_connection():
     db_url = os.getenv('DATABASE_URL')
+    
     if db_url:
+        # Lógica para PRODUÇÃO (Render com PostgreSQL)
         try:
-            return psycopg2.connect(db_url)
+            conn = psycopg2.connect(db_url)
+            # Define o cursor para retornar dicionários, compatível com o seu app.py
+            conn.row_factory = DictRow
+            print("Conectado ao banco de dados PostgreSQL do Render.")
+            return conn
         except psycopg2.Error as e:
             print(f"Erro ao conectar ao PostgreSQL: {e}")
-            return None
+            raise # Levanta o erro para interromper a aplicação se a conexão falhar
     else:
+        # Lógica para DESENVOLVIMENTO (Local com SQLite)
         try:
             conn = sqlite3.connect(DATABASE_NAME)
             conn.row_factory = sqlite3.Row
+            print("Conectado ao banco de dados SQLite local.")
             return conn
         except sqlite3.Error as e:
             print(f"Erro ao conectar ao banco de dados SQLite: {e}")
-            return None
-
+            raise # Levanta o erro para interromper a aplicação se a conexão falhar
 
 def create_tables():
     """Cria TODAS as tabelas do banco de dados com o esquema definitivo."""
     print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
-    
-    # Esta função só deve tentar criar tabelas se o Alembic não estiver ativo (ambiente local).
-    # Em produção, o Alembic (rodando no CMD do Dockerfile) já gerencia as tabelas.
-    # O comando 'alembic upgrade head' no Dockerfile cuida da criação das tabelas em produção.
-    # Se você está vendo este erro, é porque o create_tables() está sendo chamado
-    # e tentando criar tabelas em um DB PostgreSQL, o que deve ser evitado.
-    # No entanto, para garantir que as tabelas sejam criadas no ambiente LOCAL (SQLite),
-    # manteremos a lógica aqui, mas com SQL específico para SQLite.
     
     with get_db_connection() as conn:
         if conn is None:
@@ -48,17 +46,15 @@ def create_tables():
         cursor = conn.cursor()
         print("Verificando e criando esquema do banco de dados com nomes exatos...")
 
-        # A variável 'is_sqlite' DEVE ser definida aqui dentro, depois que 'conn' é obtida
         is_sqlite = isinstance(conn, sqlite3.Connection)
 
-        # --- APARTAMENTOS ---
-        # PostgreSQL usa SERIAL PRIMARY KEY
-        # SQLite usa INTEGER PRIMARY KEY AUTOINCREMENT
+        # A sintaxe de chave primária muda entre SQLite e PostgreSQL
         pk_syntax = "INTEGER PRIMARY KEY AUTOINCREMENT" if is_sqlite else "SERIAL PRIMARY KEY"
         
-        cursor.execute('''
+        # --- APARTAMENTOS ---
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS "apartamentos" (
-                "id" SERIAL PRIMARY KEY,
+                "id" {pk_syntax},
                 "nome_empresa" TEXT NOT NULL,
                 "status" TEXT DEFAULT 'ativo',
                 "data_criacao" TEXT NOT NULL,
@@ -67,9 +63,10 @@ def create_tables():
             )
         ''')
 
-        cursor.execute('''
+        # --- USUARIOS ---
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS "usuarios" (
-                "id" SERIAL PRIMARY KEY,
+                "id" {pk_syntax},
                 "apartamento_id" INTEGER NOT NULL,
                 "email" TEXT UNIQUE NOT NULL,
                 "password_hash" TEXT NOT NULL,
@@ -78,6 +75,36 @@ def create_tables():
                 FOREIGN KEY("apartamento_id") REFERENCES "apartamentos"("id")
             )
         ''')
+
+        # --- CONFIGURACOES_ROBO ---
+        cursor.execute(f'''
+            CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
+                "apartamento_id" INTEGER NOT NULL,
+                "chave" TEXT NOT NULL,
+                "valor" TEXT,
+                PRIMARY KEY ("apartamento_id", "chave")
+            )
+        ''')
+
+        # --- STATIC_EXPENSE_GROUPS ---
+        # A sintaxe de PRIMARY KEY composta é a mesma para SQLite e PostgreSQL
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS "static_expense_groups" (
+                "apartamento_id" INTEGER NOT NULL, 
+                "group_name" TEXT NOT NULL,
+                "is_despesa" TEXT DEFAULT 'S',
+                "is_custo_viagem" TEXT DEFAULT 'N',
+                PRIMARY KEY ("apartamento_id", "group_name")
+            )
+        ''')
+
+        # --- Lógica de INSERÇÃO (apenas para SQLite) ---
+        if is_sqlite:
+            # Para SQLite, use '?' para placeholders e INSERT OR IGNORE
+            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
+                           (1, 'VALOR QUEBRA', 'S', 'N'))
+            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
+                           (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
         # --- FIM DAS NOVAS TABELAS ---
 
         # Nomes de tabelas e colunas são colocados entre aspas para preservar maiúsculas/minúsculas.
@@ -281,35 +308,22 @@ def create_tables():
             )
         ''')
         
-        is_sqlite = isinstance(conn, sqlite3.Connection)
+# Inserção dos grupos estáticos após a criação da tabela
 if is_sqlite:
     # Lógica para o SQLite
-    # INSERT OR IGNORE é a forma correta aqui.
-    # Corrigido: o 'apartamento_id' é um valor inteiro
-    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id","group_name") VALUES (?,?)', (1, 'VALOR QUEBRA'))
-    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id","group_name", "is_despesa", "is_custo_viagem") VALUES (?,?,?,?)', (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
+    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
+                   (1, 'VALOR QUEBRA', 'S', 'N'))
+    cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
+                   (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
 else:
     # Lógica para o PostgreSQL
-    # ON CONFLICT é a forma correta aqui.
-    # Corrigido: 'apartamento_id' deve ser um valor e não uma string.
-    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id","group_name") VALUES (%s,%s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', (1, 'VALOR QUEBRA'))
-    # Corrigido: Adiciona a coluna e o valor do 'apartamento_id' na segunda query.
-    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s, %s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
-with get_db_connection() as conn:
-        print("Verificando e criando esquema do banco de dados com nomes exatos...")
+    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s, %s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', 
+                   (1, 'VALOR QUEBRA', 'S', 'N'))
+    cursor.execute('INSERT INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s, %s) ON CONFLICT("apartamento_id","group_name") DO NOTHING', 
+                   (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
 
-        # ... (código que cria as suas tabelas existentes, como relFilViagensFatCliente) ...
-        
-        # --- NOVO: Adiciona a tabela para as configurações do robô ---
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
-                "apartamento_id" INTEGER NOT NULL,  
-                "chave" TEXT PRIMARY KEY,
-                "valor" TEXT
-            )
-        ''')
-        conn.commit()
-        print("Esquema do banco de dados verificado/criado com sucesso.")
+conn.commit()
+print("Esquema do banco de dados verificado/criado com sucesso.")
 
 
 def _clean_and_convert_data(df, table_key):
