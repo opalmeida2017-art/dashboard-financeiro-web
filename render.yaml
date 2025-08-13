@@ -1,25 +1,16 @@
-# Este arquivo descreve toda a infraestrutura da sua aplicação.
-
 services:
   # 1. Define o Serviço Web (sua aplicação Python/Flask)
   - type: web
     name: python-dashboard
-    env: docker # Usa o Dockerfile para construir e rodar
+    env: docker
     repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git
     autoDeploy: true
     healthCheckPath: /
 
-    # Comando de inicialização que executa as migrações e inicia o servidor
     startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
 
-    # Define as variáveis de ambiente necessárias para o serviço web
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: financeiro-db
           property: connectionString
-
-  # 2. Define o Serviço de Banco de Dados (PostgreSQL)
-  - type: postgres
-    name: financeiro-db
-    version: "15"
