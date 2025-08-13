@@ -49,7 +49,7 @@ def create_tables():
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "usuarios" (
-                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                "id" SERIAL PRIMARY KEY,
                 "apartamento_id" INTEGER NOT NULL,
                 "email" TEXT UNIQUE NOT NULL,
                 "password_hash" TEXT NOT NULL,
