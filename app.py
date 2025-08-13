@@ -279,7 +279,7 @@ def criar_admin_command():
             cursor = conn.cursor()
             now = datetime.now().isoformat()
             cursor.execute(
-                'INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (?, ?, ?)',
+                'INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (%,%,%)',
                 (nome_empresa, 'ativo', now)
             )
             apartamento_id = cursor.lastrowid
@@ -287,7 +287,7 @@ def criar_admin_command():
 
             password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
             cursor.execute(
-                'INSERT INTO usuarios (apartamento_id, email, password_hash, nome, role) VALUES (?, ?, ?, ?, ?)',
+                'INSERT INTO usuarios (apartamento_id, email, password_hash, nome, role) VALUES (%, %, %, %, %)',
                 (apartamento_id, admin_email, password_hash, admin_nome, 'admin')
             )
             print(f"-> Usuário administrador '{admin_email}' criado com sucesso.")

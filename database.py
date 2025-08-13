@@ -263,10 +263,10 @@ def create_tables():
         
         is_sqlite = isinstance(conn, sqlite3.Connection)
         if is_sqlite:
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name") VALUES (?)', ('VALOR QUEBRA',))
+            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name") VALUES (%)', ('VALOR QUEBRA',))
             cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?)', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
         else:
-            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (?) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
+            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (%) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
             cursor.execute('INSERT INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s) ON CONFLICT("group_name") DO NOTHING', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
     with get_db_connection() as conn:
         if conn is None:
