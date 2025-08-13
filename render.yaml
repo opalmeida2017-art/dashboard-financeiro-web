@@ -1,21 +1,30 @@
+# Este arquivo descreve toda a infraestrutura da sua aplicação.
+
 services:
+  # 1. Define o Serviço Web (sua aplicação Python/Flask)
   - type: web
     name: python-dashboard
-    env: docker
-    repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git
-    autoDeploy: true
+    env: docker # Usa o Dockerfile para construir e rodar
+    repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git # Seu repositório
+    autoDeploy: true # Ativa o deploy automático a cada push
     healthCheckPath: /
-
-    # --- Comando de inicialização que executa as migrações ---
+    
+    # --- Comando de inicialização que executa as migrações automaticamente ---
     startCommand: "python3 -m alembic upgrade head && gunicorn --chdir /app app:app"
 
+    # Define as variáveis de ambiente necessárias para o serviço web
     envVars:
       - key: DATABASE_URL
+        # Pega a URL de conexão diretamente do banco de dados definido abaixo
         fromDatabase:
-          name: financeiro-db
+          name: financeiro-db # O nome do serviço de banco de dados
           property: connectionString
 
-  - type: postgres
+  # 2. Define o Serviço de Banco de Dados (PostgreSQL)
+  - type: postgres # CORREÇÃO: O tipo correto para um banco de dados PostgreSQL no Render é 'postgres'
     name: financeiro-db
+    # A imagem do postgres já é gerenciada pelo Render
+    # Não precisa de Dockerfile ou repo para o banco de dados.
+    # O Render lida com backup, segurança, etc.
     postgres:
-      version: "15"
+      version: "15" # Especificar a versão é uma boa prática
