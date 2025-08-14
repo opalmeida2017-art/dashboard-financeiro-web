@@ -1,7 +1,13 @@
 # Dentro de alembic/env.py
+# Dentro de alembic/env.py
 
 import os
 from logging.config import fileConfig
+from dotenv import load_dotenv # <-- ADICIONE ESTA LINHA
+
+load_dotenv() # <-- ADICIONE ESTA LINHA TAMBÉM
+
+from sqlalchemy import engine_from_config
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -33,35 +39,6 @@ target_metadata = None
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
-
-
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    """
-    # --- INÍCIO DO CÓDIGO CORRIGIDO ---
-    
-    # Tenta obter a URL da base de dados diretamente da variável de ambiente
-    db_url = os.getenv('DATABASE_URL')
-
-    # Se a variável não estiver definida (ambiente local), usa a conexão SQLite
-    if not db_url:
-        print("DATABASE_URL não encontrada, usando a conexão local com financeiro.db...")
-        connectable = database.get_db_connection()
-    else:
-        # Se a variável existir (ambiente de produção da Render), cria a conexão
-        print(f"Conectando à base de dados de produção via DATABASE_URL...")
-        connectable = create_engine(db_url)
-
-    with connectable.connect() as connection:
-        # O target_metadata fica como None porque não estamos a usar autogenerate
-        context.configure(
-            connection=connection, target_metadata=None
-        )
-
-        with context.begin_transaction():
-            context.run_migrations()
-
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""

@@ -689,31 +689,43 @@ def get_all_apartments():
 
 def create_apartment_and_admin(nome_empresa: str, admin_nome: str, admin_email: str, password_hash: str):
     """Cria um novo apartamento e o seu primeiro utilizador admin numa única transação."""
-    with db.get_db_connection() as conn:
-        cursor = conn.cursor()
-        try:
+    conn = db.get_db_connection()
+    if not conn:
+        return False, "Falha ao conectar ao banco de dados."
+        
+    try:
+        with conn.cursor() as cursor:
             # Cria o apartamento
             now = datetime.now().isoformat()
-            cursor.execute(
-                'INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (?, ?, ?)',
-                (nome_empresa, 'ativo', now)
-            )
-            apartamento_id = cursor.lastrowid
+            
+            # CORREÇÃO: Usa a sintaxe do PostgreSQL com RETURNING id
+            sql_apartamento = 'INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (%s, %s, %s) RETURNING id'
+            cursor.execute(sql_apartamento, (nome_empresa, 'ativo', now))
+            
+            result = cursor.fetchone()
+            if result is None:
+                raise Exception("Falha ao criar o apartamento, nenhum ID foi retornado.")
+            apartamento_id = result['id']
             
             # Cria o utilizador admin para esse apartamento
-            cursor.execute(
-                'INSERT INTO usuarios (apartamento_id, nome, email, password_hash, role) VALUES (?, ?, ?, ?, ?)',
-                (apartamento_id, admin_nome, admin_email, password_hash, 'admin')
-            )
+            # CORREÇÃO: Usa a sintaxe do PostgreSQL
+            sql_usuario = 'INSERT INTO usuarios (apartamento_id, nome, email, password_hash, role) VALUES (%s, %s, %s, %s, %s)'
+            cursor.execute(sql_usuario, (apartamento_id, admin_nome, admin_email, password_hash, 'admin'))
             
-            conn.commit()
-            return True, f"Apartamento '{nome_empresa}' e admin '{admin_email}' criados com sucesso."
-        except sqlite3.IntegrityError:
+        conn.commit()
+        return True, f"Apartamento '{nome_empresa}' e admin '{admin_email}' criados com sucesso."
+
+    except Exception as e:
+        if conn:
             conn.rollback()
-            return False, "Erro: O email do administrador já existe na base de dados."
-        except Exception as e:
-            conn.rollback()
-            return False, f"Ocorreu um erro inesperado: {e}"
+        # CORREÇÃO: Retorna o erro específico do banco de dados para melhor depuração
+        if "usuarios_email_key" in str(e):
+             return False, "Erro: O email do administrador já existe na base de dados."
+        return False, f"Ocorreu um erro inesperado: {e}"
+    finally:
+        if conn:
+            conn.close()
+
     
 def get_apartment_details(apartamento_id: int):
     """Busca os detalhes de um único apartamento pelo seu ID."""

@@ -1,3 +1,10 @@
+# --- INÍCIO DA CORREÇÃO ---
+# Mova estas duas linhas para o topo do arquivo.
+# Isto garante que as variáveis de ambiente sejam carregadas ANTES de qualquer outro import.
+from dotenv import load_dotenv
+load_dotenv()
+# --- FIM DA CORREÇÃO ---
+
 import os
 import threading
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
@@ -14,8 +21,6 @@ from functools import wraps
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
 app.config['SUPER_ADMIN_EMAIL'] ='op.almeida@hotmail.com'
-
-# NOVO: Define o tempo de vida da sessão para 30 minutos
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
 # --- INICIALIZAÇÕES ---
@@ -42,12 +47,17 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    with db.get_db_connection() as conn:
-        cursor = conn.cursor()
-        user_data = cursor.execute('SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = ?', (user_id,)).fetchone()
-        if user_data:
-            # Acessa os dados pelo nome da coluna, pois conn.row_factory = sqlite3.Row
-            return User(id=user_data['id'], email=user_data['email'], nome=user_data['nome'], apartamento_id=user_data['apartamento_id'], role=user_data['role'])
+    conn = db.get_db_connection()
+    if not conn: return None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute('SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = %s', (user_id,))
+            user_data = cursor.fetchone()
+            if user_data:
+                return User(id=user_data['id'], email=user_data['email'], nome=user_data['nome'], apartamento_id=user_data['apartamento_id'], role=user_data['role'])
+    finally:
+        if conn:
+            conn.close()
     return None
 
 # --- FILTROS DE TEMPLATE (Jinja2) ---
@@ -55,22 +65,21 @@ def load_user(user_id):
 def format_currency(value):
     if value is None or not isinstance(value, (int, float)):
         return "R$ 0,00"
-    formatted_value = f"{value:,.2f}"
-    formatted_value = formatted_value.replace(",", "X").replace(".", ",").replace("X", ".")
+    formatted_value = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {formatted_value}"
 
 @app.template_filter('percentage')
 def format_percentage(value):
     if value is None or not isinstance(value, (int, float)):
         return "0,00%"
-    formatted_value = f"{value:.2f}"
-    formatted_value = formatted_value.replace(".", ",")
+    formatted_value = f"{value:.2f}".replace(".", ",")
     return f"{formatted_value}%"
 
 # --- INICIALIZAÇÃO DO BANCO DE DADOS ---
 with app.app_context():
     print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
-    db.create_tables()
+    # Esta linha foi removida pois o Alembic agora gerencia as tabelas.
+    # db.create_tables() 
     print("Verificação do banco de dados concluída.")
 
 FILENAME_TO_KEY_MAP = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}
@@ -90,7 +99,6 @@ def _parse_filters():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        # Se o super admin já estiver logado, redireciona para o painel dele
         if current_user.email == app.config['SUPER_ADMIN_EMAIL']:
             return redirect(url_for('admin_dashboard'))
         return redirect(url_for('index'))
@@ -98,23 +106,25 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-        with db.get_db_connection() as conn:
-            cursor = conn.cursor()
-            user_data = cursor.execute('SELECT id, password_hash FROM usuarios WHERE email = ?', (email,)).fetchone()
-            if user_data and bcrypt.check_password_hash(user_data['password_hash'], password):
-                user = load_user(user_data['id'])
-                if user:
-                    login_user(user)
-                    
-                    # --- LÓGICA DE REDIRECIONAMENTO INTELIGENTE ---
-                    # Se o email do utilizador for o do Super Admin, redireciona para o painel do síndico.
-                    if user.email == app.config['SUPER_ADMIN_EMAIL']:
-                        return redirect(url_for('admin_dashboard'))
-                    
-                    # Para todos os outros utilizadores, redireciona para o dashboard normal.
-                    return redirect(url_for('index'))
-                    
+        conn = db.get_db_connection()
+        if not conn:
+            flash('Erro de conexão com o banco de dados.', 'error')
+            return render_template('login.html')
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute('SELECT id, password_hash FROM usuarios WHERE email = %s', (email,))
+                user_data = cursor.fetchone()
+                if user_data and bcrypt.check_password_hash(user_data['password_hash'], password):
+                    user = load_user(user_data['id'])
+                    if user:
+                        login_user(user)
+                        if user.email == app.config['SUPER_ADMIN_EMAIL']:
+                            return redirect(url_for('admin_dashboard'))
+                        return redirect(url_for('index'))
             flash('Email ou senha inválidos. Tente novamente.', 'error')
+        finally:
+            if conn:
+                conn.close()
     return render_template('login.html')
 
 @app.route('/logout')
@@ -123,9 +133,8 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- ROTAS PROTEGIDAS DA APLICAÇÃO ---
+# --- ROTAS DA APLICAÇÃO ---
 @app.route('/')
-
 @login_required
 def index():
     filters = _parse_filters()
@@ -172,7 +181,6 @@ def upload_file():
     return redirect(url_for('index'))
 
 @app.route('/gerenciar-grupos-dados')
-
 @login_required
 def gerenciar_grupos_dados():
     logic.sync_expense_groups(current_user.apartamento_id) 
@@ -259,7 +267,6 @@ def configuracao():
     configs_salvas = logic.ler_configuracoes_robo(current_user.apartamento_id)
     return render_template('configuracao.html', configs=configs_salvas)
 
-# --- COMANDO CLI PARA CRIAR ADMIN ---
 @app.cli.command("criar-admin")
 def criar_admin_command():
     """Cria o primeiro inquilino (apartamento) e seu usuário administrador."""
@@ -274,45 +281,54 @@ def criar_admin_command():
         print("Erro: Todos os campos são obrigatórios.")
         return
 
+    conn = None
     try:
-        with db.get_db_connection() as conn:
-            cursor = conn.cursor()
+        conn = db.get_db_connection()
+        if conn is None:
+            print("Falha ao conectar ao banco de dados.")
+            return
+
+        with conn.cursor() as cursor:
             now = datetime.now().isoformat()
-            cursor.execute(
-                'INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (%s,%s,%s)',
-                (nome_empresa, 'ativo', now)
-            )
-            apartamento_id = cursor.lastrowid
+            
+            sql_apartamento = 'INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (%s, %s, %s) RETURNING id'
+            cursor.execute(sql_apartamento, (nome_empresa, 'ativo', now))
+            
+            result = cursor.fetchone()
+            if result is None:
+                raise Exception("Falha ao criar o apartamento, nenhum ID foi retornado.")
+            apartamento_id = result['id']
+
             print(f"-> Apartamento '{nome_empresa}' criado com ID: {apartamento_id}")
 
             password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
-            cursor.execute(
-                'INSERT INTO usuarios (apartamento_id, email, password_hash, nome, role) VALUES (%s, %s, %s, %s, %s)',
-                (apartamento_id, admin_email, password_hash, admin_nome, 'admin')
-            )
+            sql_usuario = 'INSERT INTO usuarios (apartamento_id, email, password_hash, nome, role) VALUES (%s, %s, %s, %s, %s)'
+            cursor.execute(sql_usuario, (apartamento_id, admin_email, password_hash, admin_nome, 'admin'))
+            
             print(f"-> Usuário administrador '{admin_email}' criado com sucesso.")
-            conn.commit()
-            print("\n--- Processo concluído! ---")
+        
+        conn.commit()
+        print("\n--- Processo concluído! ---")
+
     except Exception as e:
+        if conn:
+            conn.rollback()
         print(f"\nOcorreu um erro: {e}")
         print("A operação foi cancelada.")
-        
+    finally:
+        if conn:
+            conn.close()
+
+# --- ROTAS DE GESTÃO DE UTILIZADORES (ADMIN DO APARTAMENTO) ---
 @app.route('/gerenciar-usuarios')
 @login_required
 def gerenciar_usuarios():
-    # Garante que apenas administradores possam aceder a esta página
     if current_user.role != 'admin':
         flash('Acesso negado. Você não tem permissão para ver esta página.', 'error')
         return redirect(url_for('index'))
     
-    # Busca os utilizadores do apartamento do admin logado
     users = logic.get_users_for_apartment(current_user.apartamento_id)
-    
     return render_template('gerenciar_usuarios.html', users=users)
-
-# Em app.py
-
-# --- ROTAS DE GESTÃO DE UTILIZADORES (ADMIN DO APARTAMENTO) ---
 
 @app.route('/gerenciar-usuarios/adicionar', methods=['POST'])
 @login_required
@@ -346,7 +362,6 @@ def adicionar_usuario():
         
     return redirect(url_for('gerenciar_usuarios'))
 
-
 @app.route('/gerenciar-usuarios/dados/<int:user_id>', methods=['GET'])
 @login_required
 def get_user_data(user_id):
@@ -357,7 +372,6 @@ def get_user_data(user_id):
     if user:
         return jsonify(user)
     return jsonify({'error': 'Utilizador não encontrado'}), 404
-
 
 @app.route('/gerenciar-usuarios/editar/<int:user_id>', methods=['POST'])
 @login_required
@@ -400,7 +414,6 @@ def apagar_usuario(user_id):
     if current_user.role != 'admin':
         return jsonify({'success': False, 'message': 'Acesso negado.'}), 403
     
-    # Não permitir que o admin se apague a si mesmo
     if user_id == current_user.id:
         flash('Não pode apagar a sua própria conta de administrador.', 'error')
         return redirect(url_for('gerenciar_usuarios'))
@@ -414,7 +427,7 @@ def apagar_usuario(user_id):
 
     return redirect(url_for('gerenciar_usuarios'))
 
-# Função auxiliar para verificar se o utilizador é o Super Admin
+# --- ROTAS DO SUPER ADMIN ---
 def super_admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -436,7 +449,7 @@ def criar_apartamento():
 
         if not all([nome_empresa, admin_nome, admin_email, admin_password]):
             flash("Todos os campos são obrigatórios.", "error")
-            return redirect(url_for('criar_apartamento'))
+            return render_template('super_admin/criar_apartamento.html')
 
         password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
         
@@ -447,7 +460,7 @@ def criar_apartamento():
             return redirect(url_for('admin_dashboard'))
         else:
             flash(message, 'error')
-            return redirect(url_for('criar_apartamento'))
+            return render_template('super_admin/criar_apartamento.html')
 
     return render_template('super_admin/criar_apartamento.html')
 
@@ -455,7 +468,6 @@ def criar_apartamento():
 @login_required
 @super_admin_required
 def admin_dashboard():
-    # MODIFICADO: Chama a nova função para obter estatísticas de uso.
     apartamentos = logic.get_apartments_with_usage_stats()
     return render_template('super_admin/dashboard.html', apartamentos=apartamentos)
 
@@ -486,4 +498,5 @@ def gerir_apartamento(apartamento_id):
     return render_template('super_admin/gerir_apartamento.html', apartamento=apartamento)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    port = int(os.environ.get('PORT', 5001))
+    app.run(debug=True, host='0.0.0.0', port=port)

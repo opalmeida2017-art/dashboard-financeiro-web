@@ -25,3 +25,7 @@ Flask-Bcrypt
 
 alembic
 
+python-dotenv
+
+SQLAlchemy
+

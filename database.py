@@ -1,61 +1,35 @@
 import os
 import psycopg2
 import sqlite3
+import psycopg2.extras  # <-- 1. Importe a biblioteca extra
 import pandas as pd
 import config
-import glob 
+import glob
 from datetime import datetime
-from psycopg2.extras import DictRow # Importa para que o cursor do PostgreSQL retorne dicionários
+import sqlite3
 
 DATABASE_NAME = 'financeiro.db'
 
+db_url = os.getenv('DATABASE_URL')
+if not db_url:
+    raise ValueError("DATABASE_URL não definida. Verifique seu arquivo .env")
+
+# Se houver um problema aqui (URL inválida, driver em falta), a aplicação
+# irá falhar na inicialização com um erro claro, o que é o comportamento desejado.
+engine = create_engine(db_url)
+
 def get_db_connection():
-    db_url = os.getenv('DATABASE_URL')
-    
-    if db_url:
-        # Lógica para PRODUÇÃO (Render com PostgreSQL)
-        try:
-            conn = psycopg2.connect(db_url)
-            conn.row_factory = DictRow
-            print("Conectado ao banco de dados PostgreSQL do Render.")
-            return conn
-        except psycopg2.Error as e:
-            print(f"Erro ao conectar ao PostgreSQL: {e}")
-            raise
-    else:
-        # Lógica para DESENVOLVIMENTO (Local com SQLite)
-        try:
-            conn = sqlite3.connect(DATABASE_NAME)
-            conn.row_factory = sqlite3.Row
-            print("Conectado ao banco de dados SQLite local.")
-            return conn
-        except sqlite3.Error as e:
-            print(f"Erro ao conectar ao banco de dados SQLite: {e}")
-            raise
+    """Retorna uma nova conexão a partir do engine global."""
+    return engine.connect()
 
-def create_tables():
-    """Cria TODAS as tabelas do banco de dados com o esquema definitivo."""
-    print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
-    
+    print("Criando tabelas para o banco de dados SQLite local...")
     with get_db_connection() as conn:
-        if conn is None:
-            print("Erro: Não foi possível obter conexão com o banco de dados para criar tabelas.")
-            return
-
         cursor = conn.cursor()
-        print("Verificando e criando esquema do banco de dados com nomes exatos...")
-
-        is_sqlite = isinstance(conn, sqlite3.Connection)
-
-        # A sintaxe de chave primária muda entre SQLite e PostgreSQL
-        pk_syntax = "INTEGER PRIMARY KEY AUTOINCREMENT" if is_sqlite else "SERIAL PRIMARY KEY"
         
-        # --- Lógica de Criação de Tabelas ---
-
-        # APARTAMENTOS
-        cursor.execute(f'''
+        # --- NOVAS TABELAS PARA MULTI-TENANCY ---
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS "apartamentos" (
-                "id" {pk_syntax},
+                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
                 "nome_empresa" TEXT NOT NULL,
                 "status" TEXT DEFAULT 'ativo',
                 "data_criacao" TEXT NOT NULL,
@@ -64,10 +38,9 @@ def create_tables():
             )
         ''')
 
-        # USUARIOS
-        cursor.execute(f'''
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS "usuarios" (
-                "id" {pk_syntax},
+                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
                 "apartamento_id" INTEGER NOT NULL,
                 "email" TEXT UNIQUE NOT NULL,
                 "password_hash" TEXT NOT NULL,
@@ -76,28 +49,10 @@ def create_tables():
                 FOREIGN KEY("apartamento_id") REFERENCES "apartamentos"("id")
             )
         ''')
+        # --- FIM DAS NOVAS TABELAS ---
 
-        # CONFIGURACOES_ROBO
-        cursor.execute(f'''
-            CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
-                "apartamento_id" INTEGER NOT NULL,
-                "chave" TEXT NOT NULL,
-                "valor" TEXT,
-                PRIMARY KEY ("apartamento_id", "chave")
-            )
-        ''')
-
-        # STATIC_EXPENSE_GROUPS
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "static_expense_groups" (
-                "apartamento_id" INTEGER NOT NULL, 
-                "group_name" TEXT NOT NULL,
-                "is_despesa" TEXT DEFAULT 'S',
-                "is_custo_viagem" TEXT DEFAULT 'N',
-                PRIMARY KEY ("apartamento_id", "group_name")
-            )
-        ''')
-
+        # Nomes de tabelas e colunas são colocados entre aspas para preservar maiúsculas/minúsculas.
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS "relFilViagensFatCliente" (
                 "apartamento_id" INTEGER NOT NULL,
@@ -297,25 +252,33 @@ def create_tables():
             )
         ''')
         
-    conn.commit()
-    print("Esquema do banco de dados verificado/criado com sucesso.")
-
-# --- LÓGICA DE INSERÇÃO DE DADOS INICIAIS ---
-with get_db_connection() as conn:
-    if conn and isinstance(conn, sqlite3.Connection):
+        is_sqlite = isinstance(conn, sqlite3.Connection)
+        if is_sqlite:
+            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name") VALUES (?)', ('VALOR QUEBRA',))
+            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?)', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
+        else:
+            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (%s) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
+            cursor.execute('INSERT INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s) ON CONFLICT("group_name") DO NOTHING', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
+    with get_db_connection() as conn:
+        if conn is None:
+            return
         cursor = conn.cursor()
-        
-        # Para SQLite, use '?' e INSERT OR IGNORE
-        # Aqui é onde você insere seus dados iniciais para DEV.
-        cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
-                        (1, 'VALOR QUEBRA', 'S', 'N'))
-        cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("apartamento_id", "group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?, ?)', 
-                        (1, 'COMISSÃO DE MOTORISTA', 'S', 'N'))
-        
-        conn.commit()
-        print("Dados iniciais para o SQLite inseridos.")
+        print("Verificando e criando esquema do banco de dados com nomes exatos...")
 
-# As funções abaixo foram movidas para o final para organizar o arquivo.
+        # ... (código que cria as suas tabelas existentes, como relFilViagensFatCliente) ...
+        
+        # --- NOVO: Adiciona a tabela para as configurações do robô ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
+                "apartamento_id" INTEGER NOT NULL,  
+                "chave" TEXT PRIMARY KEY,
+                "valor" TEXT
+            )
+        ''')
+        conn.commit()
+        print("Esquema do banco de dados verificado/criado com sucesso.")
+
+
 def _clean_and_convert_data(df, table_key):
     # Esta função não precisa de alterações
     original_columns = df.columns.tolist()
@@ -342,19 +305,19 @@ def _clean_and_convert_data(df, table_key):
 
     return df, cleaned_columns_for_validation
 
-def _validate_columns(excel_columns, table_name, conn):
-    if conn is None: return excel_columns, []
-    db_columns_case_sensitive = set()
+def _validate_columns(excel_columns, table_name):
+    """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
     try:
-        is_sqlite = isinstance(conn, sqlite3.Connection)
-        if is_sqlite:
-            cursor = conn.cursor()
-            cursor.execute(f'PRAGMA table_info("{table_name}")')
-            db_columns_case_sensitive = {row['name'] for row in cursor.fetchall()}
-        else: # PostgreSQL
-            df_schema = pd.read_sql(f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}'", conn)
-            db_columns_case_sensitive = set(df_schema['column_name'])
-    except Exception as e:
+        with engine.connect() as conn:
+            # Query padrão para PostgreSQL para obter colunas de uma tabela
+            query = text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' AND table_name = :table_name
+            """)
+            result = conn.execute(query, {'table_name': table_name})
+            db_columns_case_sensitive = {row[0] for row in result}
+    except SQLAlchemyError as e:
         print(f"AVISO: Não foi possível ler colunas da tabela '{table_name}'. Erro: {e}")
         return excel_columns, []
 
@@ -363,49 +326,6 @@ def _validate_columns(excel_columns, table_name, conn):
     valid_columns_original_case = [col for col in excel_columns if col.lower() in db_columns_lower]
     return valid_columns_original_case, extra_cols_names
 
-def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list, apartamento_id: int):
-    extra_columns = []
-    try:
-        df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
-        df_novo, cleaned_excel_columns = _clean_and_convert_data(df_novo, table_name)
-        
-        df_novo['apartamento_id'] = apartamento_id
-
-        with get_db_connection() as conn:
-            if conn is None: return []
-
-            is_sqlite = isinstance(conn, sqlite3.Connection)
-            placeholder = "?" if is_sqlite else "%s"
-
-            valid_columns, extra_columns = _validate_columns(df_novo.columns, table_name, conn)
-            df_import = df_novo[valid_columns]
-
-            if df_import.empty:
-                print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
-                return extra_columns
-            
-            df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
-            
-            # Use placeholder correto para o DELETE
-            where_clauses = [f'"{col}" IN (SELECT DISTINCT "{col}" FROM temp_import)' for col in key_columns]
-            where_str = ' AND '.join(where_clauses)
-            
-            sql_delete = f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = {placeholder};'
-            
-            cursor = conn.cursor()
-            cursor.execute(sql_delete, (apartamento_id,))
-            print(f" -> {cursor.rowcount} registros antigos foram removidos para o apartamento {apartamento_id}.")
-            
-            df_import.to_sql(table_name, conn, if_exists='append', index=False)
-            
-            cursor.execute('DROP TABLE temp_import')
-            conn.commit()
-            print(f" -> Importação para a tabela '{table_name}' concluída com sucesso.")
-
-        return extra_columns
-    except Exception as e:
-        print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
-        raise e
 
 def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
     file_info = config.EXCEL_FILES_CONFIG.get(file_key)
@@ -421,19 +341,54 @@ def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
 
 
 def table_exists(table_name: str) -> bool:
-    """Verifica se uma tabela existe no banco de dados."""
+    """Verifica se uma tabela existe no banco de dados usando SQLAlchemy."""
     try:
-        with get_db_connection() as conn:
-            if conn is None: return False
-            is_sqlite = isinstance(conn, sqlite3.Connection)
-            query_check_table = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'" if is_sqlite else f"SELECT to_regclass('{table_name}')"
-            cursor = conn.cursor()
-            cursor.execute(query_check_table)
-            result = cursor.fetchone()
-            return result is not None and result[0] is not None
-    except Exception:
+        with engine.connect() as conn:
+            query = text("SELECT to_regclass(:table_name)")
+            result = conn.execute(query, {'table_name': table_name}).scalar()
+            return result is not None
+    except SQLAlchemyError:
         return False
-    
+
 def processar_downloads_na_pasta(apartamento_id: int):
-    # ... (sua função original)
-    pass
+    """
+    Verifica a pasta do projeto por planilhas baixadas e as importa para o apartamento_id especificado.
+    """
+    print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA O APARTAMENTO ID: {apartamento_id} ---")
+    caminho_base = os.getcwd()
+    
+    mapa_arquivos_config = {info['path']: chave for chave, info in config.EXCEL_FILES_CONFIG.items()}
+    
+    for nome_arquivo_base, chave_config in mapa_arquivos_config.items():
+        caminho_novo_arquivo = os.path.join(caminho_base, nome_arquivo_base)
+        
+        if os.path.exists(caminho_novo_arquivo):
+            print(f"\nArquivo novo encontrado: '{nome_arquivo_base}'")
+
+            nome_sem_ext, extensao = os.path.splitext(nome_arquivo_base)
+            padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_*{extensao}")
+            arquivos_antigos_encontrados = glob.glob(padrao_busca_antigos)
+            
+            if arquivos_antigos_encontrados:
+                print(f" -> Excluindo {len(arquivos_antigos_encontrados)} versão(ões) antiga(s)...")
+                for arquivo_antigo in arquivos_antigos_encontrados:
+                    os.remove(arquivo_antigo)
+
+            try:
+                print(f" -> Importando dados para a tabela '{config.EXCEL_FILES_CONFIG[chave_config]['table_name']}'...")
+                import_single_excel_to_db(caminho_novo_arquivo, chave_config, apartamento_id)
+                print(" -> Importação bem-sucedida.")
+            except Exception as e:
+                print(f" -> ERRO! Falha ao importar os dados: {e}")
+                continue
+
+            try:
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                novo_nome_renomeado = f"{nome_sem_ext}_{timestamp}{extensao}"
+                caminho_renomeado = os.path.join(caminho_base, novo_nome_renomeado)
+                print(f" -> Renomeando arquivo para '{novo_nome_renomeado}'...")
+                os.rename(caminho_novo_arquivo, caminho_renomeado)
+            except Exception as e:
+                print(f" -> ERRO! Falha ao renomear o arquivo: {e}")
+
+    print("\n--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
