@@ -8,8 +8,14 @@
 </head>
 <body class="login-body">
     <div class="login-container">
-        <h2>Acessar o Sistema</h2>
-        <p>Por favor, insira suas credenciais.</p>
+        
+        {% if nome_empresa %}
+            <h2>Acesso - {{ nome_empresa }}</h2>
+        {% else %}
+            <h2>Aceder ao Sistema</h2>
+        {% endif %}
+
+        <p>Por favor, insira as suas credenciais.</p>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -19,7 +25,11 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('login') }}">
+        {% if apartamento and apartamento.slug %}
+            <form method="POST" action="{{ url_for('login_por_slug', slug=apartamento.slug) }}">
+        {% else %}
+            <form method="POST" action="{{ url_for('login') }}">
+        {% endif %}
             <div class="form-group">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" required>

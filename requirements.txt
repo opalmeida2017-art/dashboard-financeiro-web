@@ -29,3 +29,4 @@ python-dotenv
 
 SQLAlchemy
 
+python-slugify

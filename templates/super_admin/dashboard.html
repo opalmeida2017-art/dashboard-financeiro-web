@@ -18,7 +18,7 @@
                         <th>Nome da Empresa</th>
                         <th>Status</th>
                         <th>Uso de Dados (Registos)</th>
-                        <th>Data de Criação</th>
+                        <th>Link de Acesso do Cliente</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -27,9 +27,15 @@
                     <tr>
                         <td>{{ apt.id }}</td>
                         <td>{{ apt.nome_empresa }}</td>
-                        <td>{{ apt.status }}</td>
+                        <td><span class="status-{{ apt.status }}">{{ apt.status }}</span></td>
                         <td>{{ "{:,.0f}".format(apt.total_registos or 0).replace(",", ".") }}</td>
-                        <td>{{ apt.data_criacao }}</td>
+                        <td>
+                            {% if apt.access_link != "Sem slug definido" %}
+                                <a href="{{ apt.access_link }}" target="_blank">{{ apt.access_link }}</a>
+                            {% else %}
+                                <span style="color: #888;">{{ apt.access_link }}</span>
+                            {% endif %}
+                        </td>
                         <td class="actions-cell">
                             <a href="{{ url_for('gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
                         </td>

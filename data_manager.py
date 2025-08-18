@@ -3,6 +3,7 @@
 import pandas as pd
 from sqlalchemy import text
 from datetime import datetime
+from slugify import slugify
 import database as db
 from database import engine # <-- ADICIONE ESTA LINHA
 import config
@@ -644,45 +645,44 @@ def get_all_apartments():
 # Em data_manager.py
 # SUBSTITUA a sua função create_apartment_and_admin inteira por esta versão:
 
+# Em data_manager.py
+
 def create_apartment_and_admin(nome_empresa: str, admin_nome: str, admin_email: str, password_hash: str):
     """Cria um novo apartamento e o seu primeiro utilizador admin numa única transação."""
     try:
-        # CORREÇÃO: Usando o método de conexão moderno e seguro do SQLAlchemy
-        with db.engine.connect() as conn:
-            # Inicia uma transação. Se houver erro, ela é desfeita (rollback) automaticamente.
+        with engine.connect() as conn:
             with conn.begin() as trans:
                 now = datetime.now().isoformat()
                 
-                # Cria o apartamento e usa a função text() com RETURNING id
-                sql_apartamento = text('INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (:nome, :status, :data) RETURNING id')
+                # Gera um slug a partir do nome da empresa (ex: "Empresa Teste" -> "empresa-teste")
+                apartamento_slug = slugify(nome_empresa)
+                
+                # Modifica a query para incluir o slug
+                sql_apartamento = text('INSERT INTO apartamentos (nome_empresa, status, data_criacao, slug) VALUES (:nome, :status, :data, :slug) RETURNING id')
                 result = conn.execute(sql_apartamento, {
                     "nome": nome_empresa, 
                     "status": 'ativo', 
-                    "data": now
+                    "data": now,
+                    "slug": apartamento_slug
                 })
                 
-                # Pega o ID retornado de forma segura
                 apartamento_id = result.scalar_one()
 
-                # Cria o utilizador admin para esse apartamento
+                # O resto da função continua igual...
                 sql_usuario = text('INSERT INTO usuarios (apartamento_id, nome, email, password_hash, role) VALUES (:apt_id, :nome, :email, :hash, :role)')
                 conn.execute(sql_usuario, {
-                    "apt_id": apartamento_id,
-                    "nome": admin_nome,
-                    "email": admin_email,
-                    "hash": password_hash,
-                    "role": 'admin'
+                    "apt_id": apartamento_id, "nome": admin_nome, "email": admin_email,
+                    "hash": password_hash, "role": 'admin'
                 })
         
-        # O 'commit' da transação é feito automaticamente ao sair do bloco 'with conn.begin()'
         return True, f"Apartamento '{nome_empresa}' e admin '{admin_email}' criados com sucesso."
 
     except Exception as e:
-        # A transação já foi desfeita, apenas retornamos o erro
+        if "unique_slug" in str(e):
+            return False, "Erro: Já existe uma empresa com um nome muito parecido. Por favor, escolha outro nome."
         if "usuarios_email_key" in str(e):
              return False, "Erro: O email do administrador já existe na base de dados."
         return False, f"Ocorreu um erro inesperado: {e}"
-    
 
 def get_apartment_details(apartamento_id: int):
     """Busca os detalhes de um único apartamento pelo seu ID usando SQLAlchemy Core."""
@@ -726,17 +726,13 @@ def update_apartment_details(apartamento_id: int, nome_empresa: str, status: str
         # O rollback é automático ao sair do 'with' com erro
         return False, f"Ocorreu um erro ao atualizar o apartamento: {e}"
 
-# Em data_manager.py
-# SUBSTITUA a função get_apartments_with_usage_stats inteira por esta:
-
-# Em data_manager.py
 
 def get_apartments_with_usage_stats():
     data_tables = [info["table_name"] for info in config.EXCEL_FILES_CONFIG.values()]
     try:
-        # Usando o método moderno e seguro
-        with db.engine.connect() as conn:
-            df_apartamentos = pd.read_sql('SELECT id, nome_empresa, status, data_criacao FROM apartamentos', conn)
+        with engine.connect() as conn:
+            # CORREÇÃO: Adicionamos a coluna 'slug' à consulta SQL
+            df_apartamentos = pd.read_sql('SELECT id, nome_empresa, status, data_criacao, slug FROM apartamentos', conn)
             if df_apartamentos.empty:
                 return []
 
@@ -760,6 +756,7 @@ def get_apartments_with_usage_stats():
     except Exception as e:
         print(f"Erro ao buscar apartamentos com estatísticas de uso: {e}")
         return []
+    
 def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter, filial_filter) -> pd.DataFrame:
     periodo_format = 'D' if start_date and end_date else 'M'
     
@@ -856,5 +853,14 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
         
     return monthly_df
 
-
+def get_apartment_by_slug(slug: str):
+    """Busca os detalhes de um apartamento pelo seu slug."""
+    try:
+        with engine.connect() as conn:
+            sql = text("SELECT * FROM apartamentos WHERE slug = :slug")
+            result = conn.execute(sql, {"slug": slug}).mappings().first()
+            return dict(result) if result else None
+    except Exception as e:
+        print(f"Erro ao buscar apartamento por slug: {e}")
+        return None
         

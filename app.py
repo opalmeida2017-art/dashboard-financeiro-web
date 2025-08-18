@@ -1,50 +1,77 @@
-from dotenv import load_dotenv # <-- ADICIONE ESTA LINHA
-load_dotenv() # <-- ADICIONE ESTA LINHA TAMBÉM
+from dotenv import load_dotenv
+load_dotenv()
 
-# --- ADICIONE AS DUAS LINHAS ABAIXO ---
 import os
-print(f"--- DEBUG: APLICACAO ESTA TENTANDO CONECTAR EM: {os.getenv('DATABASE_URL')} ---")
-# ----------------------------------------
-
 import logic
 import database as db
 import config
 import coletor_principal
 import getpass
-from functools import wraps
-import os
 import threading
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session, g
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
 from sqlalchemy import text
-from dotenv import load_dotenv
-
+from slugify import slugify
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
 app.config['SUPER_ADMIN_EMAIL'] ='op.almeida@hotmail.com'
-
-# NO: Define o tempo de vida da sessão para 30 minutos
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
 # --- INICIALIZAÇÕES ---
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
-login_manager.login_message = "Por favor, faça login para acessar esta página."
+login_manager.login_message = "Por favor, faça login para aceder a esta página."
 login_manager.login_message_category = "info"
 app.jinja_env.globals['config'] = app.config
 
+# --- FUNÇÕES AUXILIARES DE CONTEXTO E PERMISSÃO ---
+
+def get_target_apartment_id():
+    """
+    Determina o ID do apartamento correto a ser usado, respeitando o modo de
+    visualização do super admin. Esta é a fonte única da verdade para o contexto.
+    """
+    if session.get('force_customer_view') and 'viewing_apartment_id' in session:
+        return session['viewing_apartment_id']
+    elif current_user.is_authenticated:
+        return current_user.apartamento_id
+    return None
+
+def is_admin_in_context():
+    """Verifica se o utilizador tem privilégios de admin no contexto atual."""
+    if not current_user.is_authenticated:
+        return False
+    is_normal_admin = (current_user.role == 'admin')
+    is_impersonating_admin = (
+        current_user.email == app.config['SUPER_ADMIN_EMAIL'] and
+        session.get('force_customer_view')
+    )
+    return is_normal_admin or is_impersonating_admin
+
+@app.context_processor
+def inject_user_roles():
+    """Disponibiliza a função de verificação para todos os templates."""
+    return dict(is_admin_in_context=is_admin_in_context)
+
+def super_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.email != app.config['SUPER_ADMIN_EMAIL']:
+            flash("Acesso negado. Esta área é restrita.", "error")
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 @app.before_request
 def make_session_permanent():
     session.permanent = True
-    
-# --- MODELO DE USUÁRIO PARA O FLASK-LOGIN ---
+
+# --- MODELO DE UTILIZADOR E CARREGADOR ---
 class User(UserMixin):
     def __init__(self, id, email, nome, apartamento_id, role):
         self.id = id
@@ -53,49 +80,29 @@ class User(UserMixin):
         self.apartamento_id = apartamento_id
         self.role = role
 
-# Em app.py
-
 @login_manager.user_loader
 def load_user(user_id):
-    # Usando o método moderno e seguro
     with db.engine.connect() as conn:
         query = text("SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = :user_id")
-        result = conn.execute(query, {"user_id": user_id})
-        user_data = result.mappings().first() # Garante que o resultado é um dicionário
-    
+        user_data = conn.execute(query, {"user_id": user_id}).mappings().first()
     if user_data:
-        return User(
-            id=user_data['id'], 
-            email=user_data['email'], 
-            nome=user_data['nome'], 
-            apartamento_id=user_data['apartamento_id'], 
-            role=user_data['role']
-        )
+        return User(id=user_data['id'], email=user_data['email'], nome=user_data['nome'], apartamento_id=user_data['apartamento_id'], role=user_data['role'])
     return None
+
 # --- FILTROS DE TEMPLATE (Jinja2) ---
 @app.template_filter('currency')
 def format_currency(value):
     if value is None or not isinstance(value, (int, float)):
         return "R$ 0,00"
-    formatted_value = f"{value:,.2f}"
-    formatted_value = formatted_value.replace(",", "X").replace(".", ",").replace("X", ".")
+    formatted_value = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"R$ {formatted_value}"
 
 @app.template_filter('percentage')
 def format_percentage(value):
     if value is None or not isinstance(value, (int, float)):
         return "0,00%"
-    formatted_value = f"{value:.2f}"
-    formatted_value = formatted_value.replace(".", ",")
+    formatted_value = f"{value:.2f}".replace(".", ",")
     return f"{formatted_value}%"
-
-# --- INICIALIZAÇÃO DO BANCO DE DADOS ---
-with app.app_context():
-    print("Verificando e garantindo que todas as tabelas do banco de dados existam...")
-   #db.create_tables()
-    print("Verificação do banco de dados concluída.")
-
-FILENAME_TO_KEY_MAP = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}
 
 def _parse_filters():
     filters = {
@@ -108,59 +115,90 @@ def _parse_filters():
     filters['end_date_obj'] = datetime.strptime(filters['end_date_str'], '%Y-%m-%d').replace(hour=23, minute=59, second=59) if filters['end_date_str'] else None
     return filters
 
-# Em app.py
-
-# GARANTA QUE ESTA LINHA ESTEJA AQUI, EXATAMENTE ASSIM:
-# Em app.py, adicione esta função que está faltando:
+# --- ROTAS DE LOGIN E LOGOUT ---
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        if current_user.email == app.config['SUPER_ADMIN_EMAIL']:
-            return redirect(url_for('admin_dashboard'))
         return redirect(url_for('index'))
 
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-        
         with db.engine.connect() as conn:
             query = text("SELECT id, password_hash FROM usuarios WHERE email = :email")
-            result = conn.execute(query, {"email": email})
-            user_data = result.mappings().first()
+            user_data = conn.execute(query, {"email": email}).mappings().first()
         
         if user_data and bcrypt.check_password_hash(user_data['password_hash'], password):
             user = load_user(user_data['id'])
             if user:
                 login_user(user)
-                if user.email == app.config['SUPER_ADMIN_EMAIL']:
-                    return redirect(url_for('admin_dashboard'))
                 return redirect(url_for('index'))
         
         flash('Email ou senha inválidos. Tente novamente.', 'error')
-        
     return render_template('login.html')
+
+@app.route('/acesso/<slug>', methods=['GET', 'POST'])
+def login_por_slug(slug):
+    apartamento = logic.get_apartment_by_slug(slug)
+    if not apartamento:
+        return "Página não encontrada.", 404
+
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        with db.engine.connect() as conn:
+            query = text("SELECT id, password_hash, apartamento_id FROM usuarios WHERE email = :email")
+            user_data = conn.execute(query, {"email": email}).mappings().first()
+        
+        if user_data and bcrypt.check_password_hash(user_data['password_hash'], password):
+            is_super_admin = (email == app.config['SUPER_ADMIN_EMAIL'])
+            if not is_super_admin and (user_data['apartamento_id'] != apartamento['id']):
+                flash('Este utilizador não pertence a esta empresa.', 'error')
+                return redirect(url_for('login_por_slug', slug=slug))
+
+            user = load_user(user_data['id'])
+            if user:
+                login_user(user)
+                if is_super_admin:
+                    session['force_customer_view'] = True
+                    session['viewing_apartment_id'] = apartamento['id']
+                return redirect(url_for('index'))
+        
+        flash('Email ou senha inválidos. Tente novamente.', 'error')
+    return render_template('login.html', apartamento=apartamento, nome_empresa=apartamento['nome_empresa'])
+
 @app.route('/logout')
 @login_required
 def logout():
+    session.pop('force_customer_view', None)
+    session.pop('viewing_apartment_id', None)
     logout_user()
     return redirect(url_for('login'))
 
-# --- ROTAS PROTEGIDAS DA APLICAÇÃO ---
-@app.route('/')
+# --- ROTAS PRINCIPAIS DA APLICAÇÃO ---
 
+@app.route('/')
 @login_required
 def index():
+    if current_user.email == app.config['SUPER_ADMIN_EMAIL'] and not session.get('force_customer_view'):
+        return redirect(url_for('admin_dashboard'))
+
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        flash("Não foi possível identificar a empresa. Por favor, faça login novamente.", "error")
+        return redirect(url_for('logout'))
+
     filters = _parse_filters()
     summary_data = logic.get_dashboard_summary(
-        apartamento_id=current_user.apartamento_id,
+        apartamento_id=apartamento_id_alvo,
         start_date=filters['start_date_obj'], 
         end_date=filters['end_date_obj'], 
         placa_filter=filters['placa'], 
         filial_filter=filters['filial']
     )
-    placas = logic.get_unique_plates(apartamento_id=current_user.apartamento_id)
-    filiais = logic.get_unique_filiais(apartamento_id=current_user.apartamento_id)
+    placas = logic.get_unique_plates(apartamento_id=apartamento_id_alvo)
+    filiais = logic.get_unique_filiais(apartamento_id=apartamento_id_alvo)
     
     return render_template('index.html', 
                            summary=summary_data,
@@ -171,45 +209,94 @@ def index():
                            selected_start_date=filters['start_date_str'],
                            selected_end_date=filters['end_date_str'])
 
-# Em app.py, garanta que esta função exista
+@app.route('/faturamento_detalhes')
+@login_required
+def faturamento_detalhes():
+    filters = _parse_filters()
+    return render_template('faturamento_detalhes.html', **filters)
+
+# --- ROTAS DE API (PARA GRÁFICOS) ---
+
+@app.route('/api/monthly_summary')
+@login_required
+def api_monthly_summary():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    filters = _parse_filters()
+    monthly_data = logic.get_monthly_summary(
+        apartamento_id=apartamento_id_alvo,
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial']
+    )
+    return jsonify(monthly_data.to_dict(orient='records'))
+
+@app.route('/api/faturamento_dashboard_data')
+@login_required
+def api_faturamento_dashboard_data():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    filters = _parse_filters()
+    dashboard_data = logic.get_faturamento_details_dashboard_data(
+        apartamento_id=apartamento_id_alvo,
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial']
+    )
+    return jsonify(dashboard_data)
+
+# --- ROTAS DE GESTÃO (CLIENTE) ---
 
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload_file():
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        flash("Sessão inválida. Por favor, faça login novamente.", "error")
+        return redirect(url_for('login'))
+        
     uploaded_files = request.files.getlist('files[]')
     if not uploaded_files or uploaded_files[0].filename == '':
-        flash('Erro: Nenhum arquivo selecionado.', 'error')
+        flash('Erro: Nenhum ficheiro selecionado.', 'error')
         return redirect(url_for('index'))
 
     for file in uploaded_files:
         if file and file.filename:
             filename = file.filename
-            file_key = FILENAME_TO_KEY_MAP.get(filename)
+            file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
             if file_key:
                 try:
-                    extra_cols = logic.import_single_excel_to_db(file, file_key, current_user.apartamento_id)
+                    extra_cols = logic.import_single_excel_to_db(file, file_key, apartamento_id_alvo)
                     flash(f'Sucesso: Planilha "{filename}" importada.', 'success')
                     if extra_cols:
-                        flash(f'Aviso para "{filename}": As seguintes colunas não existem no banco e foram ignoradas: {", ".join(extra_cols)}', 'warning')
+                        flash(f'Aviso para "{filename}": As seguintes colunas não existem na base de dados e foram ignoradas: {", ".join(extra_cols)}', 'warning')
                 except Exception as e:
                     flash(f'Erro ao processar "{filename}": {e}', 'error')
             else:
-                flash(f'Erro: Nome de arquivo "{filename}" não reconhecido.', 'error')
+                flash(f'Erro: Nome de ficheiro "{filename}" não reconhecido.', 'error')
     
     return redirect(url_for('index'))
-@app.route('/gerenciar-grupos-dados')
 
+@app.route('/gerenciar-grupos-dados')
 @login_required
 def gerenciar_grupos_dados():
-    logic.sync_expense_groups(current_user.apartamento_id) 
-    df_flags = logic.get_all_group_flags(current_user.apartamento_id)
+    apartamento_id_alvo = get_target_apartment_id()
+    logic.sync_expense_groups(apartamento_id_alvo) 
+    df_flags = logic.get_all_group_flags(apartamento_id_alvo)
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
     return jsonify(flags_dict)
 
 @app.route('/gerenciar-grupos-salvar', methods=['POST'])
 @login_required
 def gerenciar_grupos_salvar():
-    all_groups = logic.get_all_expense_groups(current_user.apartamento_id)
+    apartamento_id_alvo = get_target_apartment_id()
+    all_groups = logic.get_all_expense_groups(apartamento_id_alvo)
     update_data = {}
     for group in all_groups:
         if f"{group}_custo" in request.form: 
@@ -218,53 +305,22 @@ def gerenciar_grupos_salvar():
             update_data[group] = 'despesa'
         else: 
             update_data[group] = 'nenhum'
-    logic.update_all_group_flags(current_user.apartamento_id, update_data)
+    logic.update_all_group_flags(apartamento_id_alvo, update_data)
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
-
-@app.route('/api/monthly_summary')
-@login_required
-def api_monthly_summary():
-    filters = _parse_filters()
-    monthly_data = logic.get_monthly_summary(
-        apartamento_id=current_user.apartamento_id,
-        start_date=filters['start_date_obj'],
-        end_date=filters['end_date_obj'],
-        placa_filter=filters['placa'],
-        filial_filter=filters['filial']
-    )
-    return jsonify(monthly_data.to_dict(orient='records'))
-
-@app.route('/faturamento_detalhes')
-@login_required
-def faturamento_detalhes():
-    filters = _parse_filters()
-    return render_template('faturamento_detalhes.html', **filters)
-
-@app.route('/api/faturamento_dashboard_data')
-@login_required
-def api_faturamento_dashboard_data():
-    filters = _parse_filters()
-    dashboard_data = logic.get_faturamento_details_dashboard_data(
-        apartamento_id=current_user.apartamento_id,
-        start_date=filters['start_date_obj'],
-        end_date=filters['end_date_obj'],
-        placa_filter=filters['placa'],
-        filial_filter=filters['filial']
-    )
-    return jsonify(dashboard_data)
 
 @app.route('/iniciar-coleta', methods=['POST'])
 @login_required
 def iniciar_coleta():
-    print("Requisição para iniciar o orquestrador de coleta recebida.")
-    thread = threading.Thread(target=coletor_principal.executar_todas_as_coletas, args=(current_user.apartamento_id,))
+    apartamento_id_alvo = get_target_apartment_id()
+    thread = threading.Thread(target=coletor_principal.executar_todas_as_coletas, args=(apartamento_id_alvo,))
     thread.start()
     return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
 
 @app.route('/configuracao', methods=['GET', 'POST'])
 @login_required
 def configuracao():
+    apartamento_id_alvo = get_target_apartment_id()
     if request.method == 'POST':
         configs = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
@@ -278,93 +334,33 @@ def configuracao():
             'DATA_INICIAL_ROBO': request.form.get('DATA_INICIAL_ROBO'),
             'DATA_FINAL_ROBO': request.form.get('DATA_FINAL_ROBO'),
         }
-        logic.salvar_configuracoes_robo(current_user.apartamento_id, configs)
+        logic.salvar_configuracoes_robo(apartamento_id_alvo, configs)
         flash('Configurações salvas com sucesso!', 'success')
         return redirect(url_for('configuracao'))
     
-    configs_salvas = logic.ler_configuracoes_robo(current_user.apartamento_id)
+    configs_salvas = logic.ler_configuracoes_robo(apartamento_id_alvo)
     return render_template('configuracao.html', configs=configs_salvas)
 
-# Em app.py
-# SUBSTITUA a sua função criar_admin_command inteira por esta versão:
+# --- ROTAS DE GESTÃO DE UTILIZADORES (ADMIN DO APARTAMENTO E SÍNDICO) ---
 
-@app.cli.command("criar-admin")
-def criar_admin_command():
-    """Cria o primeiro inquilino (apartamento) e seu usuário administrador."""
-    print("--- Assistente de Criação do Primeiro Apartamento e Admin ---")
-    
-    nome_empresa = input("Nome da Empresa (Apartamento): ")
-    admin_nome = input("Seu nome completo: ")
-    admin_email = input("Seu email (será seu login): ")
-    admin_password = getpass.getpass("Digite uma senha para você: ")
-
-    if not all([nome_empresa, admin_nome, admin_email, admin_password]):
-        print("Erro: Todos os campos são obrigatórios.")
-        return
-
-    try:
-        # CORREÇÃO: Usando o método de conexão moderno e seguro do SQLAlchemy
-        with db.engine.connect() as conn:
-            # Inicia uma transação. Se houver erro, ela é desfeita (rollback) automaticamente.
-            with conn.begin() as trans:
-                now = datetime.now().isoformat()
-                
-                # Insere o Apartamento e usa a função text() para a query
-                sql_apartamento = text('INSERT INTO apartamentos (nome_empresa, status, data_criacao) VALUES (:nome, :status, :data) RETURNING id')
-                result = conn.execute(sql_apartamento, {
-                    "nome": nome_empresa, 
-                    "status": 'ativo', 
-                    "data": now
-                })
-                
-                # Pega o ID retornado de forma segura. Se não retornar nada, causa um erro.
-                apartamento_id = result.scalar_one() 
-
-                print(f"-> Apartamento '{nome_empresa}' criado com ID: {apartamento_id}")
-
-                # Insere o Usuário
-                password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
-                sql_usuario = text('INSERT INTO usuarios (apartamento_id, email, password_hash, nome, role) VALUES (:apt_id, :email, :hash, :nome, :role)')
-                conn.execute(sql_usuario, {
-                    "apt_id": apartamento_id,
-                    "email": admin_email,
-                    "hash": password_hash,
-                    "nome": admin_nome,
-                    "role": 'admin'
-                })
-                
-                print(f"-> Usuário administrador '{admin_email}' criado com sucesso.")
-            # O 'commit' da transação é feito automaticamente ao sair do bloco 'with conn.begin()'
-        print("\n--- Processo concluído! ---")
-
-    except Exception as e:
-        # A transação já foi desfeita, apenas mostramos o erro.
-        print(f"\nOcorreu um erro: {e}")
-        print("A operação foi cancelada.")
-        
 @app.route('/gerenciar-usuarios')
 @login_required
 def gerenciar_usuarios():
-    # Garante que apenas administradores possam aceder a esta página
-    if current_user.role != 'admin':
-        flash('Acesso negado. Você não tem permissão para ver esta página.', 'error')
+    if not is_admin_in_context():
+        flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
     
-    # Busca os utilizadores do apartamento do admin logado
-    users = logic.get_users_for_apartment(current_user.apartamento_id)
-    
+    apartamento_id_alvo = get_target_apartment_id()
+    users = logic.get_users_for_apartment(apartamento_id_alvo)
     return render_template('gerenciar_usuarios.html', users=users)
-
-# Em app.py
-
-# --- ROTAS DE GESTÃO DE UTILIZADORES (ADMIN DO APARTAMENTO) ---
 
 @app.route('/gerenciar-usuarios/adicionar', methods=['POST'])
 @login_required
 def adicionar_usuario():
-    if current_user.role != 'admin':
+    if not is_admin_in_context():
         return jsonify({'success': False, 'message': 'Acesso negado.'}), 403
-
+    
+    apartamento_id_alvo = get_target_apartment_id()
     nome = request.form.get('nome')
     email = request.form.get('email')
     password = request.form.get('password')
@@ -375,41 +371,36 @@ def adicionar_usuario():
         return redirect(url_for('gerenciar_usuarios'))
 
     password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-    
     success, message = logic.add_user_to_apartment(
-        apartamento_id=current_user.apartamento_id,
-        nome=nome,
-        email=email,
-        password_hash=password_hash,
-        role=role
+        apartamento_id=apartamento_id_alvo, nome=nome, email=email,
+        password_hash=password_hash, role=role
     )
 
     if success:
         flash(message, 'success')
     else:
         flash(message, 'error')
-        
     return redirect(url_for('gerenciar_usuarios'))
-
 
 @app.route('/gerenciar-usuarios/dados/<int:user_id>', methods=['GET'])
 @login_required
 def get_user_data(user_id):
-    if current_user.role != 'admin':
+    if not is_admin_in_context():
         return jsonify({'error': 'Acesso negado'}), 403
     
-    user = logic.get_user_by_id(user_id, current_user.apartamento_id)
+    apartamento_id_alvo = get_target_apartment_id()
+    user = logic.get_user_by_id(user_id, apartamento_id_alvo)
     if user:
         return jsonify(user)
     return jsonify({'error': 'Utilizador não encontrado'}), 404
 
-
 @app.route('/gerenciar-usuarios/editar/<int:user_id>', methods=['POST'])
 @login_required
 def editar_usuario(user_id):
-    if current_user.role != 'admin':
+    if not is_admin_in_context():
         return jsonify({'success': False, 'message': 'Acesso negado.'}), 403
-
+    
+    apartamento_id_alvo = get_target_apartment_id()
     nome = request.form.get('nome')
     email = request.form.get('email')
     password = request.form.get('password')
@@ -419,55 +410,51 @@ def editar_usuario(user_id):
         flash('Nome e email são obrigatórios.', 'error')
         return redirect(url_for('gerenciar_usuarios'))
 
-    new_password_hash = None
-    if password:
-        new_password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-
+    new_password_hash = bcrypt.generate_password_hash(password).decode('utf-8') if password else None
     success, message = logic.update_user_in_apartment(
-        user_id=user_id,
-        apartamento_id=current_user.apartamento_id,
-        nome=nome,
-        email=email,
-        role=role,
-        new_password_hash=new_password_hash
+        user_id=user_id, apartamento_id=apartamento_id_alvo, nome=nome,
+        email=email, role=role, new_password_hash=new_password_hash
     )
 
     if success:
         flash(message, 'success')
     else:
         flash(message, 'error')
-        
     return redirect(url_for('gerenciar_usuarios'))
 
 @app.route('/gerenciar-usuarios/apagar/<int:user_id>', methods=['POST'])
 @login_required
 def apagar_usuario(user_id):
-    if current_user.role != 'admin':
+    if not is_admin_in_context():
         return jsonify({'success': False, 'message': 'Acesso negado.'}), 403
     
-    # Não permitir que o admin se apague a si mesmo
+    apartamento_id_alvo = get_target_apartment_id()
     if user_id == current_user.id:
         flash('Não pode apagar a sua própria conta de administrador.', 'error')
         return redirect(url_for('gerenciar_usuarios'))
 
-    success, message = logic.delete_user_from_apartment(user_id, current_user.apartamento_id)
-
+    success, message = logic.delete_user_from_apartment(user_id, apartamento_id_alvo)
     if success:
         flash(message, 'success')
     else:
         flash(message, 'error')
-
     return redirect(url_for('gerenciar_usuarios'))
 
-# Função auxiliar para verificar se o utilizador é o Super Admin
-def super_admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.email != app.config['SUPER_ADMIN_EMAIL']:
-            flash("Acesso negado. Esta área é restrita.", "error")
-            return redirect(url_for('index'))
-        return f(*args, **kwargs)
-    return decorated_function
+# --- ROTAS DO SUPER ADMIN (SÍNDICO) ---
+
+@app.route('/super-admin')
+@login_required
+@super_admin_required
+def admin_dashboard():
+    session.pop('force_customer_view', None)
+    session.pop('viewing_apartment_id', None)
+    apartamentos = logic.get_apartments_with_usage_stats()
+    for apt in apartamentos:
+        if apt.get('slug'):
+            apt['access_link'] = url_for('login_por_slug', slug=apt['slug'], _external=True)
+        else:
+            apt['access_link'] = "Sem slug definido"
+    return render_template('super_admin/dashboard.html', apartamentos=apartamentos)
 
 @app.route('/super-admin/criar', methods=['GET', 'POST'])
 @login_required
@@ -481,31 +468,18 @@ def criar_apartamento():
 
         if not all([nome_empresa, admin_nome, admin_email, admin_password]):
             flash("Todos os campos são obrigatórios.", "error")
-            # CORREÇÃO: Renderiza a mesma página para mostrar o erro imediatamente
             return render_template('super_admin/criar_apartamento.html')
 
         password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
-        
         success, message = logic.create_apartment_and_admin(nome_empresa, admin_nome, admin_email, password_hash)
 
         if success:
             flash(message, 'success')
-            # CORREÇÃO: Redireciona para o dashboard após o sucesso
             return redirect(url_for('admin_dashboard'))
         else:
             flash(message, 'error')
-            # CORREÇÃO: Renderiza a mesma página para mostrar o erro
             return render_template('super_admin/criar_apartamento.html')
-
     return render_template('super_admin/criar_apartamento.html')
-
-@app.route('/super-admin')
-@login_required
-@super_admin_required
-def admin_dashboard():
-    # MODIFICADO: Chama a nova função para obter estatísticas de uso.
-    apartamentos = logic.get_apartments_with_usage_stats()
-    return render_template('super_admin/dashboard.html', apartamentos=apartamentos)
 
 @app.route('/super-admin/gerir/<int:apartamento_id>', methods=['GET', 'POST'])
 @login_required
@@ -532,6 +506,27 @@ def gerir_apartamento(apartamento_id):
         return redirect(url_for('admin_dashboard'))
         
     return render_template('super_admin/gerir_apartamento.html', apartamento=apartamento)
+
+# --- COMANDOS DE CLI ---
+@app.cli.command("criar-admin")
+def criar_admin_command():
+    print("--- Assistente de Criação do Primeiro Apartamento e Admin ---")
+    nome_empresa = input("Nome da Empresa (Apartamento): ")
+    admin_nome = input("Seu nome completo: ")
+    admin_email = input("Seu email (será seu login): ")
+    admin_password = getpass.getpass("Digite uma senha para você: ")
+
+    if not all([nome_empresa, admin_nome, admin_email, admin_password]):
+        print("Erro: Todos os campos são obrigatórios.")
+        return
+
+    password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
+    success, message = logic.create_apartment_and_admin(nome_empresa, admin_nome, admin_email, password_hash)
+    
+    if success:
+        print(f"\nSUCESSO: {message}")
+    else:
+        print(f"\nERRO: {message}")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

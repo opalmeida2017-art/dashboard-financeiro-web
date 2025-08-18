@@ -117,3 +117,8 @@ def get_apartments_with_usage_stats():
     print(">>> [LOGIC] Chamando get_apartments_with_usage_stats")
     return dm.get_apartments_with_usage_stats()
 
+def get_apartment_by_slug(slug: str):
+    """Função de ponte para buscar um apartamento pelo seu slug."""
+    print(f">>> [LOGIC] Chamando get_apartment_by_slug para o slug: {slug}")
+    # 'dm' é o alias para data_manager
+    return dm.get_apartment_by_slug(slug)
