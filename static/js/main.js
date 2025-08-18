@@ -20,14 +20,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return response.json(); // Converte a resposta para JSON
         })
        .then(data => {
-            // Se não houver dados ou houver um erro, não faz nada
-            if (!data |
-
-| data.length === 0 |
-| data.error) {
-                console.log("Nenhum dado recebido da API.");
-                return;
-            }
+// Se não houver dados ou houver um erro, não faz nada
+if (!data || data.length === 0 || data.error) {
+    console.log("Nenhum dado recebido da API.");
+    return;
+}
 
             // Extrai os rótulos (labels) e os valores dos dados para o gráfico
             // Assumimos que a primeira coluna é o rótulo (eixo X)
@@ -54,7 +51,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 type: 'bar', // Tipo de gráfico (barra, linha, etc.)
                 data: {
                     labels: labels,
-                    datasets:
+                    datasets: [{
+                        label: 'Valores',
+                        data: values,
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
                 },
                 options: {
                     scales: {

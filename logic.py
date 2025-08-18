@@ -3,6 +3,7 @@ import data_manager as dm
 import database as db
 import os
 import config
+
 def get_dashboard_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
     print(f">>> [LOGIC] Chamando get_dashboard_summary para o apartamento ID: {apartamento_id}")
     summary_data = dm.get_dashboard_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter)

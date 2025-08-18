@@ -39,5 +39,5 @@ TABLE_PRIMARY_KEYS = {
     "relFilViagensFatCliente": ["numConhec"],
     "relFilDespesasGerais": ["numNota", "dataControle", "nomeForn"],
     "relFilContasPagarDet": ["numNota", "dataVenc", "nomeForn"],
-    "relFilContasReceber": ["numConhec"]
+    "relFilContasReceber": ["codDuplicataReceber"]
 }

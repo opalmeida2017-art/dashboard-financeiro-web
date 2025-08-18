@@ -182,12 +182,15 @@ h1, h2 {
     position: relative;
     animation: slide 2s linear infinite;
 }
+/* Em style.css */
 .truck-emoji {
     font-size: 24px;
     position: absolute;
-    right: -15px;
+    left: 0; /* <-- MUDANÇA: Começa na esquerda */
     top: -2px;
     transform: scaleX(-1);
+    /* APLICA A ANIMAÇÃO DE MOVIMENTO */
+    animation: drive 8s linear infinite;
 }
 @keyframes slide {
     from { background-position: 0 0; }
@@ -221,4 +224,212 @@ h1, h2 {
 /* 3. O seletor de "hover" agora é específico para o card de faturamento */
 .card-com-link-hover:hover .link-detalhes-container {
     opacity: 1; /* Fica visível com o mouse em cima */
+}
+
+/* Em style.css (adicione no final) */
+@keyframes drive {
+    from {
+        left: -40px; /* Começa um pouco antes da barra */
+    }
+    to {
+        left: calc(100% - 20px); /* Termina um pouco antes do final da barra */
+    }
+}
+
+/* --- CÓDIGO CORRIGIDO PARA A TELA DE CONFIGURAÇÃO DO ROBÔ --- */
+
+/* Container principal da página de configuração */
+.config-page-container {
+    max-width: 1000px;
+    margin: 20px auto;
+    padding: 20px;
+}
+
+/* Cabeçalho com o título e os botões */
+.config-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+}
+
+.config-header-actions {
+    display: flex;
+    gap: 10px; /* Espaço entre os botões */
+}
+
+/* Container para os cartões de cima (2 colunas) */
+.config-grid-top {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 2 colunas de largura igual */
+    gap: 25px;
+    margin-bottom: 25px;
+}
+
+/* Estilo de cada cartão de configuração */
+.config-card {
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+}
+
+.config-card h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+/* Grid para os campos de códigos, para melhor alinhamento */
+.codes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+/* Responsividade para telas menores */
+@media (max-width: 768px) {
+    .config-grid-top {
+        grid-template-columns: 1fr; /* Empilha os cartões em 1 coluna */
+    }
+    .config-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+}
+/* --- CÓDIGO CORRIGIDO E SIMPLIFICADO PARA A TELA DE CONFIGURAÇÃO --- */
+
+.config-page-container {
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 20px;
+}
+
+.config-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+}
+
+/* Garante que os botões fiquem agrupados à direita */
+.config-header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Estilo de cada cartão de configuração */
+.config-card {
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    margin-bottom: 25px; /* Adiciona espaço entre os cartões empilhados */
+}
+
+.config-card h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+/* Grid para os campos de códigos, para melhor alinhamento interno */
+.codes-grid {
+    display: grid;
+    /* Ajusta o número de colunas conforme o espaço, ideal para os 5 campos */
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+/* Botões (pode manter o estilo padronizado que já adicionamos) */
+.btn {
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: 500;
+    text-decoration: none;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+.btn-primary:hover {
+    background-color: #0056b3;
+}
+/* Em static/style.css */
+
+.btn-danger {
+    background-color: #dc3545; /* Cor vermelha para perigo/sair */
+    color: white;
+    border-color: #dc3545;
+}
+.btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+/* ===== ESTILO FINAL PARA A TELA DE CONFIGURAÇÃO (GRID 1x3 COM QUADROS) ===== */
+
+.config-page-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+}
+
+.config-header h1 {
+    text-align: left;
+    margin-bottom: 25px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 15px;
+}
+
+/* Define o container do grid com 3 colunas */
+.config-grid-1x3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 25px;
+}
+
+/* CORREÇÃO: Estilo do quadro/cartão que estava faltando */
+.config-card {
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    border: 1px solid #e9ecef;
+}
+
+.config-card h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+/* Container para os botões no final do formulário */
+.form-actions {
+    margin-top: 30px;
+    text-align: right;
+}
+
+/* Responsividade */
+@media (max-width: 992px) {
+    .config-grid-1x3 {
+        grid-template-columns: 1fr;
+    }
 }

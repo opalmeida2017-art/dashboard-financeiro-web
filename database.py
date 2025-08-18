@@ -1,291 +1,48 @@
+import database as db
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 import os
-import psycopg2
-import sqlite3
-import psycopg2.extras  # <-- 1. Importe a biblioteca extra
 import pandas as pd
 import config
-import glob
+import glob 
 from datetime import datetime
-import sqlite3
-
-DATABASE_NAME = 'financeiro.db'
+import psycopg2.extras # <-- Importação essencial
 
 db_url = os.getenv('DATABASE_URL')
 if not db_url:
     raise ValueError("DATABASE_URL não definida. Verifique seu arquivo .env")
 
-# Se houver um problema aqui (URL inválida, driver em falta), a aplicação
-# irá falhar na inicialização com um erro claro, o que é o comportamento desejado.
 engine = create_engine(db_url)
 
+# --- VERSÃO CORRIGIDA DA FUNÇÃO ---
 def get_db_connection():
-    """Retorna uma nova conexão a partir do engine global."""
-    return engine.connect()
+    """
+    Retorna uma conexão DBAPI2 nativa (psycopg2) que é compatível com
+    o código existente que usa conn.cursor().
+    AGORA RETORNA RESULTADOS COMO DICIONÁRIOS.
+    """
+    # .raw_connection() extrai a conexão psycopg2 de dentro do pool do SQLAlchemy
+    raw_conn = engine.raw_connection()
+    
+    # Esta linha é a correção crucial. Ela instrui a conexão a devolver
+    # os resultados como dicionários, resolvendo o 'TypeError' anterior.
+    raw_conn.cursor_factory = psycopg2.extras.DictCursor
+    
+    return raw_conn
+# --- FIM DA CORREÇÃO ---
 
-    print("Criando tabelas para o banco de dados SQLite local...")
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
-        # --- NOVAS TABELAS PARA MULTI-TENANCY ---
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "apartamentos" (
-                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-                "nome_empresa" TEXT NOT NULL,
-                "status" TEXT DEFAULT 'ativo',
-                "data_criacao" TEXT NOT NULL,
-                "data_vencimento" TEXT, 
-                "notas_admin" TEXT
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "usuarios" (
-                "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-                "apartamento_id" INTEGER NOT NULL,
-                "email" TEXT UNIQUE NOT NULL,
-                "password_hash" TEXT NOT NULL,
-                "nome" TEXT,
-                "role" TEXT DEFAULT 'usuario',
-                FOREIGN KEY("apartamento_id") REFERENCES "apartamentos"("id")
-            )
-        ''')
-        # --- FIM DAS NOVAS TABELAS ---
-
-        # Nomes de tabelas e colunas são colocados entre aspas para preservar maiúsculas/minúsculas.
-        
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "relFilViagensFatCliente" (
-                "apartamento_id" INTEGER NOT NULL,
-                "COFINS" REAL, "CSLL" REAL, "PIS" REAL, "acertoSaldo" REAL, "adiantamentoEmp2" REAL, "adiantamentoEmpresa" REAL,
-                "adiantamentoMotorista" REAL, "adtoMot2" REAL, "agregado" TEXT, "baseISS" REAL, "cargaDescarga" REAL,
-                "cepCliente" TEXT, "cidCliente" TEXT, "cidDest" TEXT, "cidEmpresas" TEXT, "cidOrig" TEXT, "cidadeClientePrincipal" TEXT,
-                "cidadeDest" TEXT, "cidadeFil" TEXT, "cidadeRem" TEXT, "classificacaoEmbFreteEmp" TEXT, "clientePagaSaldoMotorista" TEXT,
-                "cnpjCpfCliente" TEXT, "cnpjCpfEmpresas" TEXT, "cnpjCpfFil" TEXT, "cnpjCpfProp" TEXT, "codAcertoProprietario" INTEGER,
-                "codCheque" TEXT, "codCliente" INTEGER, "codClientePrincipal" INTEGER, "codDest" INTEGER, "codFatPagAdiant" INTEGER,
-                "codFatPagSaldo" INTEGER, "codFaturaAdiantEmp2" INTEGER, "codFaturaAdiantamento" INTEGER, "codFaturaClassificacao" INTEGER,
-                "codFaturaEstadia" INTEGER, "codFaturaICMS" INTEGER, "codFaturaPedagio" INTEGER, "codFaturaSaldo" INTEGER,
-                "codFaturaSaldoComp" INTEGER, "codFilial" INTEGER, "codFornecedorAdiant" INTEGER, "codFornecedorClassificacao" INTEGER,
-                "codFornecedorICMS" INTEGER, "codFornecedorPedagio" INTEGER, "codFornecedorSaldo" INTEGER, "codManif" INTEGER,
-                "codMercadoria" INTEGER, "codProp" INTEGER, "codRem" INTEGER, "codTipoCliente" INTEGER, "codTransAdiant" INTEGER,
-                "codTransEstadia" INTEGER, "codTransICMS" INTEGER, "codTransPedagio" INTEGER, "codTransSaldo" INTEGER,
-                "codVeiculo" INTEGER, "complementoCliente" TEXT, "contrato" TEXT, "cpfMot" TEXT, "cteDataReciboEnv" TEXT,
-                "cteStatus" TEXT, "cteStatusDesc" TEXT, "dataChegouSaldo" TEXT, "dataEmissao" TEXT, "dataEncerramento" TEXT,
-                "dataFatPagAdiant" TEXT, "dataFatPagSaldo" TEXT, "dataFatSaldo" TEXT, "dataINS" TEXT, "dataNascimentoMot" TEXT,
-                "dataPagtoDuplicatas" TEXT, "dataPrevDescarga" TEXT, "dataVencAdiant" TEXT, "dataVencSaldo" TEXT,
-                "dataViagemMotorista" TEXT, "descCSLLSaldoEmp" REAL, "descCofinsSaldoEmp" REAL, "descColeta" REAL,
-                "descDifFrete" REAL, "descEntrega" REAL, "descIRRFSaldoEmp" REAL, "descPISSaldoEmp" REAL, "descPedagioBaseMot" REAL,
-                "descQuebraSaldoEmp" TEXT, "descSeguro2Saldo" REAL, "descSeguro2SaldoMot" REAL, "descSeguroSaldo" REAL,
-                "descSeguroSaldoMot" REAL, "descSestSenatSaldoEmp" REAL, "descontaICMSSaldoEmpresa" TEXT,
-                "descontaINSSSaldo" TEXT, "descontaINSSSaldoMot" TEXT, "descontaISSSaldoEmp" TEXT, "descricaoMercadoria" TEXT,
-                "despesaExtra" REAL, "enderecoCliente" TEXT, "enderecoEmpresas" TEXT, "enderecoFil" TEXT, "estadiaEmbutidaFrete" TEXT,
-                "fEmp" REAL, "faturaICMSFinal" REAL, "faturaPesoChegada" REAL, "faturamento" REAL, "faxEmpresas" TEXT,
-                "faxFil" TEXT, "foneCliente" TEXT, "foneEmpresas" TEXT, "foneFil" TEXT, "freteCombinado" REAL, "freteEmpresa" REAL,
-                "freteEmpresaComp" REAL, "freteEmpresaSai" REAL, "freteMotorista" REAL, "freteMotoristaSai" REAL,
-                "historico1FatSaldo" TEXT, "historico2FatSaldo" TEXT, "historicoFatSaldo" TEXT, "horaFimDescarga" TEXT,
-                "icmsEmbutido" TEXT, "inscEstCliente" TEXT, "issEmbutido" TEXT, "kmFim" REAL, "kmIni" REAL, "kmParc" REAL,
-                "kmRodado" REAL, "liberadoOrdServ" TEXT, "nomeCliente" TEXT, "nomeClientePrincipal" TEXT, "nomeDest" TEXT,
-                "nomeEmpresas" TEXT, "nomeFilial" TEXT, "nomeFornSaldo" TEXT, "nomeMot" TEXT, "nomeProp" TEXT, "nomeRem" TEXT,
-                "numConhec" INTEGER, "numNF" TEXT, "numPedido" TEXT, "numero" TEXT, "numeroClassificacao" TEXT, "numeroICMS" TEXT,
-                "numeroProgramacao" TEXT, "obsFatSaldo" TEXT, "outrosDescontos" REAL, "outrosDescontosMot" REAL,
-                "outrosDescontosMot2" REAL, "pagaICMS" TEXT, "pedagioEmbutidoFrete" TEXT, "pedidoFrete" TEXT,
-                "percRedVLICMS" REAL, "permiteFaturar" TEXT, "permitePagarSaldoFrota" TEXT, "pesoChegada" REAL,
-                "pesoSaida" REAL, "pesoSaidaMotorista" REAL, "placa" TEXT, "precoTonEmpresa" REAL, "precoTonMotorista" REAL,
-                "premioSeguro" REAL, "premioSeguro2" REAL, "quantMercadoria" REAL, "quantidadeQuebra" REAL,
-                "quebraSegurada" TEXT, "saldoEmp" REAL, "saldoMotorista" REAL, "somaFreteEmpresaComICMS" REAL,
-                "somarISSFatSaldo" TEXT, "taxaAdiantEmpresa" REAL, "tipoCte" TEXT, "tipoFat" TEXT, "tipoFrete" TEXT,
-                "tributaImpostos" TEXT, "ufCidCliente" TEXT, "ufCidDest" TEXT, "ufCidFil" TEXT, "ufCidRem" TEXT,
-                "ufClientePrincipal" TEXT, "ufDest" TEXT, "ufOrig" TEXT, "vPercARet" REAL, "valorAbonoQuebra" REAL,
-                "valorBalsa" REAL, "valorClassificacao" REAL, "valorEstadia" REAL, "valorFreteEmpresaICMS" REAL,
-                "valorFreteFiscal" REAL, "valorICMS" REAL, "valorICMSNaoEmb" REAL, "valorINSS" REAL, "valorINSSEmpresa" REAL,
-                "valorIRRF" REAL, "valorISS" REAL, "valorPedagio" REAL, "valorQuebra" REAL, "valorRastreamento" REAL,
-                "valorSestSenat" REAL, "valorTotalDPsPagoViagem" REAL, "veiculoProprio" TEXT, "vlARec" REAL, "vlAfat" REAL,
-                "vlCOFINS" REAL, "vlCSLL" REAL, "vlFaturado" REAL, "vlPIS" REAL, "vlRec" REAL
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "relFilViagensCliente" (
-                "apartamento_id" INTEGER NOT NULL, 
-                "acertoICMS" TEXT, "acertoSaldo" REAL, "adValor" REAL, "adiantamentoMotorista" REAL, "adtoMot2" REAL,
-                "aliquotaCofins" REAL, "aliquotaIss" REAL, "aliquotaPis" REAL, "arqXMLAss" TEXT, "baseICMS" REAL,
-                "baseICMSDireta" REAL, "baseImpostos" REAL, "baseIss" REAL, "cancelado" TEXT, "cargaDescarga" REAL,
-                "cartaFrete" TEXT, "celularMotorista" TEXT, "celularProp" TEXT, "chaveNF" TEXT, "checkList" TEXT,
-                "cidDestinoFormat" TEXT, "cidOrigemFormat" TEXT, "cnhMotorista" TEXT, "cnpjCpfCliente" TEXT,
-                "cnpjCpfDest" TEXT, "cnpjCpfEmpresas" TEXT, "cnpjCpfFilial" TEXT, "cnpjCpfProp" TEXT, "cnpjCpfRemet" TEXT,
-                "cnpjUnidadeEmb" TEXT, "codClDest" INTEGER, "codClRemet" INTEGER, "codCliente" INTEGER,
-                "codColetaEntregaAg" INTEGER, "codEmpresas" INTEGER, "codFaturaSaldo" INTEGER, "codFilial" INTEGER,
-                "codMercadoria" INTEGER, "codOrdemCar" INTEGER, "codProp" INTEGER, "codRota" INTEGER, "codServicoNfs" INTEGER,
-                "codUnidadeEmb" INTEGER, "comissao" REAL, "cpfMotorista" TEXT, "cteChave" TEXT, "cteDataReciboEnv" TEXT,
-                "cteFusoHorarioAutor" TEXT, "cteProt" TEXT, "cteStatus" TEXT, "dataALT" TEXT, "dataEmissao" TEXT,
-                "dataEmissaoComHora" TEXT, "dataINS" TEXT, "dataNascimentoProp" TEXT, "dataPrevDescarga" TEXT,
-                "dataPrevEntrega" TEXT, "dataViagemMotorista" TEXT, "descAg" TEXT, "descEntrega" TEXT, "descTipoCte" TEXT,
-                "descontaICMSSaldoEmpresa" TEXT, "descontaINSSSaldoMot" TEXT, "descricaoEspecieMerc" TEXT,
-                "descricaoMercadoria" TEXT, "despesaExtra" REAL, "despesasadicionais" REAL, "embarcadorNome" TEXT,
-                "envioLote" TEXT, "estadiaEmbutidaFrete" TEXT, "fTotalPrest" REAL, "faturaICMSFinal" REAL,
-                "faturaPesoChegada" REAL, "foneMotorista" TEXT, "foneProp" TEXT, "freteEmpresa" REAL, "freteEmpresaSai" REAL,
-                "freteMotorista" REAL, "freteMotoristaSai" REAL, "fretePago" TEXT, "horaFimDescarga" TEXT, "icmsEmbutido" TEXT,
-                "inscricaoEstadualFilial" TEXT, "margemFrete" REAL, "margemFretePerc" REAL, "modelo" TEXT, "natureza" TEXT,
-                "nfseProt" TEXT, "nfseStatus" TEXT, "nfseStatusDesc" TEXT, "nomeCidCliente" TEXT, "nomeCidDestino" TEXT,
-                "nomeCidOrigem" TEXT, "nomeClDest" TEXT, "nomeClRemet" TEXT, "nomeCliente" TEXT, "nomeEmpresas" TEXT,
-                "nomeFilial" TEXT, "nomeMotorista" TEXT, "nomeProp" TEXT, "nomeUnidEmb" TEXT, "numConhec" INTEGER,
-                "numConhecColEntrega" TEXT, "numNF" TEXT, "numNotaNF" TEXT, "numPedido" TEXT, "numero" TEXT,
-                "numeroApolice" TEXT, "numeroColEntrega" TEXT, "obs" TEXT, "obsFaturaPeso" TEXT, "obsFiscal" TEXT,
-                "outrosDescontos" REAL, "outrosDescontosMot" REAL, "outrosDescontosMot2" REAL, "pagaICMS" TEXT,
-                "pagaISS" TEXT, "pagar" TEXT, "pedagioEmbFreteMot" TEXT, "pedagioEmbutido" TEXT, "pedagioEmbutidoFrete" TEXT,
-                "pedidoCliente2" TEXT, "pedidoFrete" TEXT, "pedidoTransf" TEXT, "percRedVLICMS" REAL, "permiteFaturar" TEXT,
-                "permitePagarSaldoFrota" TEXT, "pesoChegada" REAL, "pesoSaida" REAL, "pesoSaidaMotorista" REAL,
-                "pisProp" TEXT, "placaVeiculo" TEXT, "porcICMS" REAL, "precoKgMercQuebra" REAL, "precoMercadoria" REAL,
-                "precoTonEmpresa" REAL, "precoTonFiscal" REAL, "precoTonMotorista" REAL, "premioSeguro" REAL,
-                "premioSeguro2" REAL, "quantMercadoria" REAL, "quantidadeQuebra" REAL, "quebraSegurada" TEXT,
-                "quebraTotal" REAL, "rgMotorista" TEXT, "sacaCarRPapel" TEXT, "saldoMotorista" REAL,
-                "secCatEmbutidoFrete" TEXT, "serieCte" TEXT, "serieNF" TEXT, "taxaQuebra" REAL, "tempo" TEXT, "tempoAtraso" TEXT,
-                "tempoPrev" TEXT, "tempoTransp" TEXT, "tipoDesconto" TEXT, "tipoFrete" TEXT, "tipoTolerancia" TEXT,
-                "tipoTributacao" TEXT, "toleranciaPesoCheg" REAL, "tributaImpostos" TEXT, "ufCliente" TEXT, "ufDestino" TEXT,
-                "ufOrigem" TEXT, "usuarioALT" TEXT, "usuarioINS" TEXT, "valorAbonoQuebra" REAL, "valorBalsa" REAL,
-                "valorClassificacao" REAL, "valorCofins" REAL, "valorEstadia" REAL, "valorFreteFiscal" REAL,
-                "valorICMS" REAL, "valorINSS" REAL, "valorIRRF" REAL, "valorIss" REAL, "valorMercadoria" REAL,
-                "valorPedagio" REAL, "valorPis" REAL, "valorQuebra" REAL, "valorSeguro" REAL, "valorSeguro2" REAL,
-                "valorSestSenat" REAL, "valorTotalnf" REAL, "versaoCte" TEXT, "vlTotalPrestacaoDacte" REAL,
-                "adiantamentoEmpresa" REAL, "cidadeClientePrincipal" TEXT, "dataVencSaldo" TEXT, "descSeguroSaldoMot" REAL,
-                "freteEmpresaComp" REAL, "numeroConhecimento" INTEGER, "saldoEmp" REAL, "vlIcms" REAL
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "relFilDespesasGerais" (
-                "apartamento_id" INTEGER NOT NULL, 
-                "VED" TEXT, "afaturar" TEXT, "agencia" TEXT, "ano" TEXT, "anoMes" TEXT, "banco" TEXT, "box" TEXT, "cadNota" TEXT,
-                "cavalo" TEXT, "cep" TEXT, "chaveNfe" TEXT, "cidadeEmpresas" TEXT, "cidadeFilial" TEXT,
-                "cidadeForn" TEXT, "cnpjCpf" TEXT, "cnpjCpfEmpresas" TEXT, "cnpjCpfFil" TEXT,
-                "cnpjCpfFilial" TEXT, "cnpjCpfForn" TEXT, "codAcertoMotorista" INTEGER, "codAcertoProprietario" INTEGER,
-                "codAdiantamento" INTEGER, "codAgrupador" INTEGER, "codCavalo" INTEGER, "codCfop" INTEGER,
-                "codCfopItem" INTEGER, "codCliente" INTEGER, "codContaContabil" INTEGER, "codEmonitor" INTEGER,
-                "codEmpresas" INTEGER, "codFatura" INTEGER, "codFaturaReceber" INTEGER, "codFilial" INTEGER,
-                "codForn" INTEGER, "codFornProp" INTEGER, "codGrupoD" INTEGER, "codIBGECidC" INTEGER,
-                "codIBGECidF" INTEGER, "codItemD" INTEGER, "codItemDServico" INTEGER, "codItemNota" INTEGER,
-                "codMotNota" INTEGER, "codMotorista" INTEGER, "codNegocio" INTEGER, "codNota" INTEGER,
-                "codProprietario" INTEGER, "codSituacao" INTEGER, "codSuperGrupoD" INTEGER, "codUeItem" INTEGER,
-                "codUnidadeEmbarque" INTEGER, "codVeiculo" INTEGER, "conta" TEXT, "contaContabil" TEXT,
-                "contrato" TEXT, "creditaPisCofins" TEXT, "creditaPisCofinsItem" TEXT, "cstCOFINSItem" TEXT,
-                "cstCOFINSItemD" TEXT, "cstICMSItemD" TEXT, "cstIcmsItem" TEXT, "cstPISItem" TEXT,
-                "cstPISItemD" TEXT, "custo" REAL, "custoTotal" REAL, "dataAcertoProp" TEXT, "dataControle" TEXT,
-                "dataControleFormat" TEXT, "dataEmissao" TEXT, "dataFim" TEXT, "dataFimOficina" TEXT,
-                "dataINS" TEXT, "dataIniOficina" TEXT, "dataMotorista" TEXT, "dataVenc" TEXT,
-                "dataVencimento" TEXT, "descCodFilial" TEXT, "descCodForn" TEXT, "descCodGrupoDItemNota" TEXT,
-                "descCodItemDItemNota" TEXT, "descCodSuperGrupoDItemNota" TEXT, "descCodUnidadeEmbarque" TEXT,
-                "descGrupoD" TEXT, "descItemD" TEXT, "descNegocio" TEXT, "descSuperGrupoD" TEXT, "descUeItem" TEXT,
-                "descUnidadeEmbarque" TEXT, "desconto" REAL, "despesa" TEXT, "endereco" TEXT, "especie" TEXT,
-                "fontCenter" TEXT, "fontLeft" TEXT, "fontRight" TEXT, "frota" TEXT, "garantia" TEXT,
-                "gerenciaEstoque" TEXT, "historico" TEXT, "id" INTEGER, "incluiRateio" TEXT, "inic" TEXT,
-                "inscEst" TEXT, "inscEstForn" TEXT, "investimento" TEXT, "km" REAL, "kmAnterior" REAL,
-                "kmPrev" REAL, "kmRodado" REAL, "kmRodadoDec" REAL, "liquido" REAL, "listItensDespesas" TEXT,
-                "marcaAux" TEXT, "marcaVeic" TEXT, "mediaDesejada" REAL, "mediaInversa" REAL, "mediaKm" REAL,
-                "mediaMax" REAL, "mediaMin" REAL, "modeloAux" TEXT, "modeloVeic" TEXT, "naoEncheuTanque" TEXT,
-                "naoPrevista" TEXT, "ncmItemD" TEXT, "nfFatura" TEXT, "nfeDataHoraRecLote" TEXT, "nome" TEXT,
-                "nomeCidC" TEXT, "nomeCidF" TEXT, "nomeCidFil" TEXT, "nomeEmpresas" TEXT, "nomeFil" TEXT,
-                "nomeFilial" TEXT, "nomeForn" TEXT, "nomeMotorista" TEXT, "numNota" TEXT, "numeroNf" TEXT,
-                "obs" TEXT, "obsItem" TEXT, "obsNota" TEXT, "orderFieldVeiculo" TEXT, "parcela" TEXT,
-                "parcelas" TEXT, "placaCavalo" TEXT, "placaVeiculo" TEXT, "porcAliqIcmsSubsTribItem" REAL,
-                "porcIcmsItem" REAL, "porcIpiItem" REAL, "quantidade" REAL, "rateioVeicProp" TEXT,
-                "resumido" TEXT, "serie" TEXT, "serieNf" TEXT, "tempoPrevisto" REAL, "tipo" TEXT,
-                "tipoConta" TEXT, "tipoNfe" TEXT, "tipoVeiculo" TEXT, "titular" TEXT, "ufCidC" TEXT,
-                "ufCidF" TEXT, "ufCidFil" TEXT, "ufEmpresas" TEXT, "ufFilial" TEXT, "ufForn" TEXT,
-                "unidade" TEXT, "usuarioAut" TEXT, "usuarioINS" TEXT, "valor" REAL, "valorAcertoProp" REAL,
-                "valorBaseIcmsItem" REAL, "valorBaseIpiItem" REAL, "valorBaseSubsTribItem" REAL,
-                "valorDescontoItem" REAL, "valorDespesa" REAL, "valorFaturamento" REAL, "valorFrete" REAL,
-                "valorFreteEmp" REAL, "valorFreteMot" REAL, "valorIcmsItem" REAL, "valorImpSfed" REAL,
-                "valorIpiItem" REAL, "valorIss" REAL, "valorItem" REAL, "valorMargem" REAL, "valorNota" REAL,
-                "valorOutras" REAL, "valorPesoSaidaTon" REAL, "valorProd" REAL, "valorReceitaOp" REAL,
-                "valorResultado" REAL, "valorResultadoComInv" REAL, "valorSeguro" REAL, "valorServ" REAL,
-                "valorSubsTribItem" REAL, "valorUnit" REAL, "valorVenc" REAL, "veiculoProprio" TEXT,
-                "vlBaseIcms" REAL, "vlBaseIcmsSubstTrib" REAL, "vlCofinsRet" REAL, "vlContabil" REAL,
-                "vlCreditoIcms" REAL, "vlCsllRet" REAL, "vlIcms" REAL, "vlIcmsSubstTrib" REAL,
-                "vlInssRet" REAL, "vlIpi" REAL, "vlIrrfRet" REAL, "vlPisRet" REAL
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "relFilContasReceber" (
-                "apartamento_id" INTEGER NOT NULL, 
-                "chaveJurosDescontos" TEXT, "cidCliente" TEXT, "cidFilial" TEXT, "codAcertoProprietario" INTEGER,
-                "codBaixa" INTEGER, "codCliente" INTEGER, "codDuplicataReceber" INTEGER, "codEmpresas" INTEGER,
-                "codFatura" INTEGER, "codFilial" INTEGER, "codTransacao" TEXT, "dataEmissao" TEXT, "dataPagto" TEXT,
-                "dataVenc" TEXT, "descItemReceita" TEXT, "descNegocio" TEXT, "emailCliente" TEXT, "historico" TEXT,
-                "historico1" TEXT, "historico2" TEXT, "jd" TEXT, "listConhecimentos" TEXT, "listDataEmissaoConhecimentos" TEXT,
-                "listNotas" TEXT, "listaTiposFrete" TEXT, "nomeCliente" TEXT, "nomeEmpresas" TEXT, "nomeFilial" TEXT,
-                "nomeFunc" TEXT, "numContabil" INTEGER, "numeroConta" TEXT, "numeroContaFatura" TEXT, "obs" TEXT,
-                "obsTransacao" TEXT, "parcela" TEXT, "tipoFatura" TEXT, "ufCliente" TEXT, "ufFilial" TEXT,
-                "valorPagto" REAL, "valorVenc" REAL
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "relFilContasPagarDet" (
-                "apartamento_id" INTEGER NOT NULL,  
-                "VED" TEXT, "agencia" TEXT, "banco" TEXT, "chaveJurosDescontos" TEXT, "chavePix" TEXT,
-                "cidFilial" TEXT, "cidForn" TEXT, "cnpjCpfForn" TEXT, "codAcertoProprietario" INTEGER,
-                "codBaixa" INTEGER, "codCheque" TEXT, "codDuplicataPagar" INTEGER, "codEmpresas" INTEGER,
-                "codErpExterno" TEXT, "codFilial" INTEGER, "codForn" INTEGER, "codItemNota" INTEGER,
-                "codNota" INTEGER, "codTipoPagto" INTEGER, "codTransacao" TEXT, "codUnidadeEmbarque" TEXT,
-                "contaForn" TEXT, "dataEmissao" TEXT, "dataLib" TEXT, "dataPagto" TEXT,
-                "dataPagtoFormat" TEXT, "dataPrevista" TEXT, "dataVenc" TEXT, "descGrupoD" TEXT,
-                "descItemD" TEXT, "descTipoPagto" TEXT, "descUnidadeEmbarque" TEXT, "idTransacaoFretebras" TEXT,
-                "jd" TEXT, "kmItemNota" REAL, "liquidoItemNota" REAL, "nomeEmpresas" TEXT,
-                "nomeFilial" TEXT, "nomeForn" TEXT, "numConhec" INTEGER, "numNota" TEXT,
-                "numeroConta" TEXT, "numeroContaParcela" TEXT, "obs" TEXT, "obsFaturaCompra" TEXT,
-                "obsTransacao" TEXT, "parcela" TEXT, "pesoSaidaMotorista" REAL, "placaVeiculo" TEXT,
-                "premioSeguro" REAL, "quantidadeItemNota" REAL, "serie" TEXT, "superGrupoD" TEXT,
-                "totalTipoPagto" REAL, "ufFilial" TEXT, "ufForn" TEXT, "usuarioINS" TEXT,
-                "usuarioLib" TEXT, "valorIcmsNota" REAL, "valorImpSfedNota" REAL, "valorIssNota" REAL,
-                "valorNota" REAL, "valorPagto" REAL, "valorProporcional" REAL, "valorQuebra" REAL,
-                "valorVenc" REAL, "vlCofinsRetNota" REAL, "vlCsllRetNota" REAL, "vlFat" REAL,
-                "vlInssRetNota" REAL, "vlIrrfRetNota" REAL, "vlPisRetNota" REAL
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "static_expense_groups" (
-                "apartamento_id" INTEGER NOT NULL, 
-                "group_name" TEXT PRIMARY KEY,
-                "is_despesa" TEXT DEFAULT 'S',
-                "is_custo_viagem" TEXT DEFAULT 'N'
-            )
-        ''')
-        
-        is_sqlite = isinstance(conn, sqlite3.Connection)
-        if is_sqlite:
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name") VALUES (?)', ('VALOR QUEBRA',))
-            cursor.execute('INSERT OR IGNORE INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (?, ?, ?)', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
-        else:
-            cursor.execute('INSERT INTO "static_expense_groups" ("group_name") VALUES (%s) ON CONFLICT("group_name") DO NOTHING', ('VALOR QUEBRA',))
-            cursor.execute('INSERT INTO "static_expense_groups" ("group_name", "is_despesa", "is_custo_viagem") VALUES (%s, %s, %s) ON CONFLICT("group_name") DO NOTHING', ('COMISSÃO DE MOTORISTA', 'S', 'N'))
-    with get_db_connection() as conn:
-        if conn is None:
-            return
-        cursor = conn.cursor()
-        print("Verificando e criando esquema do banco de dados com nomes exatos...")
-
-        # ... (código que cria as suas tabelas existentes, como relFilViagensFatCliente) ...
-        
-        # --- NOVO: Adiciona a tabela para as configurações do robô ---
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS "configuracoes_robo" (
-                "apartamento_id" INTEGER NOT NULL,  
-                "chave" TEXT PRIMARY KEY,
-                "valor" TEXT
-            )
-        ''')
-        conn.commit()
-        print("Esquema do banco de dados verificado/criado com sucesso.")
-
+def create_tables():
+    """
+    Esta função agora é gerenciada pelo Alembic e não deve ser usada diretamente.
+    """
+    print("AVISO: A criação de tabelas agora é gerenciada pelo Alembic.")
+    pass
 
 def _clean_and_convert_data(df, table_key):
-    # Esta função não precisa de alterações
+    """Limpa e converte os tipos de dados do DataFrame antes da importação."""
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
     
-    cleaned_columns_for_validation = df.columns.tolist()
-
     for col in df.select_dtypes(include=['object']).columns:
         if df[col].notna().any():
             df[col] = df[col].str.strip()
@@ -302,14 +59,12 @@ def _clean_and_convert_data(df, table_key):
                 df[col_db] = pd.to_numeric(df[col_db], errors='coerce').fillna(0)
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
-
-    return df, cleaned_columns_for_validation
+    return df
 
 def _validate_columns(excel_columns, table_name):
     """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
     try:
         with engine.connect() as conn:
-            # Query padrão para PostgreSQL para obter colunas de uma tabela
             query = text("""
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -326,8 +81,66 @@ def _validate_columns(excel_columns, table_name):
     valid_columns_original_case = [col for col in excel_columns if col.lower() in db_columns_lower]
     return valid_columns_original_case, extra_cols_names
 
+# Em database.py
+
+def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list, apartamento_id: int):
+    """
+    Importa dados do Excel, apagando apenas registros correspondentes para atualizar.
+    Usa SQLAlchemy engine para compatibilidade total com pandas e PostgreSQL.
+    """
+    extra_columns = []
+    try:
+        df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
+        # A função _clean_and_convert_data já foi corrigida para usar minúsculas
+        df_novo = _clean_and_convert_data(df_novo, table_name)
+        
+        df_novo['apartamento_id'] = apartamento_id
+
+        valid_columns, extra_columns = _validate_columns(df_novo.columns.tolist(), table_name)
+        df_import = df_novo[valid_columns]
+
+        if df_import.empty:
+            print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
+            return extra_columns
+        
+        # Inicia uma transação para garantir que a operação seja atômica (ou tudo funciona, ou nada é alterado)
+        with engine.begin() as conn:
+            print(f"Iniciando importação com atualização para a tabela '{table_name}'...")
+            
+            # Envia os novos dados para uma tabela temporária
+            df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
+
+            # --- INÍCIO DA CORREÇÃO ---
+            # Para evitar o erro de "text = bigint", vamos converter (CAST)
+            # as colunas de ambos os lados da comparação para TEXT.
+            # Isso garante que a comparação de chaves funcione independentemente do tipo de dado.
+            
+            where_clauses = [
+                f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' 
+                for col in key_columns
+            ]
+            where_str = ' AND '.join(where_clauses)
+            
+            # --- FIM DA CORREÇÃO ---
+            
+            sql_delete = text(f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = :apt_id;')
+            print(f" -> Removendo registros antigos/correspondentes para evitar duplicatas...")
+            result = conn.execute(sql_delete, {'apt_id': apartamento_id})
+            print(f" -> {result.rowcount} registros antigos foram removidos.")
+            
+            print(f" -> Inserindo {len(df_import)} novos/atualizados registros...")
+            # Insere os dados da planilha na tabela principal
+            df_import.to_sql(table_name, conn, if_exists='append', index=False)
+            
+            print(f" -> Importação para a tabela '{table_name}' concluída com sucesso.")
+
+        return extra_columns
+    except Exception as e:
+        print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
+        raise e
 
 def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
+    """Função auxiliar para importar uma única planilha com base na configuração."""
     file_info = config.EXCEL_FILES_CONFIG.get(file_key)
     if not file_info:
         raise ValueError(f"Chave de arquivo '{file_key}' não encontrada na configuração.")
@@ -339,24 +152,34 @@ def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
 
     return import_excel_to_db(excel_source, file_info["sheet_name"], table_name, key_columns, apartamento_id)
 
-
 def table_exists(table_name: str) -> bool:
-    """Verifica se uma tabela existe no banco de dados usando SQLAlchemy."""
+    """Verifica se uma tabela existe no banco de dados, especificando o schema 'public'."""
     try:
         with engine.connect() as conn:
-            query = text("SELECT to_regclass(:table_name)")
+            # CORREÇÃO: Esta query não depende do 'search_path' da sessão.
+            # Ela pergunta diretamente ao catálogo do sistema se a tabela existe
+            # no schema 'public' com o nome exato fornecido.
+            query = text("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = :table_name
+                )
+            """)
             result = conn.execute(query, {'table_name': table_name}).scalar()
-            return result is not None
-    except SQLAlchemyError:
-        return False
+            return result or False # Garante o retorno de um booleano
 
+    except SQLAlchemyError as e:
+        print(f"Erro ao verificar existência da tabela {table_name}: {e}")
+        return False
 def processar_downloads_na_pasta(apartamento_id: int):
     """
-    Verifica a pasta do projeto por planilhas baixadas e as importa para o apartamento_id especificado.
+    Verifica a pasta do projeto por planilhas baixadas, importa-as para o apartamento_id correto,
+    renomeia com data/hora e limpa versões antigas.
     """
-    print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA O APARTAMENTO ID: {apartamento_id} ---")
+    print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     caminho_base = os.getcwd()
-    
     mapa_arquivos_config = {info['path']: chave for chave, info in config.EXCEL_FILES_CONFIG.items()}
     
     for nome_arquivo_base, chave_config in mapa_arquivos_config.items():

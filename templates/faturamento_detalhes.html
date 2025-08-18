@@ -9,24 +9,27 @@
     <style>
         .grid-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
             gap: 20px;
             padding: 20px;
         }
         .grid-item {
-            background-color: rgba(255, 255, 255, 0.9);
-            padding: 15px;
+            background-color: white;
+            padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .grid-item-full {
-            grid-column: 1 / -1; /* Ocupa a largura total */
+            grid-column: 1 / -1;
         }
         .page-header {
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 20px;
+        }
+        body {
+            background-color: #f4f4f9;
         }
     </style>
 </head>
@@ -34,7 +37,7 @@
     <div style="padding: 20px;">
         <div class="page-header">
             <h1>Análise Detalhada de Faturamento</h1>
-            <a href="{{ url_for('index') }}?{{ request.query_string.decode('utf-8') }}" class="back-link" style="font-size: 16px; text-decoration: none;">&larr; Voltar ao Dashboard</a>
+            <a href="{{ url_for('index') }}?{{ request.query_string.decode('utf-8') }}" class="manage-link" style="text-decoration: none;">&larr; Voltar ao Dashboard</a>
         </div>
 
         <div class="grid-container">
@@ -72,14 +75,11 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
-    // Chama a API que traz todos os dados de uma vez
     fetch(`/api/faturamento_dashboard_data?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
-            
             if (data && Object.keys(data).length > 0) {
                 
-                // Gráfico 1: Evolução Faturamento vs. Custo
                 if (data.evolucao_faturamento_custo && data.evolucao_faturamento_custo.length > 0) {
                     const evolucaoCtx = document.getElementById('evolucaoChart').getContext('2d');
                     new Chart(evolucaoCtx, {
@@ -95,7 +95,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
 
-                // Gráfico 2: Top 10 Clientes
                 if (data.top_clientes && data.top_clientes.length > 0) {
                     const clientesCtx = document.getElementById('topClientesChart').getContext('2d');
                     new Chart(clientesCtx, {
@@ -108,7 +107,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
-                // Gráfico 3: Faturamento por Filial
                 if (data.faturamento_filial && data.faturamento_filial.length > 0) {
                     const filialCtx = document.getElementById('fatFilialChart').getContext('2d');
                     new Chart(filialCtx, {
@@ -120,7 +118,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
-                // Gráfico 4: Top 10 Rotas Mais Frequentes
                 if (data.top_rotas && data.top_rotas.length > 0) {
                     const rotasCtx = document.getElementById('topRotasChart').getContext('2d');
                     new Chart(rotasCtx, {
@@ -133,7 +130,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
-                // Gráfico 5: Volume de Carga (kg) por Rota
                 if (data.volume_por_rota && data.volume_por_rota.length > 0) {
                     const volumeCtx = document.getElementById('volumeRotaChart').getContext('2d');
                     new Chart(volumeCtx, {
@@ -146,7 +142,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
 
-                // Gráfico 6: Top 10 Veículos por No. de Viagens
                 if (data.viagens_por_veiculo && data.viagens_por_veiculo.length > 0) {
                     const veiculoCtx = document.getElementById('viagensVeiculoChart').getContext('2d');
                     new Chart(veiculoCtx, {
@@ -158,23 +153,20 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
-                // Gráfico 7: Top 10 Motoristas por Faturamento
                 if (data.faturamento_motorista && data.faturamento_motorista.length > 0) {
                     const motoristaCtx = document.getElementById('fatMotoristaChart').getContext('2d');
                     new Chart(motoristaCtx, {
                         type: 'bar',
                         data: {
-                            labels: data.faturamento_motorista.map(d => d.nomeMot),
+                            labels: data.faturamento_motorista.map(d => d.nomeMotorista),
                             datasets: [{ label: 'Faturamento', data: data.faturamento_motorista.map(d => d.freteEmpresa), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
                         },
                         options: { indexAxis: 'y', scales: { x: { ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
                     });
                 }
 
-                // LÓGICA PARA REORDENAR GRÁFICOS AO CLICAR
                 const gridContainer = document.querySelector('.grid-container');
                 const gridItems = document.querySelectorAll('.grid-item');
-
                 gridItems.forEach(item => {
                     item.style.cursor = 'pointer';
                     item.addEventListener('click', function() {
