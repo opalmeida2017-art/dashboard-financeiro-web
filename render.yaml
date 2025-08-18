@@ -1,15 +1,29 @@
 services:
+  # Serviço da Base de Dados PostgreSQL
+  - type: pserv
+    name: financeiro-db # Nome da sua base de dados no Render
+    env: postgres
+    plan: free # Plano gratuito, pode ser alterado
+
+  # Serviço da Aplicação Web Python/Flask
   - type: web
-    name: python-dashboard
+    name: python-dashboard # Nome da sua aplicação web
     env: docker
-    repo: https://github.com/opalmeida2017-art/dashboard-financeiro-web.git
-    autoDeploy: true
-    healthCheckPath: /
-
-    # A linha 'startCommand' foi removida aqui
-
+    plan: free # Plano gratuito, pode ser alterado
+    # Conecta a aplicação à base de dados
+    database:
+      name: financeiro-db
+      property: connectionString
+    # Define as variáveis de ambiente necessárias
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: financeiro-db
-          property: connectionString
+          property: internalConnectionString
+      - key: FLASK_ENV
+        value: production
+      # NOTA: Altere 'meudominio.onrender.com' para o URL real da sua aplicação no Render
+      - key: SERVER_NAME
+        value: meudominio.onrender.com
+      - key: PYTHON_VERSION
+        value: 3.11

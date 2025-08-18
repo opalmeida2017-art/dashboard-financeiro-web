@@ -1,30 +1,28 @@
-# Dockerfile (versão final, simplificada e robusta)
+# Usa uma imagem base oficial do Python
+FROM python:3.11-slim
 
-# Usa uma imagem base do Python mais recente (Bullseye)
-FROM python:3.11-slim-bullseye
-
-# Define o diretório de trabalho
+# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Define o ambiente como não-interativo para evitar prompts durante a instalação
-ENV DEBIAN_FRONTEND=noninteractive
+# Copia o ficheiro de dependências
+COPY requirements.txt .
 
-# --- Instala o Chromium e o Driver correspondente (Método Simplificado) ---
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
-    # Limpa o cache para manter a imagem pequena
+# Instala as dependências do sistema necessárias para o psycopg2 e o Pandas
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia e instale as dependências Python
-COPY requirements.txt .
+# Instala as dependências do Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia o resto do seu projeto
+# Copia todo o código da aplicação para o diretório de trabalho
 COPY . .
 
-# --- CORREÇÃO: Comando para iniciar a aplicação no formato "exec" ---
-# Primeiro, executa as migrações do Alembic, depois inicia o Gunicorn.
-# O '&&' garante que gunicorn só roda se alembic for sucesso.
-# Usamos /bin/bash -c para que o '&&' funcione como comando de shell.
-CMD ["/bin/bash", "-c", "python3 -m alembic upgrade head && gunicorn --bind \"0.0.0.0:$PORT\" --workers 3 --chdir /app app:app"]
+# Expõe a porta que o Gunicorn irá usar
+EXPOSE 10000
+
+# --- COMANDO DE ARRANQUE PARA PRODUÇÃO ---
+# 1. Executa as migrações da base de dados com o Alembic
+# 2. Inicia a aplicação usando o servidor Gunicorn
+CMD ["sh", "-c", "python3 -m alembic upgrade head && gunicorn --workers 3 --bind 0.0.0.0:10000 app:app"]
