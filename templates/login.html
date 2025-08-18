@@ -3,20 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Login - Fretea</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+    <style>
+        :root {
+            --primary-color: #4A90E2; /* Azul mais moderno */
+            --light-gray: #f4f7f6;
+            --text-color: #333;
+            --border-color: #ccc;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--light-gray);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .login-container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .login-container h2 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-weight: 700;
+            font-size: 2em;
+            border-bottom: 2px solid var(--primary-color);
+            display: inline-block;
+            padding-bottom: 10px;
+        }
+
+        .login-container p {
+            color: #777;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        
+        .password-wrapper {
+            position: relative;
+        }
+
+        #toggle-password {
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #999;
+        }
+
+        .login-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9em;
+            margin-bottom: 25px;
+            color: #555;
+        }
+        
+        .login-options label {
+            font-weight: normal;
+        }
+        
+        .btn-salvar {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 4px;
+            background-color: var(--primary-color);
+            color: white;
+            font-size: 1.1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn-salvar:hover {
+            background-color: #357ABD;
+        }
+
+        .footer-link {
+            margin-top: 25px;
+            font-size: 0.9em;
+            color: #555;
+        }
+        
+        .footer-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .footer-link a:hover {
+            text-decoration: underline;
+        }
+
+        .flash {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .flash.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+    </style>
 </head>
-<body class="login-body">
+<body>
     <div class="login-container">
         
         {% if nome_empresa %}
             <h2>Acesso - {{ nome_empresa }}</h2>
         {% else %}
-            <h2>Aceder ao Sistema</h2>
+            <h2>Login</h2>
         {% endif %}
-
-        <p>Por favor, insira as suas credenciais.</p>
         
+        <p>Por favor, insira as suas credenciais.</p>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -31,15 +172,61 @@
             <form method="POST" action="{{ url_for('login') }}">
         {% endif %}
             <div class="form-group">
-                <label for="email">Email</label>
+                <label for="email">Seu e-mail</label>
                 <input type="email" id="email" name="email" required>
             </div>
             <div class="form-group">
-                <label for="password">Senha</label>
-                <input type="password" id="password" name="password" required>
+                <label for="password">Sua senha</label>
+                <div class="password-wrapper">
+                    <input type="password" id="password" name="password" required>
+                    <span id="toggle-password">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-eye" viewBox="0 0 16 16">
+                          <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                          <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                        </svg>
+                    </span>
+                </div>
             </div>
-            <button type="submit" class="btn-salvar">Entrar</button>
+
+            <div class="login-options">
+                <div>
+                    <input type="checkbox" id="remember-me" style="margin-right: 5px;">
+                    <label for="remember-me">Manter-me logado</label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-salvar">Logar</button>
+
+            <div class="footer-link">
+                <span>Ainda não tem conta?</span>
+                <a href="#">Cadastre-se</a>
+            </div>
         </form>
     </div>
+
+<script>
+    const togglePassword = document.getElementById('toggle-password');
+    const passwordInput = document.getElementById('password');
+    
+    const eyeSlashIcon = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-eye-slash" viewBox="0 0 16 16">
+          <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.94 5.94 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>
+          <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.288.822.822.084.083a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>
+          <path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 6.884-12-12 .708-.708 12 12-.708.708z"/>
+        </svg>`;
+    
+    const eyeIcon = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-eye" viewBox="0 0 16 16">
+          <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+          <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+        </svg>`;
+
+    togglePassword.addEventListener('click', function (e) {
+        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordInput.setAttribute('type', type);
+        this.innerHTML = type === 'password' ? eyeIcon : eyeSlashIcon;
+    });
+</script>
+
 </body>
 </html>
