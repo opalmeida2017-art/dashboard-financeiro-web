@@ -49,8 +49,7 @@ def run_migrations_online() -> None:
         # Se a variável de ambiente não estiver definida, use a URL local.
         # Isto é apenas um fallback para o ambiente local.
         print("DATABASE_URL não encontrada, usando conexão local...")
-        connectable = "sqlite:///financeiro.db"
-    
+       
     # A partir daqui, o Alembic usa a URL (string) para criar a conexão
     # Ele sabe como lidar com a string 'postgres://...' ou 'sqlite://...'
     with create_engine(connectable).connect() as connection:
