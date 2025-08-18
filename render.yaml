@@ -14,7 +14,7 @@ services:
     database:
       name: financeiro-db
       property: connectionString
-    # Define as variáveis de ambiente necessárias
+    # Define as variáveis de ambiente essenciais
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -22,8 +22,5 @@ services:
           property: internalConnectionString
       - key: FLASK_ENV
         value: production
-      # NOTA: Altere 'meudominio.onrender.com' para o URL real da sua aplicação no Render
-      - key: SERVER_NAME
-        value: meudominio.onrender.com
       - key: PYTHON_VERSION
         value: 3.11
