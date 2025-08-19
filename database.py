@@ -38,44 +38,11 @@ def create_tables():
     print("AVISO: A criação de tabelas agora é gerenciada pelo Alembic.")
     pass
 
-# Em database.py - SUBSTITUA SUA FUNÇÃO POR ESTA VERSÃO CORRIGIDA
-
 def _clean_and_convert_data(df, table_key):
     """Limpa e converte os tipos de dados do DataFrame antes da importação."""
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
-
-    # --- INÍCIO DA CORREÇÃO ---
-    # Bloco adicionado para tratar colunas que deveriam ser booleanas
-
-    # Mapeamento para colunas com lógica "Sim/Não"
-    mapeamento_sim_nao = {
-        'S': True,
-        'N': False
-    }
-
-    # Mapeamento especial para a coluna 'cancelado', que usa 'Ativo'/'Inativo'
-    mapeamento_status_cancelado = {
-        'Ativo': False,   # Se a viagem está 'Ativa', ela NÃO está cancelada.
-        'Inativo': True,  # Se a viagem está 'Inativa', ela ESTÁ cancelada.
-        'S': True,        # Adicionando S/N para consistência
-        'N': False
-    }
-
-    # Lista de colunas a serem tratadas
-    colunas_booleanas_gerais = ['fretePago', 'pagaICMS', 'pagaISS', 'quebraSegurada', 'permiteFaturar']
-
-    # Aplica o mapeamento especial para a coluna 'cancelado'
-    if 'cancelado' in df.columns:
-        df['cancelado'] = df['cancelado'].astype(str).str.strip().map(mapeamento_status_cancelado)
-
-    # Aplica o mapeamento geral para as outras colunas
-    for col in colunas_booleanas_gerais:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().map(mapeamento_sim_nao)
-
-    # --- FIM DA CORREÇÃO ---
-
+    
     for col in df.select_dtypes(include=['object']).columns:
         if df[col].notna().any():
             df[col] = df[col].str.strip()

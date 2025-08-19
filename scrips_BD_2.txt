@@ -1,0 +1,39 @@
+-- Script para adicionar a coluna 'slug' à tabela 'apartamentos' no PostgreSQL.
+-- Este script é seguro e não apaga dados existentes.
+
+BEGIN;
+
+-- Passo 1: Adicionar a coluna 'slug' do tipo TEXT, se ela ainda não existir.
+-- O bloco DO/END garante que o comando só é executado se a coluna estiver em falta.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'apartamentos' AND column_name = 'slug'
+    ) THEN
+        ALTER TABLE apartamentos ADD COLUMN slug TEXT;
+        RAISE NOTICE 'Coluna "slug" adicionada à tabela "apartamentos".';
+    ELSE
+        RAISE NOTICE 'Coluna "slug" já existe na tabela "apartamentos". Nenhuma ação foi tomada.';
+    END IF;
+END $$;
+
+
+-- Passo 2: Adicionar uma restrição de unicidade (UNIQUE) na coluna 'slug', se ela ainda não existir.
+-- Isto impede que dois apartamentos tenham o mesmo slug.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'uq_apartamentos_slug' AND conrelid = 'apartamentos'::regclass
+    ) THEN
+        ALTER TABLE apartamentos ADD CONSTRAINT uq_apartamentos_slug UNIQUE (slug);
+        RAISE NOTICE 'Restrição de unicidade "uq_apartamentos_slug" criada para a coluna "slug".';
+    ELSE
+        RAISE NOTICE 'Restrição de unicidade "uq_apartamentos_slug" já existe. Nenhuma ação foi tomada.';
+    END IF;
+END $$;
+
+COMMIT;
+
+-- FIM DO SCRIPT --
