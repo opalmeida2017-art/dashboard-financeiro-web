@@ -8,6 +8,7 @@ import config
 import coletor_principal
 import getpass
 import threading
+import redis
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session, g
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
@@ -18,17 +19,23 @@ from slugify import slugify
 from redis import Redis
 from rq import Queue
 
+
 app = Flask(__name__)
+   
+app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
+app.config['SUPER_ADMIN_EMAIL'] ='op.almeida@hotmail.com'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
-# --- Conexão com o Redis ---
+# --- INICIALIZAÇÕES ---
+bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+login_manager.login_message = "Por favor, faça login para aceder a esta página."
+login_manager.login_message_category = "info"
+app.jinja_env.globals['config'] = app.config
 
-# 1. Obter a URL de conexão do ambiente.
-#    - No Render, isto virá das "Environment Variables" que você acabou de configurar.
-#    - Localmente, viria de um ficheiro .env (se você o usar).
 REDIS_URL = os.environ.get('REDIS_URL')
-
-# Inicializa a variável de conexão como None
-redis_conn = None
+redis_conn = None # Inicializa a variável de conexão
 
 # 2. Tentar estabelecer a conexão
 if REDIS_URL:
@@ -47,19 +54,8 @@ if REDIS_URL:
         print(f"❌ Ocorreu um erro inesperado na configuração do Redis: {e}")
 else:
     print("⚠️ A variável de ambiente REDIS_URL não foi definida. O serviço Redis não será utilizado.")
-app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
-app.config['SUPER_ADMIN_EMAIL'] ='op.almeida@hotmail.com'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
+    
 
-# --- INICIALIZAÇÕES ---
-bcrypt = Bcrypt(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-login_manager.login_message = "Por favor, faça login para aceder a esta página."
-login_manager.login_message_category = "info"
-app.jinja_env.globals['config'] = app.config
-
-# --- FUNÇÕES AUXILIARES DE CONTEXTO E PERMISSÃO ---
 
 def get_target_apartment_id():
     """
@@ -588,6 +584,7 @@ def criar_admin_command():
         print(f"\nSUCESSO: {message}")
     else:
         print(f"\nERRO: {message}")
-
+        
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    # O Render usa um servidor WSGI (como Gunicorn), então este bloco não é executado em produção.
+    app.run(host='0.0.0.0', port=5000, debug=True)
