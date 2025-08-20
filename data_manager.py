@@ -764,7 +764,7 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
         if duracao_dias <= 62:
             periodo_format = 'D'
 
-    # Busca e Filtro dos Dados Brutos
+    # --- (Toda a lógica de busca e preparação dos dataframes até o final permanece a mesma) ---
     df_viagens_faturamento_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
     df_viagens_faturamento = apply_filters_to_df(df_viagens_faturamento_raw, start_date, end_date, placa_filter, filial_filter)
 
@@ -774,7 +774,6 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
     df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
     df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
     
-    # Preparação de Custos e Despesas
     df_flags = get_all_group_flags(apartamento_id)
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
 
@@ -791,7 +790,6 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
     df_custos = df_com_flags[df_com_flags['is_custo_viagem'] == 'S'].copy() if not df_com_flags.empty else pd.DataFrame()
     df_despesas_gerais = df_com_flags[df_com_flags['is_despesa'] == 'S'].copy() if not df_com_flags.empty else pd.DataFrame()
 
-    # Cálculo de Custos Adicionais
     comissao_df_data = pd.DataFrame()
     if not df_viagens_cliente.empty and all(c in df_viagens_cliente.columns for c in ['tipoFrete', 'freteMotorista', 'comissao', 'dataViagemMotorista']):
         df_comissao_base = df_viagens_cliente[(df_viagens_cliente['tipoFrete'].astype(str).str.strip().str.upper() == 'P') & (pd.to_numeric(df_viagens_cliente['freteMotorista'], errors='coerce') > 0)].copy()
@@ -816,50 +814,46 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
             df_custos = pd.concat([df_custos, comissao_df_data], ignore_index=True)
         elif comissao_flags.get('is_despesa') == 'S':
             df_despesas_gerais = pd.concat([df_despesas_gerais, comissao_df_data], ignore_index=True)
-    
-    # --- INÍCIO DA CORREÇÃO ---
-    # Inicializa as séries de dados como vazias ANTES dos blocos 'if'.
-    faturamento = pd.Series(dtype=float, name='Faturamento')
-    despesas_agrupadas = pd.Series(dtype=float, name='DespesasGerais')
-    custos_agrupados = pd.Series(dtype=float, name='Custo')
-    # --- FIM DA CORREÇÃO ---
 
-    # Agrupamento e Soma dos Dados por Período
+    faturamento = pd.Series(dtype=float)
     if not df_viagens_faturamento.empty and 'dataViagemMotorista' in df_viagens_faturamento.columns:
         df_viagens_faturamento['Periodo'] = pd.to_datetime(df_viagens_faturamento['dataViagemMotorista'], errors='coerce', dayfirst=True).dt.to_period(periodo_format)
         faturamento = df_viagens_faturamento.groupby('Periodo')['freteEmpresa'].sum()
-        faturamento.name = 'Faturamento'
+    faturamento.name = 'Faturamento'
 
+    despesas_agrupadas = pd.Series(dtype=float)
     if not df_despesas_gerais.empty and 'dataControle' in df_despesas_gerais.columns:
         df_despesas_gerais['Periodo'] = pd.to_datetime(df_despesas_gerais['dataControle'], errors='coerce', dayfirst=True).dt.to_period(periodo_format)
         despesas_agrupadas = df_despesas_gerais.groupby('Periodo')['valorNota'].sum()
-        despesas_agrupadas.name = 'DespesasGerais'
+    despesas_agrupadas.name = 'DespesasGerais'
 
+    custos_agrupados = pd.Series(dtype=float)
     if not df_custos.empty and 'dataControle' in df_custos.columns:
         df_custos['Periodo'] = pd.to_datetime(df_custos['dataControle'], errors='coerce', dayfirst=True).dt.to_period(periodo_format)
         custos_agrupados = df_custos.groupby('Periodo')['valorNota'].sum()
-        custos_agrupados.name = 'Custo'
+    custos_agrupados.name = 'Custo'
         
-    # Formatação Final do DataFrame para o Gráfico
     monthly_df = pd.concat([faturamento, custos_agrupados, despesas_agrupadas], axis=1).fillna(0)
     
     if monthly_df.empty:
         return monthly_df
 
-    monthly_df.index = monthly_df.index.to_timestamp()
-    
-    date_format_str = '%d/%m/%Y' if periodo_format == 'D' else '%Y-%m'
-    monthly_df['PeriodoLabel'] = monthly_df.index.strftime(date_format_str)
-    
+    # --- INÍCIO DA CORREÇÃO ---
+    # Simplifica a lógica para ser mais direta e segura.
     monthly_df = monthly_df.reset_index()
     monthly_df.rename(columns={'index': 'Periodo'}, inplace=True)
+    
+    # Converte o período para um formato de data padrão ANTES de formatar
+    monthly_df['Periodo'] = monthly_df['Periodo'].dt.to_timestamp()
 
-    if 'Periodo' in monthly_df.columns:
-        monthly_df['Periodo'] = monthly_df['Periodo'].astype(str)
-        monthly_df = monthly_df.sort_values(by='Periodo', ascending=True)
+    date_format_str = '%d/%m/%Y' if periodo_format == 'D' else '%Y-%m'
+    monthly_df['PeriodoLabel'] = monthly_df['Periodo'].dt.strftime(date_format_str)
+    
+    monthly_df['Periodo'] = monthly_df['Periodo'].astype(str)
+    monthly_df = monthly_df.sort_values(by='Periodo', ascending=True)
+    # --- FIM DA CORREÇÃO ---
             
     return monthly_df
-
 def get_apartment_by_slug(slug: str):
     """Busca os detalhes de um apartamento pelo seu slug."""
     try:

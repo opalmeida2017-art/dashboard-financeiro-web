@@ -11,7 +11,6 @@
 <body>
     <h1>Dashboard Transporte</h1>
 
-
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             <div class="flash-messages">
@@ -46,15 +45,13 @@
                 <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
                 <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
 
-                         {% if is_admin_in_context() %}
-                             <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
-                         {% endif %}
+                {% if is_admin_in_context() %}
+                    <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
+                {% endif %}
                 
                 <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
                 <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
                 <a href="{{ url_for('logout') }}" class="btn btn-danger" style="text-decoration: none;">Sair</a>
-            </div>
-    </form>
             </div>
         </form>
     </div>
@@ -146,25 +143,18 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     
-    // --- LÓGICA DO GRÁFICO (CORRIGIDA E ROBUSTA) ---
+    // --- LÓGICA DO GRÁFICO ---
     const params = new URLSearchParams(window.location.search);
     const chartCanvas = document.getElementById('faturamentoDespesasChart');
     
     if (chartCanvas) {
         fetch(`/api/monthly_summary?${params.toString()}`)
             .then(response => {
-                if (!response.ok) {
-                    throw new Error('Erro na resposta da rede.');
-                }
+                if (!response.ok) { throw new Error('Erro na resposta da rede.'); }
                 return response.json();
             })
             .then(data => {
-                // Adicionamos este log para depuração. Verifique o console do navegador (F12).
-                console.log('Dados recebidos da API para o gráfico:', data);
-
                 const chartContainer = document.getElementById('secao-grafico');
-
-                // Se não houver dados, exibe uma mensagem no lugar do gráfico.
                 if (!data || data.length === 0) {
                     if(chartContainer) {
                         chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; padding-top: 20px;">Nenhum dado disponível para o período selecionado.</p>';
@@ -182,28 +172,39 @@ document.addEventListener('DOMContentLoaded', function () {
                     type: 'bar',
                     data: {
                         labels: labels,
+                        // --- INÍCIO DA CORREÇÃO ---
                         datasets: [
-                            { label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(41, 128, 185, 0.7)' },
-                            { label: 'Custo de Viagem', data: custoData, backgroundColor: '#E67E22', stack: 'GastoOperacional' },
-                            { label: 'Despesa Geral', data: despesasGeraisData, backgroundColor: 'rgba(192, 57, 43, 0.7)', stack: 'GastoOperacional' }
+                            { 
+                                label: 'Faturamento', 
+                                data: faturamentoData, 
+                                backgroundColor: 'rgba(54, 162, 235, 0.7)', // Azul
+                                stack: 'grupoFaturamento' // Grupo de empilhamento 1
+                            },
+                            { 
+                                label: 'Custo de Viagem', 
+                                data: custoData, 
+                                backgroundColor: 'rgba(255, 159, 64, 0.7)', // Laranja
+                                stack: 'grupoCustos' // Grupo de empilhamento 2
+                            },
+                            { 
+                                label: 'Despesa Geral', 
+                                data: despesasGeraisData, 
+                                backgroundColor: 'rgba(255, 99, 132, 0.7)',  // Vermelho
+                                stack: 'grupoCustos' // Mesmo grupo do Custo de Viagem
+                            }
                         ]
+                        // --- FIM DA CORREÇÃO ---
                     },
                     options: { 
                         scales: { 
-                            x: { stacked: true }, 
-                            y: { 
-                                stacked: true, 
-                                beginAtZero: true, 
-                                ticks: { 
-                                    callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } 
-                                } 
-                            } 
+                            x: { stacked: false }, // Desativamos o empilhamento no eixo para ter barras lado a lado
+                            y: { stacked: true }  // Mantemos o empilhamento no eixo Y
                         } 
                     }
                 });
             })
             .catch(error => {
-                console.error('Erro ao buscar dados para o gráfico:', error);
+                console.error('Erro ao buscar ou processar dados para o gráfico:', error);
                 const chartContainer = document.getElementById('secao-grafico');
                 if(chartContainer) {
                     chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; color: red; padding-top: 20px;">Ocorreu um erro ao carregar os dados do gráfico.</p>';
@@ -211,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // --- Lógica para os links da nova página ---
+    // --- LÓGICA PARA OS LINKS DA NOVA PÁGINA ---
     const detalhesLink = document.getElementById('link-detalhes-faturamento');
     if (detalhesLink) {
         const paramsLink = new URLSearchParams(window.location.search);
@@ -223,7 +224,7 @@ document.addEventListener('DOMContentLoaded', function () {
         linkSuperior.href = `{{ url_for('faturamento_detalhes') }}?${paramsSuperior.toString()}`;
     }
     
-    // --- Lógica dos Popups (Modais) ---
+    // --- LÓGICA DOS POPUPS (MODAIS) ---
     const manageModal = document.getElementById('manageGroupsModal');
     const manageBtn = document.getElementById('openModalBtn');
     const manageCloseBtn = document.querySelector('.manage-close');

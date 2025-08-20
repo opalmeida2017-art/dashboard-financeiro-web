@@ -218,32 +218,42 @@ def faturamento_detalhes():
 # --- ROTAS DE API (PARA GRÁFICOS) ---
 
 
-@app.route('/api/monthly_summary')
+@app.route('/api/monthly_summary') # Ou @app.route('/api/data') se o nome for esse
 @login_required
-def api_data():
-    apartamento_id = get_target_apartment_id()
-    if not apartamento_id:
-        return jsonify({"error": "Apartamento não identificado"}), 403
+def api_monthly_summary():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
 
-    start_date_str = request.args.get('start_date')
-    end_date_str = request.args.get('end_date')
-    placa = request.args.get('placa', 'Todos')
-    filial = request.args.get('filial', 'Todos')
-
-    # Busca o resumo diário (ou mensal, dependendo da lógica)
-    df = logic.get_monthly_summary(apartamento_id, start_date_str, end_date_str, placa, filial)
-
-    # Verifica se o DataFrame está vazio ou se falta a coluna 'Faturamento'
-    if df.empty or 'Faturamento' not in df.columns:
-        return jsonify([]) # Retorna uma lista vazia se não houver dados
-
-    # Seleciona e renomeia as colunas para o gráfico
-    df_chart = df[['PeriodoLabel', 'Faturamento']].copy()
-    df_chart.columns = ['label', 'value']
+    # --- INÍCIO DA CORREÇÃO ---
     
-    # Converte para dicionário e retorna como JSON
-    chart_data = df_chart.to_dict(orient='records')
-    return jsonify(chart_data)
+    # 1. Pega as datas como texto da URL
+    start_date_str = request.args.get('start_date', '')
+    end_date_str = request.args.get('end_date', '')
+    
+    # 2. Converte os textos para objetos de data (datetime)
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59) if end_date_str else None
+    except ValueError:
+        # Lida com o caso de um formato de data inválido
+        start_date, end_date = None, None
+
+    # 3. Pega os outros filtros
+    placa_filter = request.args.get('placa', 'Todos')
+    filial_filter = request.args.get('filial', 'Todos')
+
+    # 4. Chama a função de lógica passando os objetos de data corretos
+    monthly_data = logic.get_monthly_summary(
+        apartamento_id=apartamento_id_alvo,
+        start_date=start_date, # Agora é um objeto de data ou None
+        end_date=end_date,     # Agora é um objeto de data ou None
+        placa_filter=placa_filter,
+        filial_filter=filial_filter
+    )
+    # --- FIM DA CORREÇÃO ---
+
+    return jsonify(monthly_data.to_dict(orient='records'))
 
 @app.route('/api/faturamento_dashboard_data')
 @login_required
