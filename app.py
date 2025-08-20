@@ -16,13 +16,12 @@ from datetime import datetime, timedelta
 from functools import wraps
 from sqlalchemy import text
 from slugify import slugify
-from redis import Redis
 from rq import Queue
 
 
 app = Flask(__name__)
-   
-app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
+    
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'uma-chave-secreta-muito-dificil-de-adivinhar')
 app.config['SUPER_ADMIN_EMAIL'] ='op.almeida@hotmail.com'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
@@ -34,22 +33,17 @@ login_manager.login_message = "Por favor, faça login para aceder a esta página
 login_manager.login_message_category = "info"
 app.jinja_env.globals['config'] = app.config
 
+# --- Conexão Global com o Redis (feita uma vez no arranque) ---
 REDIS_URL = os.environ.get('REDIS_URL')
 redis_conn = None # Inicializa a variável de conexão
 
-# 2. Tentar estabelecer a conexão
 if REDIS_URL:
     try:
-        # A forma mais recomendada de conectar usando uma URL
         redis_conn = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-        
-        # 3. Verificar se a conexão está realmente a funcionar
         redis_conn.ping()
         print("✅ Conexão com o Redis estabelecida com sucesso!")
-
     except redis.exceptions.ConnectionError as e:
-        print(f"❌ Erro ao conectar ao Redis: {e}")
-        # A aplicação pode continuar a funcionar, mas as funcionalidades com Redis não irão funcionar.
+        print(f"❌ Erro ao conectar ao Redis (no arranque): {e}")
     except Exception as e:
         print(f"❌ Ocorreu um erro inesperado na configuração do Redis: {e}")
 else:
@@ -137,8 +131,12 @@ def _parse_filters():
         'start_date_str': request.args.get('start_date', ''),
         'end_date_str': request.args.get('end_date', '')
     }
-    filters['start_date_obj'] = datetime.strptime(filters['start_date_str'], '%Y-%m-%d') if filters['start_date_str'] else None
-    filters['end_date_obj'] = datetime.strptime(filters['end_date_str'], '%Y-%m-%d').replace(hour=23, minute=59, second=59) if filters['end_date_str'] else None
+    try:
+        filters['start_date_obj'] = datetime.strptime(filters['start_date_str'], '%Y-%m-%d') if filters['start_date_str'] else None
+        filters['end_date_obj'] = datetime.strptime(filters['end_date_str'], '%Y-%m-%d').replace(hour=23, minute=59, second=59) if filters['end_date_str'] else None
+    except ValueError:
+        filters['start_date_obj'] = None
+        filters['end_date_obj'] = None
     return filters
 
 # --- ROTAS DE LOGIN E LOGOUT ---
@@ -243,42 +241,21 @@ def faturamento_detalhes():
 
 # --- ROTAS DE API (PARA GRÁFICOS) ---
 
-
-@app.route('/api/monthly_summary') # Ou @app.route('/api/data') se o nome for esse
+@app.route('/api/monthly_summary')
 @login_required
 def api_monthly_summary():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
         return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
 
-    # --- INÍCIO DA CORREÇÃO ---
-    
-    # 1. Pega as datas como texto da URL
-    start_date_str = request.args.get('start_date', '')
-    end_date_str = request.args.get('end_date', '')
-    
-    # 2. Converte os textos para objetos de data (datetime)
-    try:
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59) if end_date_str else None
-    except ValueError:
-        # Lida com o caso de um formato de data inválido
-        start_date, end_date = None, None
-
-    # 3. Pega os outros filtros
-    placa_filter = request.args.get('placa', 'Todos')
-    filial_filter = request.args.get('filial', 'Todos')
-
-    # 4. Chama a função de lógica passando os objetos de data corretos
+    filters = _parse_filters()
     monthly_data = logic.get_monthly_summary(
         apartamento_id=apartamento_id_alvo,
-        start_date=start_date, # Agora é um objeto de data ou None
-        end_date=end_date,     # Agora é um objeto de data ou None
-        placa_filter=placa_filter,
-        filial_filter=filial_filter
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial']
     )
-    # --- FIM DA CORREÇÃO ---
-
     return jsonify(monthly_data.to_dict(orient='records'))
 
 @app.route('/api/faturamento_dashboard_data')
@@ -356,23 +333,33 @@ def gerenciar_grupos_salvar():
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
 
+# --- ROTA DE COLETA DE DADOS (COM CORREÇÃO) ---
 @app.route('/iniciar-coleta', methods=['POST'])
 @login_required
 def iniciar_coleta():
     apartamento_id_alvo = get_target_apartment_id()
     
-    # Pega a URL do Redis da variável de ambiente (do seu .env ou das configurações do Render)
-    redis_url = os.environ.get('REDIS_URL')
-    if not redis_url:
-        return jsonify({'status': 'erro', 'mensagem': 'Configuração do Redis não encontrada.'}), 500
+    # Reutiliza a conexão global que já foi testada no arranque da app.
+    if not redis_conn:
+        # Se a conexão global não foi estabelecida, retorna um erro amigável.
+        return jsonify({
+            'status': 'erro', 
+            'mensagem': 'Serviço de tarefas em segundo plano (Redis) não está disponível neste ambiente.'
+        }), 503 # 503 Service Unavailable é um código apropriado
 
-    redis_conn = Redis.from_url(redis_url)
-    q = Queue(connection=redis_conn)
-    
-    # Enfileira a tarefa para ser executada em segundo plano pelo Worker
-    q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo)
-    
-    return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
+    try:
+        # Cria a fila (Queue) usando a conexão já existente
+        q = Queue(connection=redis_conn)
+        
+        # Enfileira a tarefa para ser executada em segundo plano pelo Worker
+        q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo)
+        
+        return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
+    except Exception as e:
+        # Captura qualquer outro erro que possa ocorrer ao enfileirar a tarefa
+        print(f"Erro ao enfileirar tarefa: {e}")
+        return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
+
 
 @app.route('/configuracao', methods=['GET', 'POST'])
 @login_required

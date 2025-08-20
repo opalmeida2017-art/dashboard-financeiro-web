@@ -25,4 +25,4 @@ EXPOSE 10000
 # --- COMANDO DE ARRANQUE PARA PRODUÇÃO ---
 # 1. Executa as migrações da base de dados com o Alembic
 # 2. Inicia a aplicação usando o servidor Gunicorn
-CMD ["sh", "-c", "python3 -m alembic upgrade head && gunicorn --workers 3 --bind 0.0.0.0:10000 app:app"]
+CMD ["sh", "-c", "gunicorn --workers 3 --bind 0.0.0.0:10000 app:app"]
