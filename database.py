@@ -188,10 +188,13 @@ def table_exists(table_name: str) -> bool:
     except SQLAlchemyError as e:
         print(f"Erro ao verificar existência da tabela {table_name}: {e}")
         return False
+# Adicione 'import glob' no topo do seu arquivo database.py se ainda não existir
+import glob
+
 def processar_downloads_na_pasta(apartamento_id: int):
     """
     Verifica a pasta do projeto por planilhas baixadas, importa-as para o apartamento_id correto,
-    renomeia com data/hora e limpa versões antigas.
+    renomeia com data/hora E ID DO APARTAMENTO e limpa versões antigas.
     """
     print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     caminho_base = os.getcwd()
@@ -204,16 +207,26 @@ def processar_downloads_na_pasta(apartamento_id: int):
             print(f"\nArquivo novo encontrado: '{nome_arquivo_base}'")
 
             nome_sem_ext, extensao = os.path.splitext(nome_arquivo_base)
-            padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_*{extensao}")
+
+            # --- INÍCIO DA CORREÇÃO ---
+            # O padrão de busca agora é mais simples e robusto.
+            # Ele encontrará qualquer arquivo que comece com o nome base, seguido por '_apt-' e a extensão.
+            padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_apt-*{extensao}")
+            # --- FIM DA CORREÇÃO ---
+
             arquivos_antigos_encontrados = glob.glob(padrao_busca_antigos)
             
             if arquivos_antigos_encontrados:
                 print(f" -> Excluindo {len(arquivos_antigos_encontrados)} versão(ões) antiga(s)...")
                 for arquivo_antigo in arquivos_antigos_encontrados:
-                    os.remove(arquivo_antigo)
+                    try:
+                        os.remove(arquivo_antigo)
+                    except Exception as e:
+                        print(f" -> AVISO: Não foi possível apagar o arquivo antigo '{arquivo_antigo}'. Erro: {e}")
 
             try:
                 print(f" -> Importando dados para a tabela '{config.EXCEL_FILES_CONFIG[chave_config]['table_name']}'...")
+                # A função import_single_excel_to_db precisa estar definida no seu database.py
                 import_single_excel_to_db(caminho_novo_arquivo, chave_config, apartamento_id)
                 print(" -> Importação bem-sucedida.")
             except Exception as e:
@@ -222,7 +235,7 @@ def processar_downloads_na_pasta(apartamento_id: int):
 
             try:
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                novo_nome_renomeado = f"{nome_sem_ext}_{timestamp}{extensao}"
+                novo_nome_renomeado = f"{nome_sem_ext}_apt-{apartamento_id}_{timestamp}{extensao}"
                 caminho_renomeado = os.path.join(caminho_base, novo_nome_renomeado)
                 print(f" -> Renomeando arquivo para '{novo_nome_renomeado}'...")
                 os.rename(caminho_novo_arquivo, caminho_renomeado)
