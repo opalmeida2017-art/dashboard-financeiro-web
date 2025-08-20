@@ -15,8 +15,38 @@ from datetime import datetime, timedelta
 from functools import wraps
 from sqlalchemy import text
 from slugify import slugify
+from redis import Redis
+from rq import Queue
 
 app = Flask(__name__)
+
+# --- Conexão com o Redis ---
+
+# 1. Obter a URL de conexão do ambiente.
+#    - No Render, isto virá das "Environment Variables" que você acabou de configurar.
+#    - Localmente, viria de um ficheiro .env (se você o usar).
+REDIS_URL = os.environ.get('REDIS_URL')
+
+# Inicializa a variável de conexão como None
+redis_conn = None
+
+# 2. Tentar estabelecer a conexão
+if REDIS_URL:
+    try:
+        # A forma mais recomendada de conectar usando uma URL
+        redis_conn = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        
+        # 3. Verificar se a conexão está realmente a funcionar
+        redis_conn.ping()
+        print("✅ Conexão com o Redis estabelecida com sucesso!")
+
+    except redis.exceptions.ConnectionError as e:
+        print(f"❌ Erro ao conectar ao Redis: {e}")
+        # A aplicação pode continuar a funcionar, mas as funcionalidades com Redis não irão funcionar.
+    except Exception as e:
+        print(f"❌ Ocorreu um erro inesperado na configuração do Redis: {e}")
+else:
+    print("⚠️ A variável de ambiente REDIS_URL não foi definida. O serviço Redis não será utilizado.")
 app.config['SECRET_KEY'] = 'uma-chave-secreta-muito-dificil-de-adivinhar'
 app.config['SUPER_ADMIN_EMAIL'] ='op.almeida@hotmail.com'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
@@ -334,8 +364,18 @@ def gerenciar_grupos_salvar():
 @login_required
 def iniciar_coleta():
     apartamento_id_alvo = get_target_apartment_id()
-    thread = threading.Thread(target=coletor_principal.executar_todas_as_coletas, args=(apartamento_id_alvo,))
-    thread.start()
+    
+    # Pega a URL do Redis da variável de ambiente (do seu .env ou das configurações do Render)
+    redis_url = os.environ.get('REDIS_URL')
+    if not redis_url:
+        return jsonify({'status': 'erro', 'mensagem': 'Configuração do Redis não encontrada.'}), 500
+
+    redis_conn = Redis.from_url(redis_url)
+    q = Queue(connection=redis_conn)
+    
+    # Enfileira a tarefa para ser executada em segundo plano pelo Worker
+    q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo)
+    
     return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
 
 @app.route('/configuracao', methods=['GET', 'POST'])
