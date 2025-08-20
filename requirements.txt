@@ -30,3 +30,7 @@ python-dotenv
 SQLAlchemy
 
 python-slugify
+
+redis  # <-- Adicione esta linha se estiver em falta
+python-dotenv
+rq
