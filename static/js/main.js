@@ -1,58 +1,39 @@
-// static/js/main.js
+// Dentro de static/js/main.js
 
-// Espera que o DOM esteja totalmente carregado antes de executar o script
 document.addEventListener('DOMContentLoaded', function () {
-    // Encontra o elemento canvas no HTML
     const ctx = document.getElementById('myChart');
+    if (!ctx) return;
 
-    // Se o elemento canvas não existir (ex: na primeira carga sem dados), não faz nada
-    if (!ctx) {
-        return;
-    }
+    const urlParams = new URLSearchParams(window.location.search);
+    // ===== ESTA É A LINHA DA CORREÇÃO PRINCIPAL =====
+    const apiUrl = `/api/data?${urlParams.toString()}`;
+    // =================================================
 
-    // Usa a API Fetch para obter os dados do nosso endpoint Flask
-    fetch('/api/data')
+    fetch(apiUrl)
        .then(response => {
-            // Verifica se a resposta da API foi bem-sucedida
             if (!response.ok) {
-                throw new Error('A resposta da rede não foi ok');
+                // Se der 404 ou outro erro, o problema fica claro no console
+                throw new Error(`Erro na API: ${response.statusText}`);
             }
-            return response.json(); // Converte a resposta para JSON
+            return response.json();
         })
        .then(data => {
-// Se não houver dados ou houver um erro, não faz nada
-if (!data || data.length === 0 || data.error) {
-    console.log("Nenhum dado recebido da API.");
-    return;
-}
-
-            // Extrai os rótulos (labels) e os valores dos dados para o gráfico
-            // Assumimos que a primeira coluna é o rótulo (eixo X)
-            const labels = data.map(row => row[Object.keys(row)]);
-            
-            // Tenta encontrar a primeira coluna numérica para ser o valor (eixo Y)
-            let valueKey = null;
-            for (const key in data) {
-                if (typeof data[key] === 'number') {
-                    valueKey = key;
-                    break;
-                }
-            }
-
-            if (!valueKey) {
-                console.error("Nenhuma coluna numérica encontrada para o gráfico.");
+            if (!data || data.length === 0) {
+                console.warn("Gráfico não renderizado: Nenhum dado recebido da API.");
+                ctx.parentElement.innerHTML = '<p style="text-align:center; padding-top: 50px;">Sem dados para exibir no período selecionado.</p>';
                 return;
             }
 
-            const values = data.map(row => row[valueKey]);
+            // Lógica que usa as chaves 'label' e 'value' já corrigidas no app.py
+            const labels = data.map(row => row.label);
+            const values = data.map(row => row.value);
 
-            // Cria um novo gráfico usando a biblioteca Chart.js
             new Chart(ctx, {
-                type: 'bar', // Tipo de gráfico (barra, linha, etc.)
+                type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Valores',
+                        label: 'Faturamento por Dia',
                         data: values,
                         backgroundColor: 'rgba(54, 162, 235, 0.5)',
                         borderColor: 'rgba(54, 162, 235, 1)',
@@ -62,15 +43,20 @@ if (!data || data.length === 0 || data.error) {
                 options: {
                     scales: {
                         y: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return 'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                }
+                            }
                         }
                     },
                     responsive: true,
-                    maintainAspectRatio: true
+                    maintainAspectRatio: false
                 }
             });
         })
        .catch(error => {
-            console.error('Erro ao buscar ou processar dados para o gráfico:', error);
+            console.error('Erro ao buscar dados para o gráfico:', error);
         });
 });

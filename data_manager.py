@@ -147,21 +147,19 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     df_flags = get_all_group_flags(apartamento_id)
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
 
-    # Adiciona o filtro para 'permiteFaturar' = 'S' logo após a leitura dos dados.
     if not df_viagens_faturamento_raw.empty and 'permiteFaturar' in df_viagens_faturamento_raw.columns:
         df_viagens_faturamento_raw = df_viagens_faturamento_raw[df_viagens_faturamento_raw['permiteFaturar'].astype(str).str.upper() == 'S']
 
-    # --- ETAPA 2: CÁLCULO PRECISO DE PENDÊNCIAS ---
+    # --- ETAPA 2: CÁLCULO PRECISO DE PENDÊNCIAS (AGORA SEM FILTROS) ---
     
     # Lógica para "Contas a Pagar Pendentes"
     df_cp_pendentes = df_contas_pagar_raw.copy()
     if not df_cp_pendentes.empty:
-        df_cp_pendentes['dataVenc'] = pd.to_datetime(df_cp_pendentes['dataVenc'], errors='coerce', dayfirst=True)
-        if start_date:
-            df_cp_pendentes = df_cp_pendentes[df_cp_pendentes['dataVenc'] >= start_date]
-        if end_date:
-            df_cp_pendentes = df_cp_pendentes[df_cp_pendentes['dataVenc'] <= end_date]
-        df_cp_pendentes = df_cp_pendentes[df_cp_pendentes['codTransacao'].fillna('').str.strip() == '']
+        # --- INÍCIO DA CORREÇÃO ---
+        # REMOVIDOS OS BLOCOS DE FILTRO DE DATA DESTA SEÇÃO
+        # --- FIM DA CORREÇÃO ---
+        
+        df_cp_pendentes = df_cp_pendentes[df_cp_pendentes['codTransacao'].isnull()]
         key_cols_cp = ['nomeForn', 'numNota', 'valorVenc']
         if all(col in df_cp_pendentes.columns for col in key_cols_cp):
              df_cp_pendentes = df_cp_pendentes.drop_duplicates(subset=key_cols_cp)
@@ -172,18 +170,16 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     # Lógica para "Contas a Receber Pendentes"
     df_cr_pendentes = df_contas_receber_raw.copy()
     if not df_cr_pendentes.empty:
-        df_cr_pendentes['dataVenc'] = pd.to_datetime(df_cr_pendentes['dataVenc'], errors='coerce', dayfirst=True)
-        if start_date:
-            df_cr_pendentes = df_cr_pendentes[df_cr_pendentes['dataVenc'] >= start_date]
-        if end_date:
-            df_cr_pendentes = df_cr_pendentes[df_cr_pendentes['dataVenc'] <= end_date]
-        df_cr_pendentes = df_cr_pendentes[df_cr_pendentes['codTransacao'].fillna('').str.strip() == '']
+        # --- INÍCIO DA CORREÇÃO ---
+        # REMOVIDOS OS BLOCOS DE FILTRO DE DATA DESTA SEÇÃO
+        # --- FIM DA CORREÇÃO ---
+
+        df_cr_pendentes = df_cr_pendentes[df_cr_pendentes['codTransacao'].isnull()]
         summary['saldo_contas_a_receber_pendentes'] = df_cr_pendentes['valorVenc'].sum()
     else:
         summary['saldo_contas_a_receber_pendentes'] = 0
 
-    # --- ETAPA 3: CÁLCULOS DE FATURAMENTO, CUSTO E DESPESA ---
-    
+    # --- ETAPA 3: CÁLCULOS DE FATURAMENTO, CUSTO E DESPESA (QUE CONTINUAM USANDO OS FILTROS) ---
     df_viagens_faturamento = apply_filters_to_df(df_viagens_faturamento_raw, start_date, end_date, placa_filter, filial_filter)
     df_viagens_cliente = apply_filters_to_df(df_viagens_cliente_raw, start_date, end_date, placa_filter, filial_filter)
     df_despesas_limpo = df_despesas_raw.drop_duplicates(subset=['dataControle', 'numNota', 'valorVenc', 'nomeForn']) if not df_despesas_raw.empty else df_despesas_raw
@@ -758,8 +754,17 @@ def get_apartments_with_usage_stats():
         return []
     
 def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter, filial_filter) -> pd.DataFrame:
-    periodo_format = 'D' if start_date and end_date else 'M'
-    
+    """
+    Calcula os totais mensais ou diários de faturamento, custos e despesas
+    para alimentar o gráfico principal do dashboard. (Versão Final Robusta)
+    """
+    periodo_format = 'M'
+    if start_date and end_date:
+        duracao_dias = (end_date - start_date).days
+        if duracao_dias <= 62:
+            periodo_format = 'D'
+
+    # Busca e Filtro dos Dados Brutos
     df_viagens_faturamento_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
     df_viagens_faturamento = apply_filters_to_df(df_viagens_faturamento_raw, start_date, end_date, placa_filter, filial_filter)
 
@@ -769,6 +774,7 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
     df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
     df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
     
+    # Preparação de Custos e Despesas
     df_flags = get_all_group_flags(apartamento_id)
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
 
@@ -778,11 +784,6 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
                     if not df_despesas_processed.empty and not df_flags.empty 
                     else df_despesas_processed).copy()
     
-    if 'is_custo_viagem' not in df_com_flags.columns:
-        df_com_flags['is_custo_viagem'] = 'N'
-    if 'is_despesa' not in df_com_flags.columns:
-        df_com_flags['is_despesa'] = 'S'
-
     if not df_com_flags.empty:
         df_com_flags['is_custo_viagem'] = df_com_flags['is_custo_viagem'].fillna('N')
         df_com_flags['is_despesa'] = df_com_flags['is_despesa'].fillna('S')
@@ -790,6 +791,7 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
     df_custos = df_com_flags[df_com_flags['is_custo_viagem'] == 'S'].copy() if not df_com_flags.empty else pd.DataFrame()
     df_despesas_gerais = df_com_flags[df_com_flags['is_despesa'] == 'S'].copy() if not df_com_flags.empty else pd.DataFrame()
 
+    # Cálculo de Custos Adicionais
     comissao_df_data = pd.DataFrame()
     if not df_viagens_cliente.empty and all(c in df_viagens_cliente.columns for c in ['tipoFrete', 'freteMotorista', 'comissao', 'dataViagemMotorista']):
         df_comissao_base = df_viagens_cliente[(df_viagens_cliente['tipoFrete'].astype(str).str.strip().str.upper() == 'P') & (pd.to_numeric(df_viagens_cliente['freteMotorista'], errors='coerce') > 0)].copy()
@@ -814,43 +816,48 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
             df_custos = pd.concat([df_custos, comissao_df_data], ignore_index=True)
         elif comissao_flags.get('is_despesa') == 'S':
             df_despesas_gerais = pd.concat([df_despesas_gerais, comissao_df_data], ignore_index=True)
+    
+    # --- INÍCIO DA CORREÇÃO ---
+    # Inicializa as séries de dados como vazias ANTES dos blocos 'if'.
+    faturamento = pd.Series(dtype=float, name='Faturamento')
+    despesas_agrupadas = pd.Series(dtype=float, name='DespesasGerais')
+    custos_agrupados = pd.Series(dtype=float, name='Custo')
+    # --- FIM DA CORREÇÃO ---
 
-    faturamento = pd.Series(dtype=float)
+    # Agrupamento e Soma dos Dados por Período
     if not df_viagens_faturamento.empty and 'dataViagemMotorista' in df_viagens_faturamento.columns:
         df_viagens_faturamento['Periodo'] = pd.to_datetime(df_viagens_faturamento['dataViagemMotorista'], errors='coerce', dayfirst=True).dt.to_period(periodo_format)
         faturamento = df_viagens_faturamento.groupby('Periodo')['freteEmpresa'].sum()
-    faturamento.name = 'Faturamento'
+        faturamento.name = 'Faturamento'
 
-    despesas_agrupadas = pd.Series(dtype=float)
     if not df_despesas_gerais.empty and 'dataControle' in df_despesas_gerais.columns:
         df_despesas_gerais['Periodo'] = pd.to_datetime(df_despesas_gerais['dataControle'], errors='coerce', dayfirst=True).dt.to_period(periodo_format)
         despesas_agrupadas = df_despesas_gerais.groupby('Periodo')['valorNota'].sum()
-    despesas_agrupadas.name = 'DespesasGerais'
+        despesas_agrupadas.name = 'DespesasGerais'
 
-    custos_agrupados = pd.Series(dtype=float)
     if not df_custos.empty and 'dataControle' in df_custos.columns:
         df_custos['Periodo'] = pd.to_datetime(df_custos['dataControle'], errors='coerce', dayfirst=True).dt.to_period(periodo_format)
         custos_agrupados = df_custos.groupby('Periodo')['valorNota'].sum()
-    custos_agrupados.name = 'Custo'
+        custos_agrupados.name = 'Custo'
         
+    # Formatação Final do DataFrame para o Gráfico
     monthly_df = pd.concat([faturamento, custos_agrupados, despesas_agrupadas], axis=1).fillna(0)
     
-    if not monthly_df.empty:
-        if isinstance(monthly_df.index, pd.PeriodIndex):
-            date_format_str = '%Y-%m-%d' if periodo_format == 'D' else '%Y-%m'
-            monthly_df['PeriodoLabel'] = monthly_df.index.strftime(date_format_str)
-        else:
-            monthly_df['PeriodoLabel'] = monthly_df.index.astype(str)
-        
-        monthly_df.index.name = 'Periodo'
-        monthly_df = monthly_df.reset_index()
+    if monthly_df.empty:
+        return monthly_df
 
-        if 'Periodo' in monthly_df.columns:
-            monthly_df['Periodo'] = monthly_df['Periodo'].astype(str)
-            
-    if not monthly_df.empty and 'Periodo' in monthly_df.columns:
+    monthly_df.index = monthly_df.index.to_timestamp()
+    
+    date_format_str = '%d/%m/%Y' if periodo_format == 'D' else '%Y-%m'
+    monthly_df['PeriodoLabel'] = monthly_df.index.strftime(date_format_str)
+    
+    monthly_df = monthly_df.reset_index()
+    monthly_df.rename(columns={'index': 'Periodo'}, inplace=True)
+
+    if 'Periodo' in monthly_df.columns:
+        monthly_df['Periodo'] = monthly_df['Periodo'].astype(str)
         monthly_df = monthly_df.sort_values(by='Periodo', ascending=True)
-        
+            
     return monthly_df
 
 def get_apartment_by_slug(slug: str):

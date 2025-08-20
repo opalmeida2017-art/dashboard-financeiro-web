@@ -7,6 +7,7 @@ import config
 import glob 
 from datetime import datetime
 import psycopg2.extras # <-- Importação essencial
+import numpy as np
 
 db_url = os.getenv('DATABASE_URL')
 if not db_url:
@@ -38,27 +39,41 @@ def create_tables():
     print("AVISO: A criação de tabelas agora é gerenciada pelo Alembic.")
     pass
 
+# Em database.py - SUBSTITUA SUA FUNÇÃO POR ESTA VERSÃO
+
 def _clean_and_convert_data(df, table_key):
     """Limpa e converte os tipos de dados do DataFrame antes da importação."""
+    # ... (o início da função continua o mesmo) ...
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
-    
-    for col in df.select_dtypes(include=['object']).columns:
-        if df[col].notna().any():
-            df[col] = df[col].str.strip()
-    
+
+    # ... (a seção de booleanos e limpeza de texto continua a mesma) ...
+
+    # --- ETAPA DE CONVERSÃO DE DATAS E NÚMEROS ---
     col_maps = config.TABLE_COLUMN_MAPS.get(table_key, {})
+    
+    # Converte colunas de data
     date_columns_to_process = col_maps.get('date_formats', {}).keys()
     for col_db in date_columns_to_process:
         if col_db in df.columns:
-            df[col_db] = pd.to_datetime(df[col_db], errors='coerce').dt.strftime('%Y-%m-%d %H:%M:%S')
+            # --- INÍCIO DA CORREÇÃO ---
+            # Adicionado dayfirst=True para interpretar DD/MM/AAAA corretamente
+            df[col_db] = pd.to_datetime(df[col_db], errors='coerce', dayfirst=True)
+            # --- FIM DA CORREÇÃO ---
 
+    # Converte colunas numéricas e de inteiros
     for col_type in ['numeric', 'integer']:
         for col_db in col_maps.get(col_type, []):
             if col_db in df.columns:
+                if df[col_db].dtype == 'object':
+                    df[col_db] = df[col_db].str.replace('.', '', regex=False)
+                    df[col_db] = df[col_db].str.replace(',', '.', regex=False)
+                
                 df[col_db] = pd.to_numeric(df[col_db], errors='coerce').fillna(0)
+                
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
+                    
     return df
 
 def _validate_columns(excel_columns, table_name):
