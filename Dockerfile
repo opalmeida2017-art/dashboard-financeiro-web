@@ -19,10 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia todo o código da aplicação para o diretório de trabalho
 COPY . .
 
-# Expõe a porta que o Gunicorn irá usar
-EXPOSE 10000
+# --- ALTERAÇÕES PARA USAR O SCRIPT DE ARRANQUE ---
 
-# --- COMANDO DE ARRANQUE PARA PRODUÇÃO ---
-# 1. Executa as migrações da base de dados com o Alembic
-# 2. Inicia a aplicação usando o servidor Gunicorn
-CMD ["sh", "-c", "gunicorn --workers 3 --bind 0.0.0.0:10000 app:app"]
+# 1. Copia o script de arranque para dentro do contentor
+COPY startup.sh .
+
+# 2. Torna o script de arranque executável
+RUN chmod +x ./startup.sh
+
+# 3. Define o script de arranque como o ponto de entrada do contentor
+CMD ["./startup.sh"]
