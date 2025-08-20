@@ -25,7 +25,7 @@ def upgrade() -> None:
     print("-> Verificando e apagando a versão antiga da tabela (se existir)...")
     #op.execute('DROP TABLE IF EXISTS "relFilViagensCliente" CASCADE;')
 
-    # 2. Cria a tabela do zero com a estrutura correta, usando op.create_table().
+    # 2. Cria a tabela do zero com a estrutura correta, usando op.create_table()
     print("-> Criando a nova tabela 'relFilViagensCliente' com a estrutura correta...")
     op.create_table('relFilViagensCliente',
         sa.Column('apartamento_id', sa.Integer(), nullable=False),

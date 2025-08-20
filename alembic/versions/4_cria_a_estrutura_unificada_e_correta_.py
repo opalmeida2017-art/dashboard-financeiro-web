@@ -1,29 +1,8 @@
 """4_cria_a_estrutura_unificada_e_correta_relFilContasPagarDet
 
-Revision ID: bba30895ad09
-Revises: 3
-Create Date: 2025-08-19 12:08:33.025763
-
-"""
-from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-
-
-# revision identifiers, used by Alembic.
-revision: str = 'bba30895ad09'
-down_revision: Union[str, Sequence[str], None] = '3'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
-
-
-def upgrade() -> None:
-    """Upgrade schema.""""""Cria ou recria a tabela relFilContasPagarDet usando a melhor prática do Alembic.
-
 Revision ID: 4
 Revises: 3
-Create Date: 2025-08-15 12:30:23.357271
+Create Date: 2025-08-19 12:08:33.025763
 
 """
 from typing import Sequence, Union
