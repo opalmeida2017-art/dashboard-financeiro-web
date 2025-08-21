@@ -69,6 +69,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('apartamento_id', 'chave')
     )
     
+    op.create_table('notificacoes',
+        sa.Column('id', sa.Integer(), nullable=False, primary_key=True, autoincrement=True),
+        sa.Column('apartamento_id', sa.Integer(), nullable=False),
+        sa.Column('mensagem', sa.Text(), nullable=False),
+        sa.Column('lida', sa.Boolean(), server_default=sa.text('FALSE'), nullable=True),
+        sa.Column('timestamp', sa.TIMESTAMP(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True)
+    )
     # --- FIM DA CORREÇÃO ---
 
     print("--- CRIAÇÃO DAS TABELAS DE SISTEMA CONCLUÍDA ---")
