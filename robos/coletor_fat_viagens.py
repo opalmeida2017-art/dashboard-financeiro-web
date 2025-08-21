@@ -243,6 +243,6 @@ def coletar_fat_viagens(apartamento_id: int):
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         apartamento_id_teste = int(sys.argv[1])
-        coletar_viagens(apartamento_id_teste)
+        coletar_fat_viagens(apartamento_id_teste)
     else:
         print("Para testar, forneça um ID de apartamento. Ex: python robos/coletor_viagens.py 1")
