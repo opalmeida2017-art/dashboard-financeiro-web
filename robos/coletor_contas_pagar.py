@@ -1,4 +1,3 @@
-# robos/coletor_fat_viagens.py (Robô completo e independente)
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +16,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
 # CORREÇÃO: Removido o aninhamento de funções. Esta é agora a função principal.
-def executar_coleta_fat_viagens(apartamento_id: int):
+def executar_coleta_contas_pagar(apartamento_id: int):
     print(f"\n--- INICIANDO ROBÔ: VIAGENS PARA APARTAMENTO ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
@@ -26,7 +25,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
     USUARIO = configs.get('USUARIO_ROBO')
     SENHA = configs.get('SENHA_ROBO')
     URL_LOGIN = configs.get('URL_LOGIN')
-    CODIGO_RELATORIO = configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') 
+    CODIGO_RELATORIO = configs.get('CODIGO_CONTAS_PAGAR', '') 
     DATA_INICIAL = configs.get('DATA_INICIAL_ROBO', '01/01/2000')
     DATA_FINAL = configs.get('DATA_FINAL_ROBO', '31/12/2999')
     
@@ -136,27 +135,21 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         logic.logar_progresso(apartamento_id,"-> Tela do formulário final alcançada! Um screenshot foi salvo.")
 
         logic.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
+
         
         # Preenche as datas
-        wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataIniInputDate'))).clear()
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataIniInputDate').send_keys(DATA_INICIAL)
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataFimInputDate').clear()
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataFimInputDate').send_keys(DATA_FINAL)
+        wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_dataIniInputDate'))).clear()
+        driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_dataIniInputDate').send_keys(DATA_INICIAL)
+        driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_dataFimInputDate').clear()
+        driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_dataFimInputDate').send_keys(DATA_FINAL)
         
-        # Preenche os dropdowns e campos com os valores padrão
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoData')).select_by_value('1')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_faturamento')).select_by_value('0')
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoCte2').clear()
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoCte2').send_keys('T')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_cteStatus')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoFilial')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoFrete')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_fretePago')).select_by_value('T')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_temAcertoProprietario')).select_by_value('T')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_pesoChegada')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_apenasFaturados')).select_by_value('N')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_somentePedidosNaoFinalizados')).select_by_value('0')
-         
+        # Preenche os dropdowns (seletores)
+        Select(driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_tipoData')).select_by_value('1')      # Vencto.
+        Select(driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_tipoConta')).select_by_value('T')     # Todas
+        Select(driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_propriedade')).select_by_value('7')   # Todos
+        Select(driver.find_element(By.ID, 'formrelFilContasPagarDet:RelFilContasPagarDet_mostraValorItem')).select_by_value('S') # Sim
+        # O campo 'superGrupoD' será deixado no padrão "-"
+
         time.sleep(1)
         logic.logar_progresso(apartamento_id,"Passo 9: Pressionando Ctrl + Enter para gerar o link de download...")
         actions.key_down(Keys.CONTROL).send_keys(Keys.ENTER).key_up(Keys.CONTROL).perform()
@@ -167,7 +160,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         link_final.click()
         
         # ATENÇÃO: Verifique se este é o nome correto do arquivo para este robô!
-        nome_do_arquivo_esperado = "relFilViagensFatCliente"
+        nome_do_arquivo_esperado = "relFilContasPagarDet.xls"
         pasta_downloads = pasta_principal
         caminho_do_arquivo = os.path.join(pasta_downloads, nome_do_arquivo_esperado)
         
@@ -206,15 +199,13 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:
         logic.logar_progresso(apartamento_id,"Fechando o navegador.")
-        driver.quit()            
+        driver.quit()       
         
-
 # --- BLOCO PARA TESTE MANUAL ---
-# Este bloco permite que você continue a executar este ficheiro diretamente
-# para testar apenas este robô.
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         apartamento_id_teste = int(sys.argv[1])
-        executar_coleta_fat_viagens(apartamento_id_teste)
+        # CORREÇÃO: Chamando a função correta
+        executar_coleta_contas_pagar(apartamento_id_teste)
     else:
         print("Para testar, forneça um ID de apartamento. Ex: python robos/coletor_viagens.py 1")

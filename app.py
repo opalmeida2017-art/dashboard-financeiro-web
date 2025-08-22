@@ -336,17 +336,28 @@ def gerenciar_grupos_salvar():
 # --- ROTA DE COLETA DE DADOS (COM CORREÇÃO) ---
 @app.route('/iniciar-coleta', methods=['POST'])
 @login_required
-def iniciar_coleta():
+def iniciar_coleta_endpoint():
     apartamento_id_alvo = get_target_apartment_id()
     
-    # Reutiliza a conexão global que já foi testada no arranque da app.
-    if not redis_conn:
-        # Se a conexão global não foi estabelecida, retorna um erro amigável.
-        return jsonify({
-            'status': 'erro', 
-            'mensagem': 'Serviço de tarefas em segundo plano (Redis) não está disponível neste ambiente.'
-        }), 503 # 503 Service Unavailable é um código apropriado
+    # Pega a variável de ambiente. Se não existir, o padrão seguro é 'async' (produção).
+    execution_mode = os.getenv("EXECUTION_MODE", "async")
+    
+    # DECIDE O QUE FAZER COM BASE NA VARIÁVEL
+    if execution_mode == "sync":
+        # --- MODO SÍNCRONO (PARA DESENVOLVIMENTO LOCAL) ---
+        print(f"--- INICIANDO COLETA SÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
+        from coletor_principal import executar_todas_as_coletas
+        executar_todas_as_coletas(apartamento_id_alvo)
+        print(f"--- COLETA SÍNCRONA FINALIZADA ---")
+        message = "Coleta finalizada!"
+    else:
+        # --- MODO ASSÍNCRONO (PARA PRODUÇÃO) ---
+        print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
+        from tasks import tarefa_de_coleta # (ou o nome da sua tarefa de background)
+        tarefa_de_coleta.delay(apartamento_id_alvo)
+        message = "Coleta iniciada em segundo plano!"
 
+    return message
     try:
         # Cria a fila (Queue) usando a conexão já existente
         q = Queue(connection=redis_conn)

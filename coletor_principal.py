@@ -12,15 +12,12 @@ import database as db
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # --- CORREÇÃO: Importando os robôs com os nomes de arquivo corretos ---
-from robos import base_robo
-from robos import coletor_viagens
-from robos import coletor_despesas
-from robos import coletor_fat_viagens
-    
+
 from sqlalchemy import text
 
 # MODIFICADO: A função agora aceita o apartamento_id
 def executar_todas_as_coletas(apartamento_id: int):
+    
     """
     Função principal que executa cada robô coletor, passando o ID do apartamento.
     """
@@ -32,6 +29,8 @@ def executar_todas_as_coletas(apartamento_id: int):
         os.path.join(caminho_base, "robos", "coletor_viagens.py"),
         os.path.join(caminho_base, "robos", "coletor_despesas.py"),
         os.path.join(caminho_base, "robos", "coletor_fat_viagens.py"),
+        os.path.join(caminho_base, "robos", "coletor_contas_pagar.py"),
+        os.path.join(caminho_base, "robos", "coletor_contas_receber.py"), # <-- ADICIONE ESTA LINHA   
     ]
 
     for caminho_do_robo in robos_para_executar:
@@ -53,7 +52,7 @@ def executar_todas_as_coletas(apartamento_id: int):
                 print("--- Saída do Robô ---")
                 print(resultado.stdout)
                 print("---------------------")
-
+    
         except subprocess.CalledProcessError as e:
             # Se o robô falhar, agora vamos imprimir a mensagem de erro detalhada.
             print(f">>> ERRO! O SCRIPT {nome_do_robo} FALHOU. Código de erro: {e.returncode}")
@@ -63,7 +62,7 @@ def executar_todas_as_coletas(apartamento_id: int):
         except FileNotFoundError:
             print(f">>> ERRO! O arquivo do robô '{nome_do_robo}' não foi encontrado.")
         
-        time.sleep(5) # Uma pequena pausa entre os robôs
+        time.sleep(1) # Uma pequena pausa entre os robôs
 
     print("\nTodos os roteiros foram executados.")
     print("Processando todos os arquivos baixados na pasta...")

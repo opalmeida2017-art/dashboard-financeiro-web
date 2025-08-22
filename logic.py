@@ -3,6 +3,11 @@ import data_manager as dm
 import database as db
 import os
 import config
+import psycopg2
+from sqlalchemy import text
+
+
+
 
 def get_dashboard_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
     print(f">>> [LOGIC] Chamando get_dashboard_summary para o apartamento ID: {apartamento_id}")
@@ -122,3 +127,41 @@ def get_apartment_by_slug(slug: str):
     print(f">>> [LOGIC] Chamando get_apartment_by_slug para o slug: {slug}")
     # 'dm' é o alias para data_manager
     return dm.get_apartment_by_slug(slug)
+# Em logic.py
+
+
+
+
+def limpar_logs_antigos(apartamento_id):
+    """Apaga os logs de uma execução anterior para um apartamento específico."""
+    try:
+        with psycopg2.connect(**DB_CONFIG) as conn:
+            with conn.cursor() as cursor:
+                sql = "DELETE FROM tb_logs_robo WHERE apartamento_id = %s"
+                cursor.execute(sql, (apartamento_id,))
+        print(f"[LOG DB] Logs antigos para o apartamento {apartamento_id} foram limpos.")
+    except Exception as e:
+        print(f"ERRO ao limpar logs antigos: {e}")
+
+def logar_progresso(apartamento_id, mensagem):
+    """
+    Salva uma mensagem de progresso do robô no banco de dados,
+    usando a conexão principal da aplicação.
+    """
+    # Continua mostrando no console para debug imediato
+    print(mensagem) 
+    
+    try:
+        # Usa o 'db.engine' que já está configurado para toda a aplicação
+        with db.engine.connect() as conn:
+            query = text("""
+                INSERT INTO tb_logs_robo (apartamento_id, timestamp, mensagem)
+                VALUES (:apartamento_id, NOW(), :mensagem)
+            """)
+            # Usamos .execute() e .commit() para garantir que a transação seja salva
+            conn.execute(query, {"apartamento_id": apartamento_id, "mensagem": mensagem})
+            conn.commit()
+    except Exception as e:
+        # Se até o log falhar, imprime o erro no console para não parar a execução do robô
+        # Isso evita que o robô pare completamente só porque não conseguiu logar.
+        print(f"--- ERRO CRÍTICO NO LOG: Não foi possível salvar a mensagem no banco. Erro: {e} ---")

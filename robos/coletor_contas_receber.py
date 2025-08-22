@@ -1,4 +1,5 @@
-# robos/coletor_fat_viagens.py (Robô completo e independente)
+# robos/coletor_contas_receber.py
+
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +18,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
 # CORREÇÃO: Removido o aninhamento de funções. Esta é agora a função principal.
-def executar_coleta_fat_viagens(apartamento_id: int):
+def executar_coleta_contas_receber(apartamento_id: int):
     print(f"\n--- INICIANDO ROBÔ: VIAGENS PARA APARTAMENTO ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
@@ -26,7 +27,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
     USUARIO = configs.get('USUARIO_ROBO')
     SENHA = configs.get('SENHA_ROBO')
     URL_LOGIN = configs.get('URL_LOGIN')
-    CODIGO_RELATORIO = configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') 
+    CODIGO_RELATORIO = configs.get('CODIGO_CONTAS_RECEBER', '6') 
     DATA_INICIAL = configs.get('DATA_INICIAL_ROBO', '01/01/2000')
     DATA_FINAL = configs.get('DATA_FINAL_ROBO', '31/12/2999')
     
@@ -119,7 +120,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
             logic.logar_progresso(apartamento_id," -> Foco mudado para a nova aba do formulário.")
         else:
             logic.logar_progresso(apartamento_id," -> Nenhuma nova aba detectada. Procurando por um iframe...")
-            wait.until(EC.frame_to_be_available_and_switch_to_it(0))
+            wait.until(EC.frame_to_be_available_and_switch_to_it(2))
 
         logic.logar_progresso(apartamento_id,"Passo 7: Procurando e clicando no link de exportação...")
         SELECTOR_LINK_EXPORTACAO = "a[onclick*=\"formCad:j_idt7\"]"
@@ -138,25 +139,18 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         logic.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
         
         # Preenche as datas
-        wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataIniInputDate'))).clear()
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataIniInputDate').send_keys(DATA_INICIAL)
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataFimInputDate').clear()
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataFimInputDate').send_keys(DATA_FINAL)
+        wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilContasReceber:RelFilContasReceber_dataIniInputDate'))).clear()
+        driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_dataIniInputDate').send_keys(DATA_INICIAL)
+        driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_dataFimInputDate').clear()
+        driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_dataFimInputDate').send_keys(DATA_FINAL)
         
-        # Preenche os dropdowns e campos com os valores padrão
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoData')).select_by_value('1')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_faturamento')).select_by_value('0')
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoCte2').clear()
-        driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoCte2').send_keys('T')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_cteStatus')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoFilial')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoFrete')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_fretePago')).select_by_value('T')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_temAcertoProprietario')).select_by_value('T')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_pesoChegada')).select_by_value('0')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_apenasFaturados')).select_by_value('N')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_somentePedidosNaoFinalizados')).select_by_value('0')
-         
+        # Preenche os dropdowns (seletores)
+        Select(driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_dupLiberadas')).select_by_value('T')
+        Select(driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_imprimirCte')).select_by_value('S')
+        Select(driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_tipoContaCorr')).select_by_value('9')
+        Select(driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_imprimirTipoFrete')).select_by_value('S')
+        Select(driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_descontadasFomento')).select_by_value('T')
+
         time.sleep(1)
         logic.logar_progresso(apartamento_id,"Passo 9: Pressionando Ctrl + Enter para gerar o link de download...")
         actions.key_down(Keys.CONTROL).send_keys(Keys.ENTER).key_up(Keys.CONTROL).perform()
@@ -167,7 +161,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         link_final.click()
         
         # ATENÇÃO: Verifique se este é o nome correto do arquivo para este robô!
-        nome_do_arquivo_esperado = "relFilViagensFatCliente"
+        nome_do_arquivo_esperado = "relFilContasReceber.xls"
         pasta_downloads = pasta_principal
         caminho_do_arquivo = os.path.join(pasta_downloads, nome_do_arquivo_esperado)
         
@@ -187,8 +181,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
                 download_completo = True
             break
         time.sleep(5)
-        
-        
+            
         if not download_completo:
             raise Exception(logic.logar_progresso(apartamento_id,f"O download do arquivo '{nome_do_arquivo_esperado}' não foi concluído em {tempo_max_espera_segundos} segundos."))
         
@@ -206,15 +199,16 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:
         logic.logar_progresso(apartamento_id,"Fechando o navegador.")
-        driver.quit()            
+        driver.quit()       
         
-
+        
 # --- BLOCO PARA TESTE MANUAL ---
-# Este bloco permite que você continue a executar este ficheiro diretamente
-# para testar apenas este robô.
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         apartamento_id_teste = int(sys.argv[1])
-        executar_coleta_fat_viagens(apartamento_id_teste)
+        # CORREÇÃO ESTRUTURAL: Chamando a função correta
+        # --- ALTERADO ---
+        executar_coleta_contas_receber(apartamento_id_teste)
     else:
-        print("Para testar, forneça um ID de apartamento. Ex: python robos/coletor_viagens.py 1")
+        # --- ALTERADO ---
+        print("Para testar, forneça um ID de apartamento. Ex: python robos/coletor_contas_receber.py 1")

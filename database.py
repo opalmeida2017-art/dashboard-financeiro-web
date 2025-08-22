@@ -8,6 +8,8 @@ import glob
 from datetime import datetime
 import psycopg2.extras # <-- Importação essencial
 import numpy as np
+from dotenv import load_dotenv
+load_dotenv()
 
 db_url = os.getenv('DATABASE_URL')
 if not db_url:
