@@ -38,19 +38,19 @@ def executar_coleta_contas_receber(apartamento_id: int):
     SELECTOR_CAMPO_USUARIO = "input[id='formCad:nome']"
     SELECTOR_CAMPO_SENHA = "input[id='formCad:senha']"
     SELECTOR_BOTAO_ENTRAR = "input[id='formCad:entrar']"
-    
     chrome_options = Options()
-    # Para ver o robô em ação, esta linha DEVE estar comentada
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--start-maximized")
-    # Desativa a aceleração por hardware da GPU, uma causa comum de travamentos em automação.
     chrome_options.add_argument("--disable-gpu")
-    # Outra flag de estabilidade, especialmente útil em servidores.
     chrome_options.add_argument("--disable-dev-shm-usage")
+    # --- ADICIONE ESTAS NOVAS LINHAS PARA OTIMIZAR A MEMÓRIA ---
+    chrome_options.add_argument("--disable-images") # Não carrega imagens
+    chrome_options.add_argument("--disable-extensions") # Desativa extensões
+    chrome_options.add_argument("--disable-popup-blocking") # Desativa bloqueador de pop-up
+    chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Outra forma de desativar imagens
+    chrome_options.add_argument("--start-maximized")
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     chrome_options.add_argument(f'user-agent={user_agent}')
-    
     pasta_principal = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     prefs = {'download.default_directory': pasta_principal}
     chrome_options.add_experimental_option('prefs', prefs)
