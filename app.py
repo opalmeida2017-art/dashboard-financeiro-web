@@ -258,6 +258,66 @@ def api_monthly_summary():
     )
     return jsonify(monthly_data.to_dict(orient='records'))
 
+# --- NOVA ROTA PARA BUSCAR LOGS DO ROBÔ ---
+@app.route('/api/get_robot_logs')
+@login_required
+def api_get_robot_logs():
+    """
+    Busca os últimos 100 logs do robô para o apartamento atual no banco de dados.
+    """
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    try:
+        with db.engine.connect() as conn:
+            # Busca os últimos 100 logs, com o mais recente primeiro
+            query = text("""
+                SELECT timestamp, mensagem 
+                FROM tb_logs_robo 
+                WHERE apartamento_id = :apt_id 
+                ORDER BY timestamp DESC 
+                LIMIT 100
+            """)
+            result = conn.execute(query, {"apt_id": apartamento_id_alvo})
+            
+            # Formata os resultados para enviar como JSON
+            logs = [
+                {
+                    # Formata o timestamp para um formato legível no Brasil
+                    "timestamp": row[0].strftime('%d/%m/%Y %H:%M:%S') if row[0] else '',
+                    "mensagem": row[1]
+                } for row in result
+            ]
+            return jsonify(logs)
+    except Exception as e:
+        print(f"Erro ao buscar logs do robô: {e}")
+        return jsonify({"error": f"Erro ao buscar logs: {e}"}), 500
+
+# --- NOVA ROTA PARA LIMPAR OS LOGS DO ROBÔ ---
+@app.route('/api/clear_robot_logs', methods=['POST'])
+@login_required
+def api_clear_robot_logs():
+    """
+    Apaga TODOS os logs de robô para o apartamento do utilizador atual.
+    """
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"status": "error", "message": "Contexto do apartamento não encontrado"}), 400
+
+    try:
+        with db.engine.connect() as conn:
+            query = text("DELETE FROM tb_logs_robo WHERE apartamento_id = :apt_id")
+            conn.execute(query, {"apt_id": apartamento_id_alvo})
+            conn.commit() # Efetiva a exclusão no banco
+        
+        flash('Logs do robô foram limpos com sucesso!', 'success')
+        return jsonify({"status": "success", "message": "Logs limpos com sucesso!"})
+
+    except Exception as e:
+        print(f"Erro ao limpar logs do robô: {e}")
+        return jsonify({"status": "error", "message": f"Erro ao limpar logs: {e}"}), 500
+
 @app.route('/api/faturamento_dashboard_data')
 @login_required
 def api_faturamento_dashboard_data():
@@ -332,6 +392,8 @@ def gerenciar_grupos_salvar():
     logic.update_all_group_flags(apartamento_id_alvo, update_data)
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
+
+
 
 # --- ROTA DE COLETA DE DADOS (COM CORREÇÃO) ---
 @app.route('/iniciar-coleta', methods=['POST'])

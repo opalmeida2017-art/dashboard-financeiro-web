@@ -17,7 +17,7 @@ from selenium.webdriver.support.ui import Select
 
 # CORREÇÃO: Removido o aninhamento de funções. Esta é agora a função principal.
 def executar_coleta_contas_pagar(apartamento_id: int):
-    print(f"\n--- INICIANDO ROBÔ: VIAGENS PARA APARTAMENTO ID: {apartamento_id} ---")
+    logic.logar_progresso(apartamento_id,f"\n--- INICIANDO ROBÔ: CONTAS APAGAR PENDENTES PARA APARTAMENTO ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
     print("Lendo configurações do banco de dados...")
@@ -39,7 +39,7 @@ def executar_coleta_contas_pagar(apartamento_id: int):
     
     chrome_options = Options()
     # Para ver o robô em ação, esta linha DEVE estar comentada
-    #chrome_options.add_argument("--headless") 
+    chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--start-maximized")
     # Desativa a aceleração por hardware da GPU, uma causa comum de travamentos em automação.
@@ -193,13 +193,13 @@ def executar_coleta_contas_pagar(apartamento_id: int):
         except Exception as e:
             logic.logar_progresso(apartamento_id,f"Ocorreu um erro crítico durante o processamento dos arquivos: {e}")
 
-    except Exception as e:
-        driver.save_screenshot('screenshot_erro.png')
-        logic.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
-        logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
+        except Exception as e:
+            driver.save_screenshot('screenshot_erro.png')
+            logic.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
+            logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:
-        logic.logar_progresso(apartamento_id,"Fechando o navegador.")
-        driver.quit()       
+     logic.logar_progresso(apartamento_id,"Fechando o navegador.")
+     driver.quit()             
         
 # --- BLOCO PARA TESTE MANUAL ---
 if __name__ == '__main__':
