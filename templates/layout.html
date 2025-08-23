@@ -4,54 +4,68 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard Transporte</title>
-    <!-- Carrega o CSS do Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Carrega o seu CSS personalizado -->
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <!-- Barra de Navegação Superior -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">Dashboard Transporte</a>
-            
-            <<div class="d-flex align-items-center">
-    {% if current_user.is_authenticated %}
-        {% if current_user.email == config.SUPER_ADMIN_EMAIL %}
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">Sair</a>
-        {% else %}
-            <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">Voltar a Tela Principal</a>
-        {% endif %}
-        {% endif %}
-</div>
+            <div class="d-flex align-items-center">
+                {% if current_user.is_authenticated %}
+                    <span class="navbar-text me-3">
+                        Olá, {{ current_user.nome }}
+                    </span>
+                    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">Sair</a>
+                {% endif %}
+            </div>
         </div>
     </nav>
 
-    <!-- Conteúdo Principal da Página -->
     <main class="container mt-4">
-        
-        <!-- INÍCIO DA CORREÇÃO: Bloco para exibir as mensagens flash -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-                <div class="flash-messages mb-3">
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'warning' }} alert-dismissible fade show" role="alert">
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }} alert-dismissible fade show" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}
-                </div>
             {% endif %}
         {% endwith %}
-        <!-- FIM DA CORREÇÃO -->
 
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Scripts JavaScript -->
-    <!-- Adicionado Bootstrap JS para funcionalidades como fechar alertas -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+    {% block scripts %}{% endblock %}
+
+    <script>
+    {% if current_user.is_authenticated and current_user.email != config.SUPER_ADMIN_EMAIL %}
+    document.addEventListener('DOMContentLoaded', function() {
+        let lastHeartbeatTime = 0;
+        const heartbeatInterval = 30000; // 30 segundos
+
+        function sendHeartbeat() {
+            const now = Date.now();
+            if (now - lastHeartbeatTime > heartbeatInterval) {
+                console.log('Enviando heartbeat de atividade do cliente...');
+                fetch('/api/heartbeat', { method: 'POST' })
+                    .catch(error => console.error('Falha no heartbeat:', error));
+                lastHeartbeatTime = now;
+            }
+        }
+
+        window.addEventListener('mousemove', sendHeartbeat);
+        window.addEventListener('keydown', sendHeartbeat);
+        window.addEventListener('click', sendHeartbeat);
+        window.addEventListener('scroll', sendHeartbeat);
+        sendHeartbeat();
+    });
+    {% endif %}
+    </script>
 </body>
 </html>

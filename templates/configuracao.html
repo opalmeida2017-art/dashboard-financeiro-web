@@ -107,7 +107,14 @@
                 <div class="tab-pane fade" id="periodo-pane" role="tabpanel">
                     <div class="form-group mb-3"><label for="DATA_INICIAL_ROBO">Data Inicial</label><input type="text" class="form-control" id="DATA_INICIAL_ROBO" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO', '') }}" placeholder="dd/mm/aaaa"></div>
                     <div class="form-group mb-3"><label for="DATA_FINAL_ROBO">Data Final</label><input type="text" class="form-control" id="DATA_FINAL_ROBO" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO', '') }}" placeholder="dd/mm/aaaa"></div>
+                    <div class="form-check form-switch mt-4">
+                      <input class="form-check-input" type="checkbox" id="live_monitoring_enabled" name="live_monitoring_enabled" {% if configs.get('live_monitoring_enabled') %}checked{% endif %}>
+                      <label class="form-check-label" for="live_monitoring_enabled">
+                          Ativar coleta em tempo real (a cada X minutos enquanto o dashboard estiver aberto)
+                         </label>
                 </div>
+                </div>
+            
             </div>
 
             <div class="d-flex justify-content-end mt-4">

@@ -11,42 +11,94 @@
 
         <div class="table-container">
             <h3>Apartamentos Registados</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Nome da Empresa</th>
-                        <th>Status</th>
-                        <th>Uso de Dados (Registos)</th>
-                        <th>Link de Acesso do Cliente</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for apt in apartamentos %}
-                    <tr>
-                        <td>{{ apt.id }}</td>
-                        <td>{{ apt.nome_empresa }}</td>
-                        <td><span class="status-{{ apt.status }}">{{ apt.status }}</span></td>
-                        <td>{{ "{:,.0f}".format(apt.total_registos or 0).replace(",", ".") }}</td>
-                        <td>
-                            {% if apt.access_link != "Sem slug definido" %}
-                                <a href="{{ apt.access_link }}" target="_blank">{{ apt.access_link }}</a>
-                            {% else %}
-                                <span style="color: #888;">{{ apt.access_link }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="actions-cell">
-                            <a href="{{ url_for('gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" style="text-align: center;">Nenhum apartamento encontrado.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <form method="POST" action="{{ url_for('admin_dashboard') }}"> 
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome da Empresa</th>
+                            <th>Status</th>
+                            <th>Uso de Dados (Registos)</th>
+                            <th>Intervalo (min)</th>
+                            <th>Link de Acesso do Cliente</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for apt in apartamentos %}
+                        <tr>
+                            <td>{{ apt.id }}</td>
+                            <td>{{ apt.nome_empresa }}</td>
+                            <td><span class="status-{{ apt.status }}">{{ apt.status }}</span></td>
+                            <td>{{ "{:,.0f}".format(apt.total_registos or 0).replace(",", ".") }}</td>
+                            <td>
+                                <input type="number" name="interval_{{ apt.id }}" 
+                                       value="{{ apt.live_monitoring_interval_minutes }}" 
+                                       style="width: 60px; text-align: center;">
+                            </td>
+                            <td>
+                                {% if apt.access_link != "Sem slug definido" %}
+                                    <a href="{{ apt.access_link }}" target="_blank" id="link-apt-{{ apt.id }}">{{ apt.access_link }}</a>
+                                {% else %}
+                                    <span style="color: #888;">{{ apt.access_link }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="actions-cell">
+                                <a href="{{ url_for('gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" style="text-align: center;">Nenhum apartamento encontrado.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </form>
         </div>
     </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const activeLinks = new Set();
+
+    function updateLinkStatus(activeIds) {
+        const allLinks = document.querySelectorAll('a[id^="link-apt-"]');
+        
+        allLinks.forEach(link => {
+            link.style.color = '';
+            link.style.fontWeight = 'normal';
+        });
+        
+        activeIds.forEach(id => {
+            const activeLink = document.getElementById(`link-apt-${id}`);
+            if (activeLink) {
+                activeLink.style.color = '#28a745';
+                activeLink.style.fontWeight = 'bold';
+            }
+        });
+    }
+
+    console.log("Iniciando conexão com o stream de status do servidor...");
+    
+    const eventSource = new EventSource('/api/status_stream');
+
+    // --- CORREÇÃO CIRÚRGICA AQUI ---
+    // Escuta pelo evento padrão 'message', que é o que a nossa API Flask envia.
+    eventSource.addEventListener('message', function(event) {
+        console.log("Recebido update de status:", event.data);
+        const data = JSON.parse(event.data);
+
+        if (data.active_apartments) {
+            updateLinkStatus(data.active_apartments);
+        }
+    });
+
+    eventSource.onerror = function(err) {
+        console.error("Erro na conexão de streaming. A conexão pode ter sido fechada.", err);
+    };
+});
+</script>
 {% endblock %}

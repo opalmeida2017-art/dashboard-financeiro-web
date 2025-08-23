@@ -9,7 +9,7 @@ import coletor_principal
 import getpass
 import threading
 import redis
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session, g
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session, g, Response
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
 from datetime import datetime, timedelta
@@ -17,6 +17,11 @@ from functools import wraps
 from sqlalchemy import text
 from slugify import slugify
 from rq import Queue
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta
+import asyncio 
+import json
+import time
 
 
 app = Flask(__name__)
@@ -395,50 +400,63 @@ def gerenciar_grupos_salvar():
 
 
 
-# --- ROTA DE COLETA DE DADOS (COM CORREÇÃO) ---
+# --- ROTA DE COLETA DE DADOS (CORRIGIDA) ---
 @app.route('/iniciar-coleta', methods=['POST'])
 @login_required
 def iniciar_coleta_endpoint():
     apartamento_id_alvo = get_target_apartment_id()
-    
-    # Pega a variável de ambiente. Se não existir, o padrão seguro é 'async' (produção).
+    if not apartamento_id_alvo:
+        return jsonify({'status': 'erro', 'mensagem': 'Contexto do apartamento não encontrado.'}), 400
+
     execution_mode = os.getenv("EXECUTION_MODE", "async")
     
-    # DECIDE O QUE FAZER COM BASE NA VARIÁVEL
-    if execution_mode == "sync":
-        # --- MODO SÍNCRONO (PARA DESENVOLVIMENTO LOCAL) ---
-        print(f"--- INICIANDO COLETA SÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
-        from coletor_principal import executar_todas_as_coletas
-        executar_todas_as_coletas(apartamento_id_alvo)
-        print(f"--- COLETA SÍNCRONA FINALIZADA ---")
-        message = "Coleta finalizada!"
-    else:
-        # --- MODO ASSÍNCRONO (PARA PRODUÇÃO) ---
-        print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
-        from tasks import tarefa_de_coleta # (ou o nome da sua tarefa de background)
-        tarefa_de_coleta.delay(apartamento_id_alvo)
-        message = "Coleta iniciada em segundo plano!"
-
-    return message
     try:
-        # Cria a fila (Queue) usando a conexão já existente
-        q = Queue(connection=redis_conn)
-        
-        # Enfileira a tarefa para ser executada em segundo plano pelo Worker
-        q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo)
-        
-        return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
+        if execution_mode == "sync":
+            # --- MODO SÍNCRONO (PARA DESENVOLVIMENTO LOCAL) ---
+            print(f"--- INICIANDO COLETA SÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
+            coletor_principal.executar_todas_as_coletas(apartamento_id_alvo)
+            print(f"--- COLETA SÍNCRONA FINALIZADA ---")
+            flash('Coleta de dados finalizada com sucesso!', 'success')
+            return jsonify({'status': 'sucesso', 'mensagem': 'Coleta finalizada!'})
+        else:
+            # --- MODO ASSÍNCRONO (PARA PRODUÇÃO) ---
+            if not redis_conn:
+                return jsonify({'status': 'erro', 'mensagem': 'Serviço de fila (Redis) não está disponível.'}), 500
+            
+            print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
+            q = Queue(connection=redis_conn)
+            q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo)
+            
+            flash('A coleta de dados foi iniciada em segundo plano.', 'success')
+            return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
+
     except Exception as e:
-        # Captura qualquer outro erro que possa ocorrer ao enfileirar a tarefa
-        print(f"Erro ao enfileirar tarefa: {e}")
+        print(f"Erro ao executar/enfileirar tarefa: {e}")
+        flash(f'Ocorreu um erro ao iniciar a tarefa: {e}', 'error')
         return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
 
 
 @app.route('/configuracao', methods=['GET', 'POST'])
 @login_required
 def configuracao():
+    # --- ADICIONADO: Verificação de permissão no início da função ---
+    # Garante que apenas administradores (de cliente ou super admin) acessem esta página.
+    if not is_admin_in_context():
+        flash("Acesso negado. Você precisa ser um administrador para ver esta página.", "error")
+        return redirect(url_for('index'))
+    # -----------------------------------------------------------------
+
     apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        flash("Sessão inválida ou apartamento não encontrado.", "error")
+        return redirect(url_for('logout'))
+
     if request.method == 'POST':
+        # --- ADICIONADO: Lógica para ler e salvar a checkbox de monitoramento ---
+        # A expressão abaixo retorna True se a caixa foi marcada, e False caso contrário.
+        live_monitoring_enabled = 'live_monitoring_enabled' in request.form
+        # ---------------------------------------------------------------------
+
         configs = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
             'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
@@ -450,6 +468,7 @@ def configuracao():
             'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
             'DATA_INICIAL_ROBO': request.form.get('DATA_INICIAL_ROBO'),
             'DATA_FINAL_ROBO': request.form.get('DATA_FINAL_ROBO'),
+            'live_monitoring_enabled': live_monitoring_enabled # <-- Novo valor salvo
         }
         logic.salvar_configuracoes_robo(apartamento_id_alvo, configs)
         flash('Configurações salvas com sucesso!', 'success')
@@ -457,8 +476,6 @@ def configuracao():
     
     configs_salvas = logic.ler_configuracoes_robo(apartamento_id_alvo)
     return render_template('configuracao.html', configs=configs_salvas)
-
-# --- ROTAS DE GESTÃO DE UTILIZADORES (ADMIN DO APARTAMENTO E SÍNDICO) ---
 
 @app.route('/gerenciar-usuarios')
 @login_required
@@ -644,7 +661,122 @@ def criar_admin_command():
         print(f"\nSUCESSO: {message}")
     else:
         print(f"\nERRO: {message}")
-        
+   
+   
+# --- API DE "HEARTBEAT" PARA RASTREAR ATIVIDADE ---
+@app.route('/api/heartbeat', methods=['POST'])
+@login_required
+def api_heartbeat():
+    """
+    Recebe um 'ping' do frontend para registrar que o usuário está ativo.
+    """
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"status": "error"}), 400
+    
+    try:
+        with db.engine.connect() as conn:
+            # Usa um comando "UPSERT" para inserir ou atualizar o registro
+            query = text("""
+                INSERT INTO tb_user_activity (apartamento_id, last_seen_timestamp)
+                VALUES (:apt_id, NOW())
+                ON CONFLICT (apartamento_id) DO UPDATE
+                SET last_seen_timestamp = NOW();
+            """)
+            conn.execute(query, {"apt_id": apartamento_id_alvo})
+            conn.commit()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        print(f"Erro no heartbeat: {e}")
+        return jsonify({"status": "error"}), 500
+
+
+ 
+# --- ROTA DE STREAMING DE STATUS (VERSÃO NATIVA PARA FLASK) ---
+@app.route('/api/status_stream')
+@login_required
+@super_admin_required
+def status_stream():
+    """
+    Mantém uma conexão aberta com o navegador do síndico e envia
+    atualizações de status de usuário a cada 5 segundos.
+    """
+    def event_generator():
+        while True:
+            try:
+                # A lógica para buscar usuários ativos no banco de dados é a mesma
+                with db.engine.connect() as conn:
+                    two_minutes_ago = datetime.now() - timedelta(minutes=2)
+                    query = text("SELECT apartamento_id FROM tb_user_activity WHERE last_seen_timestamp >= :time_limit")
+                    result = conn.execute(query, {"time_limit": two_minutes_ago})
+                    active_ids = [row[0] for row in result]
+                
+                # Formata os dados no padrão Server-Sent Events (SSE)
+                data_json = json.dumps({"active_apartments": active_ids})
+                # O formato é "data: {json_string}\n\n"
+                yield f"data: {data_json}\n\n"
+                
+                # Espera 5 segundos antes de verificar novamente
+                time.sleep(5)
+            except Exception as e:
+                # Lida com erros sem quebrar o stream
+                print(f"Erro no stream de status: {e}")
+                error_data = json.dumps({"error": str(e)})
+                yield f"data: {error_data}\n\n"
+                time.sleep(5)
+
+    # Retorna uma Resposta Flask com o tipo de conteúdo correto para streaming
+    return Response(event_generator(), mimetype='text/event-stream')
+
+# --- LÓGICA DO AGENDADOR ---
+def run_scheduled_collections():
+    """
+    Esta função será executada a cada minuto pelo agendador.
+    Ela verifica quais clientes estão online e com a flag ativada, e dispara os robôs.
+    """
+    print(f"[{datetime.now()}] Verificando robôs agendados para execução...")
+    with app.app_context(): # Garante que temos o contexto da aplicação
+        try:
+            with db.engine.connect() as conn:
+                # 1. Pega todos os clientes que estão ATIVOS e com a feature LIGADA
+                two_minutes_ago = datetime.now() - timedelta(minutes=2)
+                query = text("""
+                    SELECT
+                        a.id,
+                        a.live_monitoring_interval_minutes
+                    FROM apartamentos a
+                    JOIN configuracoes_robo cr ON a.id = cr.apartamento_id
+                    JOIN tb_user_activity ua ON a.id = ua.apartamento_id
+                    WHERE
+                        cr.live_monitoring_enabled = TRUE
+                        AND ua.last_seen_timestamp >= :time_limit
+                """)
+                clientes_para_rodar = conn.execute(query, {"time_limit": two_minutes_ago}).mappings().all()
+
+                for cliente in clientes_para_rodar:
+                    apartamento_id = cliente['id']
+                    # Dispara a coleta (de forma síncrona, pois o agendador já está em background)
+                    print(f"--> Disparando coleta em tempo real para o apartamento ID: {apartamento_id}")
+                    coletor_principal.executar_todas_as_coletas(apartamento_id)
+
+        except Exception as e:
+            print(f"ERRO no agendador de coletas: {e}")
+   
+   
+# --- INICIALIZAÇÃO DO AGENDADOR (CORRIGIDO) ---
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(run_scheduled_collections, 'interval', seconds=60)
+
+# A verificação 'use_reloader=False' garante que o scheduler só inicie UMA VEZ
+# quando você está em modo de debug. Em produção (Render), esta condição não será um problema.
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    print("Iniciando o agendador...")
+    scheduler.start()
+else:
+    print("O agendador não será iniciado no processo de recarregamento do Flask.")
+
 if __name__ == '__main__':
-    # O Render usa um servidor WSGI (como Gunicorn), então este bloco não é executado em produção.
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # O 'use_reloader=False' desativa o reinicio automático,
+    # que é uma das causas do agendador duplo. 
+    # Para desenvolver, você pode reiniciar o servidor manualmente (Ctrl+C e roda de novo).
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
