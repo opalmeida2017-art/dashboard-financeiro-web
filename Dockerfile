@@ -1,8 +1,8 @@
 # Usa uma imagem base oficial do Python
-[cite_start]FROM python:3.11-slim [cite: 1]
+FROM python:3.11-slim
 
 # Define o diretório de trabalho dentro do container
-[cite_start]WORKDIR /app [cite: 1]
+WORKDIR /app
 
 # Instala as dependências do sistema necessárias para o Chrome rodar
 RUN apt-get update && apt-get install -y \
@@ -27,18 +27,15 @@ RUN mv -f chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
 RUN chmod +x /usr/local/bin/chromedriver
 
 # Copia o ficheiro de dependências
-[cite_start]COPY requirements.txt . [cite: 1]
+COPY requirements.txt .
 
 # Instala as dependências do Python
-[cite_start]RUN pip install --no-cache-dir -r requirements.txt [cite: 2]
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia todo o código da aplicação para o diretório de trabalho
-COPY . [cite_start]. [cite: 2, 3]
+COPY . .
 
-# Copia o script de arranque para dentro do contentor
-[cite_start]COPY startup.sh . [cite: 3]
-# Torna o script de arranque executável
-[cite_start]RUN chmod +x ./startup.sh [cite: 4]
-
-# Define o script de arranque como o ponto de entrada do contentor
-[cite_start]CMD ["./startup.sh"] [cite: 4]
+# Se você usa um script de inicialização, mantenha estas linhas
+COPY startup.sh .
+RUN chmod +x ./startup.sh
+CMD ["./startup.sh"]
