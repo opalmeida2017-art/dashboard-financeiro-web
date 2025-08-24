@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Instala as dependências de sistema, incluindo as do Chrome
+# Instala as dependências do sistema, incluindo as do Chrome
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
