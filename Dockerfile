@@ -6,36 +6,54 @@ WORKDIR /app
 
 # --- CORREÇÃO FINAL: Instala TODAS as dependências de sistema para o Chrome ---
 RUN apt-get update && apt-get install -y \
-    # Dependências do projeto
+    # Dependências do seu projeto que já tínhamos
     build-essential \
     libpq-dev \
     wget \
     unzip \
-    # Dependências essenciais para o Chrome/Chromedriver
-    libglib2.0-0 \
-    libnss3 \
-    libfontconfig1 \
-    libdbus-1-3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libatspi2.0-0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
+    # Lista completa de dependências para o Chrome Headless no Debian
+    ca-certificates \
+    fonts-liberation \
     libasound2 \
-    # Limpa o cache para manter a imagem pequena
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    lsb-release \
+    xdg-utils \
+    # Fim da lista de dependências
     && rm -rf /var/lib/apt/lists/*
 
 # Baixa e instala a versão estável mais recente do Google Chrome
 RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 # O '|| apt-get install -fy' força a instalação de quaisquer outras dependências que o Chrome precise
-RUN dpkg -i google-chrome-stable_current_amd64.deb || apt-get install -fy
+RUN dpkg -i google-chrome-stable_current_amd64.deb || apt-get install -fy --fix-broken
 
 # Baixa e instala o ChromeDriver correspondente
 RUN wget https://storage.googleapis.com/chrome-for-testing-public/128.0.6600.0/linux64/chromedriver-linux64.zip
@@ -52,7 +70,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia todo o código da aplicação para o diretório de trabalho
 COPY . .
 
-# Se você usa um script de inicialização, mantenha estas linhas
+# Copia o script de arranque para dentro do contentor
 COPY startup.sh .
 RUN chmod +x ./startup.sh
 CMD ["./startup.sh"]
