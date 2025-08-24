@@ -24,6 +24,19 @@ def executar_todas_as_coletas(apartamento_id: int):
     print(f"--- INICIANDO ORQUESTRADOR DE COLETA PARA O APARTAMENTO ID: {apartamento_id} ---")
 
     caminho_base = os.path.dirname(os.path.abspath(__file__))
+    
+     # --- CORREÇÃO: Bloco de limpeza movido para o início do orquestrador ---
+    pasta_downloads = os.path.join(caminho_base, 'downloads', str(apartamento_id))
+    if os.path.exists(pasta_downloads):
+        print(f"Limpando a pasta de downloads: {pasta_downloads}")
+        for filename in os.listdir(pasta_downloads):
+            file_path = os.path.join(pasta_downloads, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+            except Exception as e:
+                print(f'Falha ao remover {file_path}. Razão: {e}')
+    # --- FIM DO BLOCO DE LIMPEZA ---
 
     robos_para_executar = [
         os.path.join(caminho_base, "robos", "coletor_viagens.py"),

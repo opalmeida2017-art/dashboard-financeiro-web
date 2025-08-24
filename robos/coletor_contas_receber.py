@@ -19,7 +19,7 @@ from selenium.webdriver.support.ui import Select
 
 # CORREÇÃO: Removido o aninhamento de funções. Esta é agora a função principal.
 def executar_coleta_contas_receber(apartamento_id: int):
-    logic.logar_progresso(apartamento_id,f"\n--- INICIANDO ROBÔ: CONTAS A RECEBER PENDENTES PARA APARTAMENTO ID: {apartamento_id} ---")
+    logic.logar_progresso(apartamento_id,f"\n--- INICIANDO ROBÔ: CONTAS A RECEBER PENDENTES PARA TRANSPORTADORA ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
     print("Lendo configurações do banco de dados...")
@@ -51,8 +51,12 @@ def executar_coleta_contas_receber(apartamento_id: int):
     chrome_options.add_argument("--start-maximized")
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     chrome_options.add_argument(f'user-agent={user_agent}')
+    
+    # CORREÇÃO: Define uma pasta de download específica para cada apartamento
     pasta_principal = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    prefs = {'download.default_directory': pasta_principal}
+    pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
+    os.makedirs(pasta_downloads, exist_ok=True) # Cria a pasta se ela não existir
+    prefs = {'download.default_directory': pasta_downloads}
     chrome_options.add_experimental_option('prefs', prefs)
     
     service = Service()
@@ -162,7 +166,6 @@ def executar_coleta_contas_receber(apartamento_id: int):
         
         # ATENÇÃO: Verifique se este é o nome correto do arquivo para este robô!
         nome_do_arquivo_esperado = "relFilContasReceber.xls"
-        pasta_downloads = pasta_principal
         caminho_do_arquivo = os.path.join(pasta_downloads, nome_do_arquivo_esperado)
         
         logic.logar_progresso(apartamento_id,f"Download do arquivo '{nome_do_arquivo_esperado}' iniciado!")
@@ -172,35 +175,37 @@ def executar_coleta_contas_receber(apartamento_id: int):
         tempo_inicial = time.time()
         download_completo = False
         
+               
         while time.time() - tempo_inicial < tempo_max_espera_segundos:
-            arquivo_temporario_existe = any(fname.endswith('.crdownload') 
-          for fname in os.listdir(pasta_downloads))
-            logic.logar_progresso(apartamento_id," -> Aguardando download...")
-            if os.path.exists(caminho_do_arquivo):
+                # Verifica se ainda existe um arquivo de download temporário do Chrome
+            arquivo_temporario_existe = any(fname.endswith('.crdownload') for fname in os.listdir(pasta_downloads))
+            
+            # A condição de sucesso agora é: o arquivo final existe E o arquivo temporário NÃO existe mais.
+            if os.path.exists(caminho_do_arquivo) and not arquivo_temporario_existe:
                 logic.logar_progresso(apartamento_id,"-> Download concluído com sucesso!")
                 download_completo = True
-            break
-        time.sleep(5)
+                break # O 'break' agora está DENTRO do 'if'
+        
+            # A pausa agora está DENTRO do 'while'
+            logic.logar_progresso(apartamento_id," -> Aguardando download...")
+            time.sleep(5) # Espera 5 segundos antes de verificar novamente
             
         if not download_completo:
-            raise Exception(logic.logar_progresso(apartamento_id,f"O download do arquivo '{nome_do_arquivo_esperado}' não foi concluído em {tempo_max_espera_segundos} segundos."))
+            # A lógica de erro continua a mesma, mas agora só será chamada se o tempo realmente esgotar.
+            mensagem_erro = f"O download do arquivo '{nome_do_arquivo_esperado}' não foi concluído em {tempo_max_espera_segundos} segundos."
+            logic.logar_progresso(apartamento_id, mensagem_erro)
+            raise Exception(mensagem_erro)
+
         
         logic.logar_progresso(apartamento_id,"ROTEIRO DE COLETA CONCLUÍDO.")
-        
-        logic.logar_progresso(apartamento_id,"\nIniciando o processamento dos arquivos baixados...")
-        try:
-            logic.processar_downloads_na_pasta() 
-        except Exception as e:
-            logic.logar_progresso(apartamento_id,f"Ocorreu um erro crítico durante o processamento dos arquivos: {e}")
-
-        except Exception as e:
-            driver.save_screenshot('screenshot_erro.png')
-            logic.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
-            logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
+             
+    except Exception as e:
+        driver.save_screenshot('screenshot_erro.png')
+        logic.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
+        logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:
-     logic.logar_progresso(apartamento_id,"Fechando o navegador.")
-     driver.quit()                        
-        
+        logic.logar_progresso(apartamento_id,"Fechando o navegador.")
+        driver.quit()           
         
 # --- BLOCO PARA TESTE MANUAL ---
 if __name__ == '__main__':

@@ -23,11 +23,11 @@ TABLE_COLUMN_MAPS = {
 }
 
 EXCEL_FILES_CONFIG = {
-    "viagens_cliente": { "path": "relFilViagensCliente.xls", "sheet_name": "Viagens", "table_name": "relFilViagensCliente" },
-    "viagens": { "path": "relFilViagensFatCliente.xls", "sheet_name": "Faturamento de Viagens por Clie", "table_name": "relFilViagensFatCliente" },
-    "despesas": { "path": "relFilDespesasGerais.xls", "sheet_name": "Despesas Gerais", "table_name": "relFilDespesasGerais" },
-    "contas_pagar": { "path": "relFilContasPagarDet.xls", "sheet_name": "NFeCompleto", "table_name": "relFilContasPagarDet" },
-    "contas_receber": { "path": "relFilContasReceber.xls", "sheet_name": "ContasRecRecebNormal", "table_name": "relFilContasReceber" }
+    "viagens_cliente": { "path": "relFilViagensCliente.xls", "sheet_name": "Viagens", "table": "relFilViagensCliente" },
+    "viagens": { "path": "relFilViagensFatCliente.xls", "sheet_name": "Faturamento de Viagens por Clie", "table": "relFilViagensFatCliente" },
+    "despesas": { "path": "relFilDespesasGerais.xls", "sheet_name": "Despesas Gerais", "table": "relFilDespesasGerais" },
+    "contas_pagar": { "path": "relFilContasPagarDet.xls", "sheet_name": "NFeCompleto", "table": "relFilContasPagarDet" },
+    "contas_receber": { "path": "relFilContasReceber.xls", "sheet_name": "ContasRecRecebNormal", "table": "relFilContasReceber" }
 }
 
 FILTER_COLUMN_MAPS = { "placa": ['placaVeiculo', 'placa'], "filial": ['nomeFilial', 'nomeFil'] }

@@ -1,5 +1,5 @@
 import database as db
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text,inspect
 from sqlalchemy.exc import SQLAlchemyError
 import os
 import pandas as pd
@@ -156,19 +156,36 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
         print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
         raise e
 
-def import_single_excel_to_db(excel_source, file_key: str, apartamento_id: int):
-    """Função auxiliar para importar uma única planilha com base na configuração."""
-    file_info = config.EXCEL_FILES_CONFIG.get(file_key)
-    if not file_info:
-        raise ValueError(f"Chave de arquivo '{file_key}' não encontrada na configuração.")
+def import_single_excel_to_db(filepath: str, file_key: str, apartamento_id: int):
+    """
+    Lê um ficheiro Excel e importa os dados para a tabela correspondente no banco de dados.
+    """
+    try:
+        df = pd.read_excel(filepath)
+        df['apartamento_id'] = apartamento_id # Adiciona a coluna de ID do apartamento
+        
+        table_info = config.EXCEL_FILES_CONFIG[file_key]
+        table_name = table_info['table']
+        
+        # Garante que apenas as colunas que existem na tabela do DB sejam importadas
+        with engine.connect() as conn:
+            # Pega os nomes das colunas da tabela real no banco
+            inspector = inspect(engine)
+            db_columns = [col['name'] for col in inspector.get_columns(table_name)]
+            
+            # Filtra o DataFrame para manter apenas as colunas existentes
+            df_final = df[[col for col in df.columns if col in db_columns]]
+
+        # Usa o pandas para inserir os dados na tabela. 'if_exists='append'' adiciona os novos dados.
+        df_final.to_sql(table_name, con=engine, if_exists='append', index=False)
+        
+        print(f"Sucesso: Dados de '{os.path.basename(filepath)}' importados para a tabela '{table_name}'.")
+        
+    except Exception as e:
+        print(f"ERRO ao importar o arquivo '{os.path.basename(filepath)}': {e}")
+        # Decide se quer relançar o erro ou apenas logar
+        raise e
     
-    table_name = file_info["table_name"]
-    key_columns = config.TABLE_PRIMARY_KEYS.get(table_name, [])
-    if not key_columns:
-        raise ValueError(f"Colunas-chave não definidas para a tabela '{table_name}' no config.py")
-
-    return import_excel_to_db(excel_source, file_info["sheet_name"], table_name, key_columns, apartamento_id)
-
 def table_exists(table_name: str) -> bool:
     """Verifica se uma tabela existe no banco de dados, especificando o schema 'public'."""
     try:
@@ -190,58 +207,59 @@ def table_exists(table_name: str) -> bool:
     except SQLAlchemyError as e:
         print(f"Erro ao verificar existência da tabela {table_name}: {e}")
         return False
-# Adicione 'import glob' no topo do seu arquivo database.py se ainda não existir
-import glob
+
 
 def processar_downloads_na_pasta(apartamento_id: int):
     """
-    Verifica a pasta do projeto por planilhas baixadas, importa-as para o apartamento_id correto,
-    renomeia com data/hora E ID DO APARTAMENTO e limpa versões antigas.
+    Processa todos os ficheiros Excel na pasta de downloads de um apartamento específico,
+    chamando a função de importação correta que evita duplicatas.
     """
-    print(f"\n--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
-    caminho_base = os.getcwd()
-    mapa_arquivos_config = {info['path']: chave for chave, info in config.EXCEL_FILES_CONFIG.items()}
+    print(f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     
-    for nome_arquivo_base, chave_config in mapa_arquivos_config.items():
-        caminho_novo_arquivo = os.path.join(caminho_base, nome_arquivo_base)
-        
-        if os.path.exists(caminho_novo_arquivo):
-            print(f"\nArquivo novo encontrado: '{nome_arquivo_base}'")
+    pasta_principal = os.path.dirname(os.path.abspath(__file__))
+    pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
 
-            nome_sem_ext, extensao = os.path.splitext(nome_arquivo_base)
+    if not os.path.exists(pasta_downloads):
+        print(f"Aviso: Pasta de downloads não encontrada: {pasta_downloads}")
+        return
 
-            # --- INÍCIO DA CORREÇÃO ---
-            # O padrão de busca agora é mais simples e robusto.
-            # Ele encontrará qualquer arquivo que comece com o nome base, seguido por '_apt-' e a extensão.
-            padrao_busca_antigos = os.path.join(caminho_base, f"{nome_sem_ext}_apt-*{extensao}")
-            # --- FIM DA CORREÇÃO ---
-
-            arquivos_antigos_encontrados = glob.glob(padrao_busca_antigos)
+    # Itera sobre cada ficheiro na pasta de downloads
+    for filename in os.listdir(pasta_downloads):
+        if filename.endswith(('.xls', '.xlsx')):
+            # Descobre a que tipo de relatório o ficheiro pertence
+            file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
             
-            if arquivos_antigos_encontrados:
-                print(f" -> Excluindo {len(arquivos_antigos_encontrados)} versão(ões) antiga(s)...")
-                for arquivo_antigo in arquivos_antigos_encontrados:
-                    try:
-                        os.remove(arquivo_antigo)
-                    except Exception as e:
-                        print(f" -> AVISO: Não foi possível apagar o arquivo antigo '{arquivo_antigo}'. Erro: {e}")
+            if file_key:
+                caminho_completo = os.path.join(pasta_downloads, filename)
+                try:
+                    # --- CORREÇÃO CRÍTICA: Chamando a função correta ---
+                    
+                    # 1. Obtém as informações necessárias do config.py
+                    table_info = config.EXCEL_FILES_CONFIG[file_key]
+                    sheet_name = table_info.get('sheet_name') # .get() para ser seguro
+                    table_name = table_info['table']
+                    key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
 
-            try:
-                print(f" -> Importando dados para a tabela '{config.EXCEL_FILES_CONFIG[chave_config]['table_name']}'...")
-                # A função import_single_excel_to_db precisa estar definida no seu database.py
-                import_single_excel_to_db(caminho_novo_arquivo, chave_config, apartamento_id)
-                print(" -> Importação bem-sucedida.")
-            except Exception as e:
-                print(f" -> ERRO! Falha ao importar os dados: {e}")
-                continue
+                    if not key_columns:
+                        print(f"ERRO: Chaves primárias não definidas para a tabela '{table_name}' no config.py.")
+                        continue # Pula para o próximo ficheiro
 
-            try:
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                novo_nome_renomeado = f"{nome_sem_ext}_apt-{apartamento_id}_{timestamp}{extensao}"
-                caminho_renomeado = os.path.join(caminho_base, novo_nome_renomeado)
-                print(f" -> Renomeando arquivo para '{novo_nome_renomeado}'...")
-                os.rename(caminho_novo_arquivo, caminho_renomeado)
-            except Exception as e:
-                print(f" -> ERRO! Falha ao renomear o arquivo: {e}")
+                    # 2. Chama a função de importação que apaga antes de inserir
+                    import_excel_to_db(
+                        excel_source=caminho_completo,
+                        sheet_name=sheet_name,
+                        table_name=table_name,
+                        key_columns=key_columns,
+                        apartamento_id=apartamento_id
+                    )
+                    
+                    # 3. Apaga o ficheiro após a importação bem-sucedida
+                    os.unlink(caminho_completo)
+                    print(f"Ficheiro '{filename}' processado e removido com sucesso.")
 
-    print("\n--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
+                except Exception as e:
+                    print(f"Falha ao processar o ficheiro '{filename}'. Ele não foi removido. Erro: {e}")
+            else:
+                print(f"Aviso: Ficheiro '{filename}' não é reconhecido pela configuração e será ignorado.")
+
+    print("--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
