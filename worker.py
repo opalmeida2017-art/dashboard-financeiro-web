@@ -64,7 +64,7 @@ def schedule_robot_check():
     print(f"[{datetime.now()}] Agendador: Colocando tarefa de verificação na fila...")
     q = Queue(connection=conn)
     # Coloca a função 'check_and_run_live_robots' na fila para ser executada pelo worker
-    q.enqueue(check_and_run_live_robots)
+     q.enqueue(check_and_run_live_robots, job_timeout=1800)
 
 
 # --- BLOCO PRINCIPAL DE EXECUÇÃO DO WORKER ---

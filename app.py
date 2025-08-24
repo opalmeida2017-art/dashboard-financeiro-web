@@ -418,23 +418,25 @@ def iniciar_coleta_endpoint():
             print(f"--- COLETA SÍNCRONA FINALIZADA ---")
             flash('Coleta de dados finalizada com sucesso!', 'success')
             return jsonify({'status': 'sucesso', 'mensagem': 'Coleta finalizada!'})
-       else:
+        else:
             # --- MODO ASSÍNCRONO (PARA PRODUÇÃO) ---
-        if not redis_conn:
-            return jsonify({'status': 'erro', 'mensagem': 'Serviço de fila (Redis) não está disponível.'}), 500
-        
-        print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
-        q = Queue(connection=redis_conn)
-        
-        # --- ADICIONE O TIMEOUT AQUI ---
-        # Define um timeout de 30 minutos (1800 segundos) para o job
-        q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo, job_timeout=1800)
-        
-        flash('A coleta de dados foi iniciada em segundo plano.', 'success')
-        return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
+            if not redis_conn:
+                return jsonify({'status': 'erro', 'mensagem': 'Serviço de fila (Redis) não está disponível.'}), 500
+            
+            print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
+            q = Queue(connection=redis_conn)
+            
+            # --- ADICIONE O TIMEOUT AQUI ---
+            # Define um timeout de 30 minutos (1800 segundos) para o job
+            q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo, job_timeout=1800)
+            
+            flash('A coleta de dados foi iniciada em segundo plano.', 'success')
+            return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
 
     except Exception as e:
         print(f"Erro ao executar/enfileirar tarefa: {e}")
+        flash(f'Ocorreu um erro ao iniciar a tarefa: {e}', 'error')
+        return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
         flash(f'Ocorreu um erro ao iniciar a tarefa: {e}', 'error')
         return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
 
