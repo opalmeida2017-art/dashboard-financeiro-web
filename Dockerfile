@@ -4,18 +4,15 @@ FROM python:3.11-slim
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# --- CORREÇÃO: Adiciona as bibliotecas de sistema necessárias para o Chrome rodar ---
+# Instala as dependências do sistema necessárias para o Chrome rodar
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
     wget \
     unzip \
-    # --- DEPENDÊNCIAS ESSENCIAIS PARA O CHROME ---
     libglib2.0-0 \
     libnss3 \
-    libgconf-2-4 \
     libfontconfig1 \
-    # --- FIM DA ADIÇÃO ---
     && rm -rf /var/lib/apt/lists/*
 
 # Baixa e instala a versão estável mais recente do Google Chrome
@@ -24,7 +21,6 @@ RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.d
 RUN dpkg -i google-chrome-stable_current_amd64.deb || apt-get install -fy
 
 # Baixa e instala o ChromeDriver correspondente
-# NOTA: Esta versão do ChromeDriver é compatível com a versão estável do Chrome.
 RUN wget https://storage.googleapis.com/chrome-for-testing-public/128.0.6600.0/linux64/chromedriver-linux64.zip
 RUN unzip chromedriver-linux64.zip
 RUN mv -f chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
