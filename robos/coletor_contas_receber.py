@@ -59,7 +59,7 @@ def executar_coleta_contas_receber(apartamento_id: int):
     prefs = {'download.default_directory': pasta_downloads}
     chrome_options.add_experimental_option('prefs', prefs)
     
-    service = Service()
+    service = Service(executable_path="/usr/local/bin/chromedriver")
     driver = webdriver.Chrome(service=service, options=chrome_options)
     wait = WebDriverWait(driver, 300)
     actions = ActionChains(driver)
