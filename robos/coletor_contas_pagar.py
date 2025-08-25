@@ -38,6 +38,7 @@ def executar_coleta_contas_pagar(apartamento_id: int):
     SELECTOR_BOTAO_ENTRAR = "input[id='formCad:entrar']"
     
     chrome_options = Options()
+    chrome_options.binary_location = "/usr/bin/google-chrome"
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
