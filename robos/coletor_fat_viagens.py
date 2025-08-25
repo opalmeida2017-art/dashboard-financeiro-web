@@ -40,6 +40,11 @@ def executar_coleta_fat_viagens(apartamento_id: int):
     
     chrome_options = Options()
     chrome_options.binary_location = "/usr/bin/google-chrome"
+    service = Service(executable_path="/usr/local/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    wait = WebDriverWait(driver, 300)
+    driver.set_page_load_timeout(300)
+    
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
