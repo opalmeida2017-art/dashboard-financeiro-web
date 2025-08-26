@@ -241,14 +241,14 @@ def processar_downloads_na_pasta(apartamento_id: int):
     Processa todos os ficheiros Excel na pasta de downloads, LOGANDO cada passo
     para o banco de dados.
     """
-    # --- ALTERADO: Usando 'logic.logar_progresso' em vez de 'print' ---
-    logic.logar_progresso(apartamento_id, f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
+    # --- ALTERADO: Usando a função local 'logar_progresso' ---
+    logar_progresso(apartamento_id, f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     
     pasta_principal = os.path.dirname(os.path.abspath(__file__))
     pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
 
     if not os.path.exists(pasta_downloads):
-        logic.logar_progresso(apartamento_id, f"Aviso: Pasta de downloads não encontrada: {pasta_downloads}") # <-- ALTERADO
+        logar_progresso(apartamento_id, f"Aviso: Pasta de downloads não encontrada: {pasta_downloads}") # <-- ALTERADO
         return
 
     for filename in os.listdir(pasta_downloads):
@@ -264,20 +264,19 @@ def processar_downloads_na_pasta(apartamento_id: int):
                     key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
 
                     if not key_columns:
-                        logic.logar_progresso(apartamento_id, f"ERRO: Chaves primárias não definidas para '{table_name}'.") # <-- ALTERADO
+                        logar_progresso(apartamento_id, f"ERRO: Chaves primárias não definidas para '{table_name}'.") # <-- ALTERADO
                         continue
 
-                    # Chamada para a função que importa (ela já usa print, podemos mantê-la assim ou alterá-la também)
                     import_excel_to_db(
                         caminho_completo, sheet_name, table_name, key_columns, apartamento_id
                     )
                     
                     os.unlink(caminho_completo)
-                    logic.logar_progresso(apartamento_id, f"Ficheiro '{filename}' processado e removido com sucesso.") # <-- ALTERADO
+                    logar_progresso(apartamento_id, f"Ficheiro '{filename}' processado e removido com sucesso.") # <-- ALTERADO
 
                 except Exception as e:
-                    logic.logar_progresso(apartamento_id, f"Falha ao processar '{filename}'. Erro: {e}") # <-- ALTERADO
+                    logar_progresso(apartamento_id, f"Falha ao processar '{filename}'. Erro: {e}") # <-- ALTERADO
             else:
-                logic.logar_progresso(apartamento_id, f"Aviso: Ficheiro '{filename}' não reconhecido.") # <-- ALTERADO
+                logar_progresso(apartamento_id, f"Aviso: Ficheiro '{filename}' não reconhecido.") # <-- ALTERADO
 
-    logic.logar_progresso(apartamento_id, "--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---") # <-- ALTERADO
+    logar_progresso(apartamento_id, "--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---") # <-- ALTERADO
