@@ -208,9 +208,6 @@ def table_exists(table_name: str) -> bool:
         print(f"Erro ao verificar existência da tabela {table_name}: {e}")
         return False
 
-
-d# Em database.py
-
 def processar_downloads_na_pasta(apartamento_id: int):
     """
     Processa todos os ficheiros Excel na pasta de downloads, LOGANDO cada passo
