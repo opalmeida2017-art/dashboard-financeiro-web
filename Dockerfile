@@ -4,67 +4,42 @@ FROM python:3.11-slim
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# --- CORREÇÃO FINAL: Instala TODAS as dependências de sistema para o Chrome ---
+# --- CORREÇÃO DEFINITIVA: Instala o Chrome a partir do repositório oficial ---
+
+# 1. Instala utilitários básicos e o curl para adicionar a chave do repositório
 RUN apt-get update && apt-get install -y \
-    # Dependências do seu projeto que já tínhamos
     build-essential \
     libpq-dev \
     wget \
+    curl \
+    gnupg \
     unzip \
-    # Lista completa de dependências para o Chrome Headless no Debian
-    ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgbm1 \
-    libgcc1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    lsb-release \
-    xdg-utils \
-    # Fim da lista de dependências
     && rm -rf /var/lib/apt/lists/*
 
-# Baixa e instala a versão estável mais recente do Google Chrome
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-# O '|| apt-get install -fy' força a instalação de quaisquer outras dependências que o Chrome precise
-RUN dpkg -i google-chrome-stable_current_amd64.deb || apt-get install -fy --fix-broken
+# 2. Adiciona o repositório oficial do Google Chrome
+RUN curl -sS -o - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor | tee /usr/share/keyrings/google-chrome-keyring.gpg >/dev/null
+RUN echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
 
-# Copia os ficheiros de requisitos e o código da aplicação
+# 3. Instala o Google Chrome (e as suas dependências) a partir do repositório
+RUN apt-get update && apt-get install -y \
+    google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- FIM DA CORREÇÃO ---
+
+# Copia o ficheiro de dependências
 COPY requirements.txt .
-COPY . .
 
 # Instala as dependências do Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia e torna o script de arranque executável
+# Copia todo o código da aplicação para o diretório de trabalho
+COPY . .
+
+# Copia o script de arranque para dentro do contentor
 COPY startup.sh .
+# Torna o script de arranque executável
 RUN chmod +x ./startup.sh
 
-# Define o comando de entrada
+# Define o script de arranque como o ponto de entrada do contentor
 CMD ["./startup.sh"]

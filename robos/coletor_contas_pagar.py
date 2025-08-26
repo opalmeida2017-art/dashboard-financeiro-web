@@ -37,36 +37,36 @@ def executar_coleta_contas_pagar(apartamento_id: int):
     SELECTOR_CAMPO_SENHA = "input[id='formCad:senha']"
     SELECTOR_BOTAO_ENTRAR = "input[id='formCad:entrar']"
     
+        # 1. Configurar as opções do NAVEGADOR
     chrome_options = Options()
-    chrome_options.binary_location = "/usr/bin/google-chrome"
-    service = Service(executable_path="/usr/local/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    wait = WebDriverWait(driver, 300)
-    driver.set_page_load_timeout(300)
-    
+    # Ativa o modo "invisível" e adiciona todas as flags de estabilidade e otimização
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    # --- ADICIONE ESTAS NOVAS LINHAS PARA OTIMIZAR A MEMÓRIA ---
-    chrome_options.add_argument("--disable-images") # Não carrega imagens
-    chrome_options.add_argument("--disable-extensions") # Desativa extensões
-    chrome_options.add_argument("--disable-popup-blocking") # Desativa bloqueador de pop-up
-    chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Outra forma de desativar imagens
+    chrome_options.add_argument("--disable-images")
+    chrome_options.add_argument("--blink-settings=imagesEnabled=false")
     chrome_options.add_argument("--start-maximized")
     user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     chrome_options.add_argument(f'user-agent={user_agent}')
-    
-   # CORREÇÃO: Define uma pasta de download específica para cada apartamento
+
+    # Configura a pasta de download
     pasta_principal = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
-    os.makedirs(pasta_downloads, exist_ok=True) # Cria a pasta se ela não existir
+    os.makedirs(pasta_downloads, exist_ok=True)
     prefs = {'download.default_directory': pasta_downloads}
     chrome_options.add_experimental_option('prefs', prefs)
-        
+
+    # 2. Inicializar o Driver (O Selenium Manager cuida do resto)
+    # Não precisamos mais do 'service' ou do 'binary_location'
     driver = webdriver.Chrome(options=chrome_options)
+
+    # 3. Definir os tempos de espera
     wait = WebDriverWait(driver, 300)
+    driver.set_page_load_timeout(300)
     actions = ActionChains(driver)
+
+# --- FIM DA CORREÇÃO ---
 
     try:
         # --- ETAPA DE LOGIN ---
