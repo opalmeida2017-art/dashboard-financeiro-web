@@ -6,18 +6,42 @@ import os
 import pandas as pd
 import config
 import glob 
+import logic
 from datetime import datetime
 import psycopg2.extras # <-- Importação essencial
 import numpy as np
 from dotenv import load_dotenv
 load_dotenv()
 
+# Esta função deve ser movida para o seu ficheiro database.py
+
 def logar_progresso(apartamento_id, mensagem):
+    """
+    Salva uma mensagem de progresso do robô no banco de dados,
+    usando a conexão principal da aplicação.
+    """
+    # Continua mostrando no console para debug imediato
+    print(mensagem) 
     
+    try:
+        # --- ALTERAÇÃO CIRÚRGICA AQUI ---
+        # A função agora usa a variável 'engine' diretamente,
+        # que já está definida no ficheiro database.py.
+        with engine.connect() as conn:
+        # --- FIM DA ALTERAÇÃO ---
+            query = text("""
+                INSERT INTO tb_logs_robo (apartamento_id, timestamp, mensagem)
+                VALUES (:apartamento_id, NOW(), :mensagem)
+            """)
+            conn.execute(query, {"apartamento_id": apartamento_id, "mensagem": mensagem})
+            conn.commit()
+    except Exception as e:
+        print(f"--- ERRO CRÍTICO NO LOG: Não foi possível salvar a mensagem no banco. Erro: {e} ---")
 
 db_url = os.getenv('DATABASE_URL')
 if not db_url:
     raise ValueError("DATABASE_URL não definida. Verifique seu arquivo .env")
+
 
 engine = create_engine(db_url)
 

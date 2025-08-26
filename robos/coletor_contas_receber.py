@@ -19,7 +19,7 @@ from selenium.webdriver.support.ui import Select
 
 # CORREÇÃO: Removido o aninhamento de funções. Esta é agora a função principal.
 def executar_coleta_contas_receber(apartamento_id: int):
-    logic.logar_progresso(apartamento_id,f"\n--- INICIANDO ROBÔ: CONTAS A RECEBER PENDENTES PARA TRANSPORTADORA ID: {apartamento_id} ---")
+    db.logar_progresso(apartamento_id,f"\n--- INICIANDO ROBÔ: CONTAS A RECEBER PENDENTES PARA TRANSPORTADORA ID: {apartamento_id} ---")
     
     # --- Configuração Inicial ---
     print("Lendo configurações do banco de dados...")
@@ -72,7 +72,7 @@ def executar_coleta_contas_receber(apartamento_id: int):
 
     try:
         # --- ETAPA DE LOGIN ---
-        logic.logar_progresso(apartamento_id, f"Acessando: {URL_LOGIN}")
+        db.logar_progresso(apartamento_id, f"Acessando: {URL_LOGIN}")
         driver.get(URL_LOGIN)
         time.sleep(1)
         try:
@@ -84,7 +84,7 @@ def executar_coleta_contas_receber(apartamento_id: int):
             time.sleep(1)
         except: pass
         
-        logic.logar_progresso(apartamento_id,"Preenchendo credenciais...")
+        db.logar_progresso(apartamento_id,"Preenchendo credenciais...")
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SELECTOR_CAMPO_USUARIO))).send_keys(USUARIO)
         driver.find_element(By.CSS_SELECTOR, SELECTOR_CAMPO_SENHA).send_keys(SENHA)
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SELECTOR_BOTAO_ENTRAR))).click()
@@ -92,7 +92,7 @@ def executar_coleta_contas_receber(apartamento_id: int):
         time.sleep(7)
         
         # --- ROTEIRO DE CLIQUES E DOWNLOADS ---
-        logic.logar_progresso(apartamento_id,"Passo 1-2: Acessando 'Cadastro de Exportações'...")
+        db.logar_progresso(apartamento_id,"Passo 1-2: Acessando 'Cadastro de Exportações'...")
         menu_exp_imp = wait.until(EC.visibility_of_element_located((By.ID, "formMenu:j_idt600")))
         actions.move_to_element(menu_exp_imp).perform()
         time.sleep(1)
@@ -100,53 +100,53 @@ def executar_coleta_contas_receber(apartamento_id: int):
         submenu_cadastro.click()
         time.sleep(1)
         
-        logic.logar_progresso(apartamento_id,f"Passo 3: Preenchendo código '{CODIGO_RELATORIO}'...")
+        db.logar_progresso(apartamento_id,f"Passo 3: Preenchendo código '{CODIGO_RELATORIO}'...")
         SELECTOR_CAMPO_CODIGO = "input[id='formexpFil:ExpFil_codExp']"
         campo_codigo = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SELECTOR_CAMPO_CODIGO)))
         campo_codigo.clear()
         campo_codigo.send_keys(CODIGO_RELATORIO)
         time.sleep(1)
         
-        logic.logar_progresso(apartamento_id,"Passo 4: Pesquisando com Ctrl+Enter...")
+        db.logar_progresso(apartamento_id,"Passo 4: Pesquisando com Ctrl+Enter...")
         actions.key_down(Keys.CONTROL).send_keys(Keys.ENTER).key_up(Keys.CONTROL).perform()
         time.sleep(1)
         
-        logic.logar_progresso(apartamento_id,f"Passo 5: Procurando o link do relatório com código '{CODIGO_RELATORIO}'...")
+        db.logar_progresso(apartamento_id,f"Passo 5: Procurando o link do relatório com código '{CODIGO_RELATORIO}'...")
         seletor_link_relatorio = f"//tr[contains(., '{CODIGO_RELATORIO}')]//a"
         link_relatorio = wait.until(EC.element_to_be_clickable((By.XPATH, seletor_link_relatorio)))
         link_relatorio.click()
         time.sleep(1)
         
-        logic.logar_progresso(apartamento_id,"Passo 6: Clicando em 'Exportar Dados' para abrir a nova aba...")
+        db.logar_progresso(apartamento_id,"Passo 6: Clicando em 'Exportar Dados' para abrir a nova aba...")
         aba_original = driver.current_window_handle
         wait.until(EC.element_to_be_clickable((By.LINK_TEXT, "Exportar Dados"))).click()
         
-        logic.logar_progresso(apartamento_id,"Aguardando a nova aba ser aberta...")
+        db.logar_progresso(apartamento_id,"Aguardando a nova aba ser aberta...")
         time.sleep(5)
 
         todas_as_abas = driver.window_handles
         if len(todas_as_abas) > 1:
             driver.switch_to.window(todas_as_abas[-1])
-            logic.logar_progresso(apartamento_id," -> Foco mudado para a nova aba do formulário.")
+            db.logar_progresso(apartamento_id," -> Foco mudado para a nova aba do formulário.")
         else:
-            logic.logar_progresso(apartamento_id," -> Nenhuma nova aba detectada. Procurando por um iframe...")
+            db.logar_progresso(apartamento_id," -> Nenhuma nova aba detectada. Procurando por um iframe...")
             wait.until(EC.frame_to_be_available_and_switch_to_it(2))
 
-        logic.logar_progresso(apartamento_id,"Passo 7: Procurando e clicando no link de exportação...")
+        db.logar_progresso(apartamento_id,"Passo 7: Procurando e clicando no link de exportação...")
         SELECTOR_LINK_EXPORTACAO = "a[onclick*=\"formCad:j_idt7\"]"
         link_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, SELECTOR_LINK_EXPORTACAO)))
         onclick_script = link_element.get_attribute("onclick")
         
-        logic.logar_progresso(apartamento_id," -> Link encontrado. Executando o script do link...")
+        db.logar_progresso(apartamento_id," -> Link encontrado. Executando o script do link...")
         driver.execute_script(onclick_script)
 
-        logic.logar_progresso(apartamento_id,"Aguardando a próxima tela carregar...")
+        db.logar_progresso(apartamento_id,"Aguardando a próxima tela carregar...")
         time.sleep(1)
         
         driver.save_screenshot('screenshot_formulario_final.png')
-        logic.logar_progresso(apartamento_id,"-> Tela do formulário final alcançada! Um screenshot foi salvo.")
+        db.logar_progresso(apartamento_id,"-> Tela do formulário final alcançada! Um screenshot foi salvo.")
 
-        logic.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
+        db.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
         
         # Preenche as datas
         wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilContasReceber:RelFilContasReceber_dataIniInputDate'))).clear()
@@ -162,11 +162,11 @@ def executar_coleta_contas_receber(apartamento_id: int):
         Select(driver.find_element(By.ID, 'formrelFilContasReceber:RelFilContasReceber_descontadasFomento')).select_by_value('T')
 
         time.sleep(1)
-        logic.logar_progresso(apartamento_id,"Passo 9: Pressionando Ctrl + Enter para gerar o link de download...")
+        db.logar_progresso(apartamento_id,"Passo 9: Pressionando Ctrl + Enter para gerar o link de download...")
         actions.key_down(Keys.CONTROL).send_keys(Keys.ENTER).key_up(Keys.CONTROL).perform()
         time.sleep(1)
         
-        logic.logar_progresso(apartamento_id,"Passo 10: Clicando no link final para baixar...")
+        db.logar_progresso(apartamento_id,"Passo 10: Clicando no link final para baixar...")
         link_final = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "Clique aqui para visualizar")))
         link_final.click()
         
@@ -174,8 +174,8 @@ def executar_coleta_contas_receber(apartamento_id: int):
         nome_do_arquivo_esperado = "relFilContasReceber.xls"
         caminho_do_arquivo = os.path.join(pasta_downloads, nome_do_arquivo_esperado)
         
-        logic.logar_progresso(apartamento_id,f"Download do arquivo '{nome_do_arquivo_esperado}' iniciado!")
-        logic.logar_progresso(apartamento_id,"Monitorando a pasta para o arquivo completo (espera máxima de 5 minutos)...")
+        db.logar_progresso(apartamento_id,f"Download do arquivo '{nome_do_arquivo_esperado}' iniciado!")
+        db.logar_progresso(apartamento_id,"Monitorando a pasta para o arquivo completo (espera máxima de 5 minutos)...")
         
         tempo_max_espera_segundos = 300
         tempo_inicial = time.time()
@@ -188,29 +188,29 @@ def executar_coleta_contas_receber(apartamento_id: int):
             
             # A condição de sucesso agora é: o arquivo final existe E o arquivo temporário NÃO existe mais.
             if os.path.exists(caminho_do_arquivo) and not arquivo_temporario_existe:
-                logic.logar_progresso(apartamento_id,"-> Download concluído com sucesso!")
+                db.logar_progresso(apartamento_id,"-> Download concluído com sucesso!")
                 download_completo = True
                 break # O 'break' agora está DENTRO do 'if'
         
             # A pausa agora está DENTRO do 'while'
-            logic.logar_progresso(apartamento_id," -> Aguardando download...")
+            db.logar_progresso(apartamento_id," -> Aguardando download...")
             time.sleep(5) # Espera 5 segundos antes de verificar novamente
             
         if not download_completo:
             # A lógica de erro continua a mesma, mas agora só será chamada se o tempo realmente esgotar.
             mensagem_erro = f"O download do arquivo '{nome_do_arquivo_esperado}' não foi concluído em {tempo_max_espera_segundos} segundos."
-            logic.logar_progresso(apartamento_id, mensagem_erro)
+            db.logar_progresso(apartamento_id, mensagem_erro)
             raise Exception(mensagem_erro)
 
         
-        logic.logar_progresso(apartamento_id,"ROTEIRO DE COLETA CONCLUÍDO.")
+        db.logar_progresso(apartamento_id,"ROTEIRO DE COLETA CONCLUÍDO.")
              
     except Exception as e:
         driver.save_screenshot('screenshot_erro.png')
-        logic.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
-        logic.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
+        db.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
+        db.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:
-        logic.logar_progresso(apartamento_id,"Fechando o navegador.")
+        db.logar_progresso(apartamento_id,"Fechando o navegador.")
         driver.quit()           
         
 # --- BLOCO PARA TESTE MANUAL ---

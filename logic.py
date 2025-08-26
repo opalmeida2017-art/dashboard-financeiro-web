@@ -143,25 +143,4 @@ def limpar_logs_antigos(apartamento_id):
     except Exception as e:
         print(f"ERRO ao limpar logs antigos: {e}")
 
-def logar_progresso(apartamento_id, mensagem):
-    """
-    Salva uma mensagem de progresso do robô no banco de dados,
-    usando a conexão principal da aplicação.
-    """
-    # Continua mostrando no console para debug imediato
-    print(mensagem) 
-    
-    try:
-        # Usa o 'db.engine' que já está configurado para toda a aplicação
-        with db.engine.connect() as conn:
-            query = text("""
-                INSERT INTO tb_logs_robo (apartamento_id, timestamp, mensagem)
-                VALUES (:apartamento_id, NOW(), :mensagem)
-            """)
-            # Usamos .execute() e .commit() para garantir que a transação seja salva
-            conn.execute(query, {"apartamento_id": apartamento_id, "mensagem": mensagem})
-            conn.commit()
-    except Exception as e:
-        # Se até o log falhar, imprime o erro no console para não parar a execução do robô
-        # Isso evita que o robô pare completamente só porque não conseguiu logar.
-        print(f"--- ERRO CRÍTICO NO LOG: Não foi possível salvar a mensagem no banco. Erro: {e} ---")
+
