@@ -725,6 +725,7 @@ def update_apartment_details(apartamento_id: int, nome_empresa: str, status: str
 
 def get_apartments_with_usage_stats():
     data_tables = [info["table"] for info in config.EXCEL_FILES_CONFIG.values()]
+
     try:
         with engine.connect() as conn:
             # CORREÇÃO: Adicionamos a coluna 'slug' à consulta SQL
