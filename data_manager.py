@@ -28,22 +28,23 @@ def get_data_as_dataframe(table_name: str, apartamento_id: int) -> pd.DataFrame:
     except Exception as e:
         print(f"ERRO CRÍTICO ao carregar dados da tabela '{table_name}': {e}")
         return pd.DataFrame()
-# Em data_manager.py
 
-# Em data_manager.py
-def apply_filters_to_df(df: pd.DataFrame, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: str) -> pd.DataFrame:
-    """Aplica filtros, usando nomes de colunas CamelCase. CORRIGIDO com dayfirst=True."""
+
+def apply_filters_to_df(df: pd.DataFrame, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list) -> pd.DataFrame:
+    """
+    Aplica filtros de data, placa e uma LISTA de filiais a um DataFrame.
+    """
     if df.empty:
         return df
     
     df_filtrado = df.copy()
     
+    # Lógica de Filtro de Data (sem alterações)
     possible_date_cols = ['dataControle', 'dataViagemMotorista', 'dataVenc']
     date_column_for_filter = next((col for col in possible_date_cols if col in df_filtrado.columns), None)
 
     for col in possible_date_cols:
         if col in df_filtrado.columns:
-            # CORREÇÃO: Adicionado dayfirst=True para tratar datas no formato brasileiro (dd/mm/aaaa)
             df_filtrado[col] = pd.to_datetime(df_filtrado[col], errors='coerce', dayfirst=True)
     
     if date_column_for_filter and (start_date or end_date):
@@ -54,20 +55,26 @@ def apply_filters_to_df(df: pd.DataFrame, start_date: datetime, end_date: dateti
             if end_date:
                 df_filtrado = df_filtrado[df_filtrado[date_column_for_filter] <= end_date]
 
+    # Lógica de Filtro de Placa (sem alterações)
     if placa_filter and placa_filter != "Todos":
         placa_cols = config.FILTER_COLUMN_MAPS.get("placa", [])
-        for col in placa_cols:
-            if col in df_filtrado.columns:
-                df_filtrado = df_filtrado[df_filtrado[col].astype(str).str.strip().str.upper() == placa_filter.strip().upper()]
-                break
+        placa_col_found = next((col for col in placa_cols if col in df_filtrado.columns), None)
+        if placa_col_found:
+            df_filtrado = df_filtrado[df_filtrado[placa_col_found].astype(str).str.strip().str.upper() == placa_filter.strip().upper()]
 
-    if filial_filter and filial_filter != "Todos":
+    # --- LÓGICA DE FILTRO DE FILIAL ATUALIZADA ---
+    # A variável 'filial_filter' agora é uma lista (ex: ['Filial A', 'Filial C'])
+    if filial_filter: # Verifica se a lista não está vazia (se alguma checkbox foi marcada)
         filial_cols = config.FILTER_COLUMN_MAPS.get("filial", [])
-        for col in filial_cols:
-            if col in df_filtrado.columns:
-                df_filtrado = df_filtrado[df_filtrado[col].astype(str).str.strip().str.upper() == filial_filter.strip().upper()]
-                break
-                
+        filial_col_found = next((col for col in filial_cols if col in df_filtrado.columns), None)
+        
+        if filial_col_found:
+            # O método .isin() do Pandas filtra as linhas onde o valor da coluna
+            # está PRESENTE na lista 'filial_filter'.
+            filial_filter_upper = [f.strip().upper() for f in filial_filter]
+            df_filtrado = df_filtrado[df_filtrado[filial_col_found].astype(str).str.strip().str.upper().isin(filial_filter_upper)]
+    # --- FIM DA ALTERAÇÃO ---
+            
     return df_filtrado
 
 # --- FUNÇÃO MESTRA QUE CENTRALIZA TODA A LÓGICA ---

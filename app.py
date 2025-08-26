@@ -132,7 +132,9 @@ def format_percentage(value):
 def _parse_filters():
     filters = {
         'placa': request.args.get('placa', 'Todos'),
-        'filial': request.args.get('filial', 'Todos'),
+        # request.args.getlist('filial') retorna uma lista com todas as filiais marcadas.
+        # Ex: ['HD TRANSPORTE DE CARGAS LTDA', 'LOCATRANS...']
+        'filial': request.args.getlist('filial'),
         'start_date_str': request.args.get('start_date', ''),
         'end_date_str': request.args.get('end_date', '')
     }
@@ -143,7 +145,6 @@ def _parse_filters():
         filters['start_date_obj'] = None
         filters['end_date_obj'] = None
     return filters
-
 # --- ROTAS DE LOGIN E LOGOUT ---
 
 @app.route('/login', methods=['GET', 'POST'])

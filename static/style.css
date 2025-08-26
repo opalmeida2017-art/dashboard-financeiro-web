@@ -433,3 +433,77 @@ h1, h2 {
         grid-template-columns: 1fr;
     }
 }
+
+/* --- REGRAS ESSENCIAIS PARA O FILTRO MULTI-SELECT DE FILIAL --- */
+
+/* 1. Define o contêiner principal do filtro */
+.multiselect {
+    position: relative;
+    display: inline-block;
+    width: 250px; /* Ajuste para alinhar com outros filtros */
+}
+.multiselect-btn {
+    width: 100%;
+    padding: 7px 12px; /* Pequeno ajuste na altura para o texto ficar bem centralizado */
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 10px; /* <-- ESTA É A LINHA QUE REDUZ A FONTE */
+}
+.multiselect-dropdown {
+    display: none; /* Esconde a lista */
+    position: absolute;
+    background-color: #fff;
+    min-width: 250px;
+    box-shadow: 0 8px 16px 0 rgba(0,0,0,0.2);
+    border: 1px solid #ccc;
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.multiselect-dropdown.show {
+    display: block; /* Mostra a lista quando o JS adiciona a classe .show */
+    
+    position: absolute;
+    background-color: #fff;
+    min-width: 250px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    z-index: 1000; /* Garante que a lista apareça sobre outros elementos */
+    max-height: 200px; /* Adiciona uma barra de rolagem se houver muitas opções */
+    overflow-y: auto;
+}
+
+/* 4. ESTA É A REGRA MÁGICA: torna a lista visível */
+/* O JavaScript irá adicionar a classe 'show' quando o botão for clicado */
+.multiselect-dropdown.show {
+    display: block;
+}
+
+/* 5. Estiliza cada item (checkbox + texto) dentro da lista */
+.multiselect-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.multiselect-item:hover {
+    background-color: #f1f1f1;
+}
+
+.multiselect-item input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.multiselect-item label {
+    margin: 0;
+    cursor: pointer;
+    flex-grow: 1; /* Faz o label ocupar o espaço restante */
+}

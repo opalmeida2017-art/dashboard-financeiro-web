@@ -3,39 +3,54 @@
 {% block content %}
     <h1>Dashboard Transporte</h1>
 
-    <div class="filters">
-        <form method="GET" action="/">
-            <label for="start_date">Data Início:</label>
-            <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
-            <label for="end_date">Data Fim:</label>
-            <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
-            <label for="placa">Placa:</label>
-            <select name="placa" id="placa">
-                {% for placa in placas %}
-                    <option value="{{ placa }}" {% if placa == selected_placa %}selected{% endif %}>{{ placa }}</option>
-                {% endfor %}
-            </select>
-            <label for="filial">Filial:</label>
-            <select name="filial" id="filial">
-                {% for filial in filiais %}
-                    <option value="{{ filial }}" {% if filial == selected_filial %}selected{% endif %}>{{ filial }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit">Aplicar Filtros</button>
-            
-            <div class="action-buttons">
-                <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
-                <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
-
-                {% if is_admin_in_context() %}
-                    <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
-                {% endif %}
-                
-                <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
-                <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
+<div class="filters">
+    <form method="GET" action="/">
+        <label for="start_date">Data Início:</label>
+        <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
+        
+        <label for="end_date">Data Fim:</label>
+        <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+        
+        <label for="placa">Placa:</label>
+        <select name="placa" id="placa">
+            {% for placa in placas %}
+                <option value="{{ placa }}" {% if placa == selected_placa %}selected{% endif %}>{{ placa }}</option>
+            {% endfor %}
+        </select> <div class="form-group">
+            <label for="filial-multiselect-btn">Filial:</label>
+            <div class="multiselect" id="filial-multiselect">
+                <button type="button" class="multiselect-btn" id="filial-multiselect-btn">
+                    Selecionar Filiais
+                </button>
+                <div class="multiselect-dropdown" id="filial-dropdown">
+                    {% for filial in filiais %}
+                        {% if filial != "Todos" %}
+                        <div class="multiselect-item">
+                            <input type="checkbox" name="filial" value="{{ filial }}" id="filial-{{ loop.index }}"
+                                   {% if filial in selected_filial %}checked{% endif %}>
+                            <label for="filial-{{ loop.index }}">{{ filial }}</label>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
             </div>
-        </form>
-    </div>
+        </div>
+        
+        <button type="submit">Aplicar Filtros</button>
+        
+        <div class="action-buttons">
+            <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
+            <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
+
+            {% if is_admin_in_context() %}
+                <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
+            {% endif %}
+            
+            <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
+            <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
+        </div>
+    </form>
+</div>
 
     {% if summary %}
     <div class="summary-cards">
@@ -297,6 +312,46 @@
                 }
             });
         }
+    const multiselect = document.getElementById('filial-multiselect');
+        
+        if (multiselect) {
+            const btn = document.getElementById('filial-multiselect-btn');
+            const dropdown = document.getElementById('filial-dropdown');
+            const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+
+            function updateButtonText() {
+                const checkedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
+                const checkedCount = checkedCheckboxes.length;
+                
+                if (checkedCount === 0) {
+                    btn.textContent = 'Nenhuma filial';
+                } else if (checkedCount === 1) {
+                    btn.textContent = checkedCheckboxes[0].value;
+                } else if (checkedCount === checkboxes.length) {
+                    btn.textContent = 'Todas as filiais';
+                } else {
+                    btn.textContent = `${checkedCount} filiais selecionadas`;
+                }
+            }
+
+            btn.addEventListener('click', function(event) {
+                dropdown.classList.toggle('show');
+                event.stopPropagation();
+            });
+
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', updateButtonText);
+            });
+
+            window.addEventListener('click', function(event) {
+                if (dropdown.classList.contains('show') && !multiselect.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+            
+            updateButtonText(); // Garante o texto correto ao carregar a página
+        }
+
     });
 </script>
 {% endblock %}
