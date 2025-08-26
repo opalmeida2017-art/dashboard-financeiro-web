@@ -209,57 +209,50 @@ def table_exists(table_name: str) -> bool:
         return False
 
 
+d# Em database.py
+
 def processar_downloads_na_pasta(apartamento_id: int):
     """
-    Processa todos os ficheiros Excel na pasta de downloads de um apartamento específico,
-    chamando a função de importação correta que evita duplicatas.
+    Processa todos os ficheiros Excel na pasta de downloads, LOGANDO cada passo
+    para o banco de dados.
     """
-    print(f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
+    # --- ALTERADO: Usando 'logic.logar_progresso' em vez de 'print' ---
+    logic.logar_progresso(apartamento_id, f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     
     pasta_principal = os.path.dirname(os.path.abspath(__file__))
     pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
 
     if not os.path.exists(pasta_downloads):
-        print(f"Aviso: Pasta de downloads não encontrada: {pasta_downloads}")
+        logic.logar_progresso(apartamento_id, f"Aviso: Pasta de downloads não encontrada: {pasta_downloads}") # <-- ALTERADO
         return
 
-    # Itera sobre cada ficheiro na pasta de downloads
     for filename in os.listdir(pasta_downloads):
         if filename.endswith(('.xls', '.xlsx')):
-            # Descobre a que tipo de relatório o ficheiro pertence
             file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
             
             if file_key:
                 caminho_completo = os.path.join(pasta_downloads, filename)
                 try:
-                    # --- CORREÇÃO CRÍTICA: Chamando a função correta ---
-                    
-                    # 1. Obtém as informações necessárias do config.py
                     table_info = config.EXCEL_FILES_CONFIG[file_key]
-                    sheet_name = table_info.get('sheet_name') # .get() para ser seguro
+                    sheet_name = table_info.get('sheet_name')
                     table_name = table_info['table']
                     key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
 
                     if not key_columns:
-                        print(f"ERRO: Chaves primárias não definidas para a tabela '{table_name}' no config.py.")
-                        continue # Pula para o próximo ficheiro
+                        logic.logar_progresso(apartamento_id, f"ERRO: Chaves primárias não definidas para '{table_name}'.") # <-- ALTERADO
+                        continue
 
-                    # 2. Chama a função de importação que apaga antes de inserir
+                    # Chamada para a função que importa (ela já usa print, podemos mantê-la assim ou alterá-la também)
                     import_excel_to_db(
-                        excel_source=caminho_completo,
-                        sheet_name=sheet_name,
-                        table_name=table_name,
-                        key_columns=key_columns,
-                        apartamento_id=apartamento_id
+                        caminho_completo, sheet_name, table_name, key_columns, apartamento_id
                     )
                     
-                    # 3. Apaga o ficheiro após a importação bem-sucedida
                     os.unlink(caminho_completo)
-                    print(f"Ficheiro '{filename}' processado e removido com sucesso.")
+                    logic.logar_progresso(apartamento_id, f"Ficheiro '{filename}' processado e removido com sucesso.") # <-- ALTERADO
 
                 except Exception as e:
-                    print(f"Falha ao processar o ficheiro '{filename}'. Ele não foi removido. Erro: {e}")
+                    logic.logar_progresso(apartamento_id, f"Falha ao processar '{filename}'. Erro: {e}") # <-- ALTERADO
             else:
-                print(f"Aviso: Ficheiro '{filename}' não é reconhecido pela configuração e será ignorado.")
+                logic.logar_progresso(apartamento_id, f"Aviso: Ficheiro '{filename}' não reconhecido.") # <-- ALTERADO
 
-    print("--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
+    logic.logar_progresso(apartamento_id, "--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---") # <-- ALTERADO
