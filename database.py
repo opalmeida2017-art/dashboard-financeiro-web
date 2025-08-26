@@ -1,6 +1,7 @@
 import database as db
 from sqlalchemy import create_engine, text,inspect
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 import os
 import pandas as pd
 import config
@@ -10,6 +11,9 @@ import psycopg2.extras # <-- Importação essencial
 import numpy as np
 from dotenv import load_dotenv
 load_dotenv()
+
+def logar_progresso(apartamento_id, mensagem):
+    
 
 db_url = os.getenv('DATABASE_URL')
 if not db_url:
