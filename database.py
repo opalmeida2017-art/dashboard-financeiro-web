@@ -6,7 +6,6 @@ import os
 import pandas as pd
 import config
 import glob 
-import logic
 from datetime import datetime
 import psycopg2.extras # <-- Importação essencial
 import numpy as np
