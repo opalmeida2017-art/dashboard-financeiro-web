@@ -19,9 +19,11 @@ from slugify import slugify
 from rq import Queue
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
+from db_connection import engine
 import asyncio 
 import json
 import time
+from limpar_dados import limpar_dados_importados
 
 
 app = Flask(__name__)
@@ -54,7 +56,6 @@ if REDIS_URL:
 else:
     print("⚠️ A variável de ambiente REDIS_URL não foi definida. O serviço Redis não será utilizado.")
     
-
 
 def get_target_apartment_id():
     """
@@ -107,7 +108,7 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    with db.engine.connect() as conn:
+    with engine.connect() as conn:
         query = text("SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = :user_id")
         user_data = conn.execute(query, {"user_id": user_id}).mappings().first()
     if user_data:
@@ -132,8 +133,6 @@ def format_percentage(value):
 def _parse_filters():
     filters = {
         'placa': request.args.get('placa', 'Todos'),
-        # request.args.getlist('filial') retorna uma lista com todas as filiais marcadas.
-        # Ex: ['HD TRANSPORTE DE CARGAS LTDA', 'LOCATRANS...']
         'filial': request.args.getlist('filial'),
         'start_date_str': request.args.get('start_date', ''),
         'end_date_str': request.args.get('end_date', '')
@@ -155,7 +154,7 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-        with db.engine.connect() as conn:
+        with engine.connect() as conn:
             query = text("SELECT id, password_hash FROM usuarios WHERE email = :email")
             user_data = conn.execute(query, {"email": email}).mappings().first()
         
@@ -177,7 +176,7 @@ def login_por_slug(slug):
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-        with db.engine.connect() as conn:
+        with engine.connect() as conn:
             query = text("SELECT id, password_hash, apartamento_id FROM usuarios WHERE email = :email")
             user_data = conn.execute(query, {"email": email}).mappings().first()
         
@@ -276,7 +275,7 @@ def api_get_robot_logs():
         return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
 
     try:
-        with db.engine.connect() as conn:
+        with engine.connect() as conn:
             # Busca os últimos 100 logs, com o mais recente primeiro
             query = text("""
                 SELECT timestamp, mensagem 
@@ -312,7 +311,7 @@ def api_clear_robot_logs():
         return jsonify({"status": "error", "message": "Contexto do apartamento não encontrado"}), 400
 
     try:
-        with db.engine.connect() as conn:
+        with engine.connect() as conn:
             query = text("DELETE FROM tb_logs_robo WHERE apartamento_id = :apt_id")
             conn.execute(query, {"apt_id": apartamento_id_alvo})
             conn.commit() # Efetiva a exclusão no banco
@@ -341,8 +340,6 @@ def api_faturamento_dashboard_data():
     )
     return jsonify(dashboard_data)
 
-# --- ROTAS DE GESTÃO (CLIENTE) ---
-
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload_file():
@@ -362,7 +359,30 @@ def upload_file():
             file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
             if file_key:
                 try:
-                    extra_cols = logic.import_single_excel_to_db(file, file_key, apartamento_id_alvo)
+                    table_info = config.EXCEL_FILES_CONFIG[file_key]
+                    sheet_name = table_info.get('sheet_name')
+                    table_name = table_info['table']
+
+                    if table_name == 'relFilDespesasGerais':
+                        extra_cols = db.process_and_import_despesas(
+                            excel_source=file,
+                            sheet_name=sheet_name,
+                            table_name=table_name,
+                            apartamento_id=apartamento_id_alvo
+                        )
+                    else:
+                        key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
+                        if not key_columns:
+                            flash(f"ERRO: Chaves primárias não definidas para a tabela '{table_name}'.", 'error')
+                            continue
+                        extra_cols = db.import_excel_to_db(
+                            excel_source=file,
+                            sheet_name=sheet_name,
+                            table_name=table_name,
+                            key_columns=key_columns,
+                            apartamento_id=apartamento_id_alvo
+                        )
+                    
                     flash(f'Sucesso: Planilha "{filename}" importada.', 'success')
                     if extra_cols:
                         flash(f'Aviso para "{filename}": As seguintes colunas não existem na base de dados e foram ignoradas: {", ".join(extra_cols)}', 'warning')
@@ -370,6 +390,8 @@ def upload_file():
                     flash(f'Erro ao processar "{filename}": {e}', 'error')
             else:
                 flash(f'Erro: Nome de ficheiro "{filename}" não reconhecido.', 'error')
+    
+    logic.sync_expense_groups(apartamento_id_alvo)
     
     return redirect(url_for('index'))
 
@@ -399,9 +421,6 @@ def gerenciar_grupos_salvar():
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
 
-
-
-# --- ROTA DE COLETA DE DADOS (CORRIGIDA) ---
 @app.route('/iniciar-coleta', methods=['POST'])
 @login_required
 def iniciar_coleta_endpoint():
@@ -413,22 +432,18 @@ def iniciar_coleta_endpoint():
     
     try:
         if execution_mode == "sync":
-            # --- MODO SÍNCRONO (PARA DESENVOLVIMENTO LOCAL) ---
             print(f"--- INICIANDO COLETA SÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
             coletor_principal.executar_todas_as_coletas(apartamento_id_alvo)
             print(f"--- COLETA SÍNCRONA FINALIZADA ---")
             flash('Coleta de dados finalizada com sucesso!', 'success')
             return jsonify({'status': 'sucesso', 'mensagem': 'Coleta finalizada!'})
         else:
-            # --- MODO ASSÍNCRONO (PARA PRODUÇÃO) ---
             if not redis_conn:
                 return jsonify({'status': 'erro', 'mensagem': 'Serviço de fila (Redis) não está disponível.'}), 500
             
             print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
             q = Queue(connection=redis_conn)
             
-            # --- ADICIONE O TIMEOUT AQUI ---
-            # Define um timeout de 30 minutos (1800 segundos) para o job
             q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo, job_timeout=1800)
             
             flash('A coleta de dados foi iniciada em segundo plano.', 'success')
@@ -438,31 +453,21 @@ def iniciar_coleta_endpoint():
         print(f"Erro ao executar/enfileirar tarefa: {e}")
         flash(f'Ocorreu um erro ao iniciar a tarefa: {e}', 'error')
         return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
-        flash(f'Ocorreu um erro ao iniciar a tarefa: {e}', 'error')
-        return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
-
 
 @app.route('/configuracao', methods=['GET', 'POST'])
 @login_required
 def configuracao():
-    # --- ADICIONADO: Verificação de permissão no início da função ---
-    # Garante que apenas administradores (de cliente ou super admin) acessem esta página.
     if not is_admin_in_context():
         flash("Acesso negado. Você precisa ser um administrador para ver esta página.", "error")
         return redirect(url_for('index'))
-    # -----------------------------------------------------------------
-
+    
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
         flash("Sessão inválida ou apartamento não encontrado.", "error")
         return redirect(url_for('logout'))
 
     if request.method == 'POST':
-        # --- ADICIONADO: Lógica para ler e salvar a checkbox de monitoramento ---
-        # A expressão abaixo retorna True se a caixa foi marcada, e False caso contrário.
         live_monitoring_enabled = 'live_monitoring_enabled' in request.form
-        # ---------------------------------------------------------------------
-
         configs = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
             'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
@@ -474,7 +479,7 @@ def configuracao():
             'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
             'DATA_INICIAL_ROBO': request.form.get('DATA_INICIAL_ROBO'),
             'DATA_FINAL_ROBO': request.form.get('DATA_FINAL_ROBO'),
-            'live_monitoring_enabled': live_monitoring_enabled # <-- Novo valor salvo
+            'live_monitoring_enabled': live_monitoring_enabled
         }
         logic.salvar_configuracoes_robo(apartamento_id_alvo, configs)
         flash('Configurações salvas com sucesso!', 'success')
@@ -594,7 +599,26 @@ def admin_dashboard():
             apt['access_link'] = url_for('login_por_slug', slug=apt['slug'], _external=True)
         else:
             apt['access_link'] = "Sem slug definido"
+    
+    # CORREÇÃO: Adicione o diretório 'super_admin' ao caminho do template
     return render_template('super_admin/dashboard.html', apartamentos=apartamentos)
+
+
+@app.route('/super-admin/limpar-dados/<int:apartamento_id>', methods=['POST'])
+@login_required
+@super_admin_required
+def limpar_dados_apartamento(apartamento_id):
+    """
+    Endpoint para limpar os dados de um apartamento específico.
+    Acesso restrito ao super-admin.
+    """
+    try:
+        limpar_dados_importados(apartamento_id)
+        flash(f'Dados do apartamento {apartamento_id} limpos com sucesso.', 'success')
+        return jsonify({'status': 'success', 'message': 'Dados limpos.'})
+    except Exception as e:
+        flash(f'Erro ao limpar dados do apartamento {apartamento_id}: {e}', 'error')
+        return jsonify({'status': 'error', 'message': 'Erro ao limpar dados.'}), 500
 
 @app.route('/super-admin/criar', methods=['GET', 'POST'])
 @login_required
@@ -608,7 +632,7 @@ def criar_apartamento():
 
         if not all([nome_empresa, admin_nome, admin_email, admin_password]):
             flash("Todos os campos são obrigatórios.", "error")
-            return render_template('super_admin/criar_apartamento.html')
+            return render_template('criar_apartamento.html')
 
         password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
         success, message = logic.create_apartment_and_admin(nome_empresa, admin_nome, admin_email, password_hash)
@@ -618,8 +642,8 @@ def criar_apartamento():
             return redirect(url_for('admin_dashboard'))
         else:
             flash(message, 'error')
-            return render_template('super_admin/criar_apartamento.html')
-    return render_template('super_admin/criar_apartamento.html')
+            return render_template('criar_apartamento.html')
+    return render_template('criar_apartamento.html')
 
 @app.route('/super-admin/gerir/<int:apartamento_id>', methods=['GET', 'POST'])
 @login_required
@@ -644,7 +668,8 @@ def gerir_apartamento(apartamento_id):
     if not apartamento:
         flash("Apartamento não encontrado.", "error")
         return redirect(url_for('admin_dashboard'))
-        
+    
+    # CORREÇÃO: Adicione o diretório 'super_admin' ao caminho do template
     return render_template('super_admin/gerir_apartamento.html', apartamento=apartamento)
 
 # --- COMANDOS DE CLI ---
@@ -668,7 +693,6 @@ def criar_admin_command():
     else:
         print(f"\nERRO: {message}")
    
-   
 # --- API DE "HEARTBEAT" PARA RASTREAR ATIVIDADE ---
 @app.route('/api/heartbeat', methods=['POST'])
 @login_required
@@ -681,13 +705,12 @@ def api_heartbeat():
         return jsonify({"status": "error"}), 400
     
     try:
-        with db.engine.connect() as conn:
-            # Usa um comando "UPSERT" para inserir ou atualizar o registro
+        with engine.connect() as conn:
             query = text("""
                 INSERT INTO tb_user_activity (apartamento_id, last_seen_timestamp)
                 VALUES (:apt_id, NOW())
                 ON CONFLICT (apartamento_id) DO UPDATE
-                SET last_seen_timestamp = NOW();
+                SET SET last_seen_timestamp = NOW();
             """)
             conn.execute(query, {"apt_id": apartamento_id_alvo})
             conn.commit()
@@ -696,8 +719,6 @@ def api_heartbeat():
         print(f"Erro no heartbeat: {e}")
         return jsonify({"status": "error"}), 500
 
-
- 
 # --- ROTA DE STREAMING DE STATUS (VERSÃO NATIVA PARA FLASK) ---
 @app.route('/api/status_stream')
 @login_required
@@ -710,28 +731,22 @@ def status_stream():
     def event_generator():
         while True:
             try:
-                # A lógica para buscar usuários ativos no banco de dados é a mesma
-                with db.engine.connect() as conn:
+                with engine.connect() as conn:
                     two_minutes_ago = datetime.now() - timedelta(minutes=2)
                     query = text("SELECT apartamento_id FROM tb_user_activity WHERE last_seen_timestamp >= :time_limit")
                     result = conn.execute(query, {"time_limit": two_minutes_ago})
                     active_ids = [row[0] for row in result]
                 
-                # Formata os dados no padrão Server-Sent Events (SSE)
                 data_json = json.dumps({"active_apartments": active_ids})
-                # O formato é "data: {json_string}\n\n"
                 yield f"data: {data_json}\n\n"
                 
-                # Espera 5 segundos antes de verificar novamente
                 time.sleep(5)
             except Exception as e:
-                # Lida com erros sem quebrar o stream
                 print(f"Erro no stream de status: {e}")
                 error_data = json.dumps({"error": str(e)})
                 yield f"data: {error_data}\n\n"
                 time.sleep(5)
 
-    # Retorna uma Resposta Flask com o tipo de conteúdo correto para streaming
     return Response(event_generator(), mimetype='text/event-stream')
 
 # --- LÓGICA DO AGENDADOR ---
@@ -741,10 +756,9 @@ def run_scheduled_collections():
     Ela verifica quais clientes estão online e com a flag ativada, e dispara os robôs.
     """
     print(f"[{datetime.now()}] Verificando robôs agendados para execução...")
-    with app.app_context(): # Garante que temos o contexto da aplicação
+    with app.app_context():
         try:
-            with db.engine.connect() as conn:
-                # 1. Pega todos os clientes que estão ATIVOS e com a feature LIGADA
+            with engine.connect() as conn:
                 two_minutes_ago = datetime.now() - timedelta(minutes=2)
                 query = text("""
                     SELECT
@@ -761,20 +775,16 @@ def run_scheduled_collections():
 
                 for cliente in clientes_para_rodar:
                     apartamento_id = cliente['id']
-                    # Dispara a coleta (de forma síncrona, pois o agendador já está em background)
                     print(f"--> Disparando coleta em tempo real para o apartamento ID: {apartamento_id}")
                     coletor_principal.executar_todas_as_coletas(apartamento_id)
 
         except Exception as e:
             print(f"ERRO no agendador de coletas: {e}")
    
-   
 # --- INICIALIZAÇÃO DO AGENDADOR (CORRIGIDO) ---
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(run_scheduled_collections, 'interval', seconds=60)
 
-# A verificação 'use_reloader=False' garante que o scheduler só inicie UMA VEZ
-# quando você está em modo de debug. Em produção (Render), esta condição não será um problema.
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     print("Iniciando o agendador...")
     scheduler.start()
@@ -782,7 +792,4 @@ else:
     print("O agendador não será iniciado no processo de recarregamento do Flask.")
 
 if __name__ == '__main__':
-    # O 'use_reloader=False' desativa o reinicio automático,
-    # que é uma das causas do agendador duplo. 
-    # Para desenvolver, você pode reiniciar o servidor manualmente (Ctrl+C e roda de novo).
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

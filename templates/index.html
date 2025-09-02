@@ -115,8 +115,8 @@
             <div id="uploadFormContainer">
                 <h2>Upload de Novas Planilhas</h2>
                 <p>Selecione uma ou mais planilhas...</p>
-                <form id="uploadForm" method="POST" action="{{ url_for('upload_file') }}" enctype="multipart/form-data">
-                    <div class="form-group">
+                <form id="uploadForm" method="POST" action="/upload" enctype="multipart/form-data">                    
+    <div class="form-group">
                         <label for="files">1. Escolha os arquivos no seu computador:</label>
                         <input type="file" name="files[]" id="files" multiple required>
                     </div>
@@ -314,43 +314,43 @@
         }
     const multiselect = document.getElementById('filial-multiselect');
         
-        if (multiselect) {
-            const btn = document.getElementById('filial-multiselect-btn');
-            const dropdown = document.getElementById('filial-dropdown');
-            const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+    if (multiselect) {
+        const btn = document.getElementById('filial-multiselect-btn');
+        const dropdown = document.getElementById('filial-dropdown');
+        const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
 
-            function updateButtonText() {
-                const checkedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
-                const checkedCount = checkedCheckboxes.length;
-                
-                if (checkedCount === 0) {
-                    btn.textContent = 'Nenhuma filial';
-                } else if (checkedCount === 1) {
-                    btn.textContent = checkedCheckboxes[0].value;
-                } else if (checkedCount === checkboxes.length) {
-                    btn.textContent = 'Todas as filiais';
-                } else {
-                    btn.textContent = `${checkedCount} filiais selecionadas`;
-                }
-            }
-
-            btn.addEventListener('click', function(event) {
-                dropdown.classList.toggle('show');
-                event.stopPropagation();
-            });
-
-            checkboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', updateButtonText);
-            });
-
-            window.addEventListener('click', function(event) {
-                if (dropdown.classList.contains('show') && !multiselect.contains(event.target)) {
-                    dropdown.classList.remove('show');
-                }
-            });
+        function updateButtonText() {
+            const checkedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
+            const checkedCount = checkedCheckboxes.length;
             
-            updateButtonText(); // Garante o texto correto ao carregar a página
+            if (checkedCount === 0) {
+                btn.textContent = 'Selecionar Filiais';
+            } else if (checkedCount === 1) {
+                btn.textContent = checkedCheckboxes[0].value;
+            } else if (checkedCount === checkboxes.length) {
+                btn.textContent = 'Todas as filiais';
+            } else {
+                btn.textContent = `${checkedCount} filiais selecionadas`;
+            }
         }
+
+        btn.addEventListener('click', function(event) {
+            dropdown.classList.toggle('show');
+            event.stopPropagation();
+        });
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateButtonText);
+        });
+
+        window.addEventListener('click', function(event) {
+            if (dropdown.classList.contains('show') && !multiselect.contains(event.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+        
+        updateButtonText(); // Garante o texto correto ao carregar a página
+    }
 
     });
 </script>

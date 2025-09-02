@@ -45,6 +45,7 @@
                             </td>
                             <td class="actions-cell">
                                 <a href="{{ url_for('gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
+                                <button type="button" class="btn-action delete-data-btn" data-apt-id="{{ apt.id }}" style="background-color: #dc3545; color: white;">Limpar Dados</button>
                             </td>
                         </tr>
                         {% else %}
@@ -85,8 +86,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const eventSource = new EventSource('/api/status_stream');
 
-    // --- CORREÇÃO CIRÚRGICA AQUI ---
-    // Escuta pelo evento padrão 'message', que é o que a nossa API Flask envia.
     eventSource.addEventListener('message', function(event) {
         console.log("Recebido update de status:", event.data);
         const data = JSON.parse(event.data);
@@ -99,6 +98,43 @@ document.addEventListener('DOMContentLoaded', function() {
     eventSource.onerror = function(err) {
         console.error("Erro na conexão de streaming. A conexão pode ter sido fechada.", err);
     };
+
+    // Lógica para o novo botão de limpeza
+    document.querySelectorAll('.delete-data-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const apartamentoId = this.getAttribute('data-apt-id');
+            const confirmacao = confirm(`ATENÇÃO: Você tem certeza que deseja limpar TODOS os dados do apartamento ID ${apartamentoId}? Esta ação é irreversível e apagará todos os dados, incluindo os arquivos de download.`);
+            
+            if (confirmacao) {
+                this.disabled = true;
+                this.textContent = 'Limpando...';
+
+                fetch(`/super-admin/limpar-dados/${apartamentoId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`Dados do apartamento ${apartamentoId} foram limpos com sucesso.`);
+                        window.location.reload();
+                    } else {
+                        alert(`Ocorreu um erro ao limpar os dados: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro:', error);
+                    alert('Ocorreu um erro inesperado.');
+                })
+                .finally(() => {
+                    this.disabled = false;
+                    this.textContent = 'Limpar Dados';
+                });
+            }
+        });
+    });
 });
 </script>
 {% endblock %}

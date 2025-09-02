@@ -142,5 +142,3 @@ def limpar_logs_antigos(apartamento_id):
         print(f"[LOG DB] Logs antigos para o apartamento {apartamento_id} foram limpos.")
     except Exception as e:
         print(f"ERRO ao limpar logs antigos: {e}")
-
-
