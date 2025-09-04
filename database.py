@@ -1,4 +1,6 @@
 # database.py
+# Forçando a atualização para o deploy
+
 
 from sqlalchemy import create_engine, text,inspect
 from sqlalchemy.exc import SQLAlchemyError

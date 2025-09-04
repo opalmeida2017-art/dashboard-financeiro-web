@@ -1,3 +1,5 @@
+# Forçando a atualização para o deploy
+
 import pandas as pd
 from sqlalchemy import text
 from datetime import datetime

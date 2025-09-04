@@ -1,4 +1,4 @@
-# logic.py (versão do usuário com prints para depuração)
+# Forçando a atualização para o deploy
 import data_manager as dm
 import database as db
 import os
