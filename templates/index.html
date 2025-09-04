@@ -68,8 +68,10 @@
             <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
         </div>
         <div class="card">
-            <h3>Despesa Gerais</h3>
-            <p style="color: #C0392B;">{{ summary.total_despesas_gerais | currency }}</p>
+            <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" style="text-decoration: none; color: inherit;">
+                <h3>Despesa Gerais</h3>
+                <p style="color: #C0392B;">{{ summary.total_despesas_gerais | currency }}</p>
+            </a>
         </div>
         <div class="card">
             <h3>Lucro Liquido</h3>
@@ -138,7 +140,6 @@
 
 {% block scripts %}
 <script>
-    // Todo o JavaScript que é específico para a página index.html vai aqui
     document.addEventListener('DOMContentLoaded', function () {
         
         // --- LÓGICA DO GRÁFICO ---
@@ -349,9 +350,8 @@
             }
         });
         
-        updateButtonText(); // Garante o texto correto ao carregar a página
+        updateButtonText();
     }
-
     });
 </script>
 {% endblock %}

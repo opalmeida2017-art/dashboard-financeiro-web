@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalhes de Despesas</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        .grid-item {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        body {
+            background-color: #f4f4f9;
+        }
+    </style>
+</head>
+<body>
+    <div style="padding: 20px;">
+        <div class="page-header">
+            <h1>Análise Detalhada de Despesas</h1>
+            <a href="{{ url_for('index') }}?{{ request.query_string.decode('utf-8') }}" class="manage-link" style="text-decoration: none;">&larr; Voltar ao Dashboard</a>
+        </div>
+
+        <div class="grid-container">
+            <div class="grid-item">
+                <h3>Despesas por Super Grupo</h3>
+                <canvas id="superGrupoChart"></canvas>
+            </div>
+            <div class="grid-item">
+                <h3>Despesas por Filial</h3>
+                <canvas id="despesaFilialChart"></canvas>
+            </div>
+            <div class="grid-item">
+                <h3>Custo de Manutenção por Veículo</h3>
+                <canvas id="manutencaoVeiculoChart"></canvas>
+            </div>
+            <div class="grid-item">
+                <h3>Custo Médio por KM Rodado</h3>
+                <canvas id="custoKmChart"></canvas>
+            </div>
+            <div class="grid-item" style="grid-column: 1 / -1;">
+                <h3>Evolução Mensal das Despesas com Combustível</h3>
+                <canvas id="dieselMensalChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const params = new URLSearchParams(window.location.search);
+    // Este é o novo endpoint de API que precisaremos criar no app.py
+    fetch(`/api/despesas_dashboard_data?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data && Object.keys(data).length > 0) {
+                
+                // Gráfico 1: Despesas por Super Grupo
+                if (data.despesa_super_grupo && data.despesa_super_grupo.length > 0) {
+                    const superGrupoCtx = document.getElementById('superGrupoChart').getContext('2d');
+                    new Chart(superGrupoCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.despesa_super_grupo.map(d => d.descSuperGrupoD),
+                            datasets: [{
+                                data: data.despesa_super_grupo.map(d => d.liquido)
+                            }]
+                        }
+                    });
+                }
+
+                // Gráfico 2: Despesas por Filial
+                if (data.despesa_filial && data.despesa_filial.length > 0) {
+                    const despesaFilialCtx = document.getElementById('despesaFilialChart').getContext('2d');
+                    new Chart(despesaFilialCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.despesa_filial.map(d => d.nomeFil),
+                            datasets: [{ label: 'Despesa Total', data: data.despesa_filial.map(d => d.liquido), backgroundColor: 'rgba(26, 188, 156, 0.7)' }]
+                        },
+                        options: { scales: { y: { ticks: { callback: value => 'R$ ' + value.toLocaleString('pt-BR') } } } }
+                    });
+                }
+
+                // Gráfico 3: Custo de Manutenção por Veículo
+                if (data.custo_manutencao_veiculo && data.custo_manutencao_veiculo.length > 0) {
+                    const manutencaoVeiculoCtx = document.getElementById('manutencaoVeiculoChart').getContext('2d');
+                    new Chart(manutencaoVeiculoCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.custo_manutencao_veiculo.map(d => d.placaVeiculo),
+                            datasets: [{ label: 'Custo de Manutenção', data: data.custo_manutencao_veiculo.map(d => d.liquido), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
+                        },
+                        options: { indexAxis: 'y', scales: { x: { ticks: { callback: value => 'R$ ' + value.toLocaleString('pt-BR') } } } }
+                    });
+                }
+
+                // Gráfico 4: Custo Médio por KM Rodado
+                if (data.custo_km_veiculo && data.custo_km_veiculo.length > 0) {
+                    const custoKmCtx = document.getElementById('custoKmChart').getContext('2d');
+                    new Chart(custoKmCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.custo_km_veiculo.map(d => d.placaVeiculo),
+                            datasets: [{ label: 'Custo por KM (R$)', data: data.custo_km_veiculo.map(d => d.custo_por_km), backgroundColor: 'rgba(142, 68, 173, 0.7)' }]
+                        },
+                        options: { indexAxis: 'y', scales: { x: { ticks: { callback: value => 'R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) } } } }
+                    });
+                }
+
+                // Gráfico 5: Evolução Mensal do Diesel
+                if (data.diesel_mensal && data.diesel_mensal.length > 0) {
+                    const dieselMensalCtx = document.getElementById('dieselMensalChart').getContext('2d');
+                    new Chart(dieselMensalCtx, {
+                        type: 'line',
+                        data: {
+                            labels: data.diesel_mensal.map(d => d.mes),
+                            datasets: [{ label: 'Gasto com Diesel', data: data.diesel_mensal.map(d => d.liquido), borderColor: 'rgba(52, 73, 94, 1)', fill: false }]
+                        },
+                        options: { scales: { y: { beginAtZero: true, ticks: { callback: value => 'R$ ' + value.toLocaleString('pt-BR') } } } }
+                    });
+                }
+
+            } else {
+                const gridContainer = document.querySelector('.grid-container');
+                if (gridContainer) {
+                    gridContainer.innerHTML = '<h2>Não há dados de despesas para os filtros selecionados.</h2>';
+                }
+            }
+        });
+});
+</script>
+</body>
+</html>

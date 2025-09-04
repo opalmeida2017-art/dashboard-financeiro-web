@@ -75,6 +75,10 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
     print(f">>> [LOGIC] Chamando get_faturamento_details_dashboard_data para o apartamento ID: {apartamento_id}")
     return dm.get_faturamento_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
 
+def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter):
+    print(f">>> [LOGIC] Chamando get_despesas_details_dashboard_data para o apartamento ID: {apartamento_id}")
+    return dm.get_despesas_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+
 # --- Funções de Configuração do Robô ---
 def ler_configuracoes_robo(apartamento_id: int):
     print(f">>> [LOGIC] Chamando ler_configuracoes_robo para o apartamento ID: {apartamento_id}")
@@ -142,3 +146,4 @@ def limpar_logs_antigos(apartamento_id):
         print(f"[LOG DB] Logs antigos para o apartamento {apartamento_id} foram limpos.")
     except Exception as e:
         print(f"ERRO ao limpar logs antigos: {e}")
+        

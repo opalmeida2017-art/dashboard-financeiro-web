@@ -244,6 +244,11 @@ def faturamento_detalhes():
     filters = _parse_filters()
     return render_template('faturamento_detalhes.html', **filters)
 
+@app.route('/despesas_detalhes')
+@login_required
+def despesas_detalhes():
+    return render_template('despesas_detalhes.html')
+
 # --- ROTAS DE API (PARA GRÁFICOS) ---
 
 @app.route('/api/monthly_summary')
@@ -332,6 +337,23 @@ def api_faturamento_dashboard_data():
 
     filters = _parse_filters()
     dashboard_data = logic.get_faturamento_details_dashboard_data(
+        apartamento_id=apartamento_id_alvo,
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial']
+    )
+    return jsonify(dashboard_data)
+
+@app.route('/api/despesas_dashboard_data')
+@login_required
+def api_despesas_dashboard_data():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    filters = _parse_filters()
+    dashboard_data = logic.get_despesas_details_dashboard_data(
         apartamento_id=apartamento_id_alvo,
         start_date=filters['start_date_obj'],
         end_date=filters['end_date_obj'],
