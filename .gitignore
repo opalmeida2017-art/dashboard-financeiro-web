@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Arquivos de Ambiente
+.env
+
+# Arquivos do Editor/SO
+.vscode/
+.idea/
+*.DS_Store
+
+# Logs e Downloads
+*.log
+downloads/
+screenshot_*.png
