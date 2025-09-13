@@ -137,12 +137,37 @@ def _parse_filters():
         'start_date_str': request.args.get('start_date', ''),
         'end_date_str': request.args.get('end_date', '')
     }
-    try:
-        filters['start_date_obj'] = datetime.strptime(filters['start_date_str'], '%Y-%m-%d') if filters['start_date_str'] else None
-        filters['end_date_obj'] = datetime.strptime(filters['end_date_str'], '%Y-%m-%d').replace(hour=23, minute=59, second=59) if filters['end_date_str'] else None
-    except ValueError:
-        filters['start_date_obj'] = None
-        filters['end_date_obj'] = None
+    
+    start_date_obj = None
+    end_date_obj = None
+
+    # Tenta converter as datas fornecidas na URL
+    if filters['start_date_str']:
+        try:
+            start_date_obj = datetime.strptime(filters['start_date_str'], '%Y-%m-%d')
+        except ValueError:
+            filters['start_date_str'] = '' # Limpa data inválida
+
+    if filters['end_date_str']:
+        try:
+            end_date_obj = datetime.strptime(filters['end_date_str'], '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        except ValueError:
+            filters['end_date_str'] = '' # Limpa data inválida
+
+    # --- NOVA LÓGICA: Filtro padrão para o ano corrente ---
+    # Se nenhuma data for fornecida pelo usuário, define o padrão como o ano atual.
+    if not filters['start_date_str'] and not filters['end_date_str']:
+        ano_corrente = datetime.now().year
+        start_date_obj = datetime(ano_corrente, 1, 1)
+        end_date_obj = datetime(ano_corrente, 12, 31).replace(hour=23, minute=59, second=59)
+        
+        # Atualiza as strings para que os campos de data na tela apareçam preenchidos
+        filters['start_date_str'] = start_date_obj.strftime('%Y-%m-%d')
+        filters['end_date_str'] = end_date_obj.strftime('%Y-%m-%d')
+    
+    filters['start_date_obj'] = start_date_obj
+    filters['end_date_obj'] = end_date_obj
+    
     return filters
 # --- ROTAS DE LOGIN E LOGOUT ---
 
@@ -664,8 +689,8 @@ def criar_apartamento():
             return redirect(url_for('admin_dashboard'))
         else:
             flash(message, 'error')
-            return render_template('criar_apartamento.html')
-    return render_template('criar_apartamento.html')
+            return render_template('super_admin/criar_apartamento.html') # <--- LINHA 1 CORRIGIDA
+    return render_template('super_admin/criar_apartamento.html')
 
 @app.route('/super-admin/gerir/<int:apartamento_id>', methods=['GET', 'POST'])
 @login_required

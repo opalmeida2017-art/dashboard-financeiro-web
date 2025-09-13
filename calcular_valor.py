@@ -17,16 +17,16 @@ try:
         (df_acessorio['despesa'] == 'S')
     ].copy()
 
-    # 3. Limpa e converte a coluna 'liquido' para um formato numérico
+    # 3. Limpa e converte a coluna 'vlcontabil' para um formato numérico
     if not df_filtrado.empty:
-        df_filtrado['liquido'] = df_filtrado['liquido'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
+        df_filtrado['vlcontabil'] = df_filtrado['vlcontabil'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
         
-        # 4. Soma a coluna 'liquido'
-        soma_liquido = df_filtrado['liquido'].sum()
+        # 4. Soma a coluna 'vlcontabil'
+        soma_vlcontabil = df_filtrado['vlcontabil'].sum()
 
         print("\n--- CÁLCULO FINALIZADO ---")
         print(f"Grupo: ACESSORIOS")
-        print(f"Soma da coluna 'liquido' (após filtros): {soma_liquido:,.2f}")
+        print(f"Soma da coluna 'vlcontabil' (após filtros): {soma_vlcontabil:,.2f}")
         print("--------------------------\n")
 
     else:

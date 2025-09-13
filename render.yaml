@@ -1,26 +1,61 @@
 services:
-  # Serviço da Base de Dados PostgreSQL
+  # Serviço da Base de Dados PostgreSQL (sem alterações)
   - type: pserv
-    name: financeiro-db # Nome da sua base de dados no Render
+    name: financeiro-db
     env: postgres
-    plan: free # Plano gratuito, pode ser alterado
+    plan: free
 
-  # Serviço da Aplicação Web Python/Flask
+  # Serviço do Redis para a fila de tarefas
+  - type: pserv
+    name: financeiro-redis # Nome do serviço Redis
+    env: redis
+    plan: free # Plano gratuito é suficiente para filas
+
+  # Serviço da Aplicação Web Python/Flask (alterações mínimas)
   - type: web
-    name: python-dashboard # Nome da sua aplicação web
+    name: python-dashboard
     env: docker
-    plan: free # Plano gratuito, pode ser alterado
-    # Conecta a aplicação à base de dados
+    plan: free
     database:
       name: financeiro-db
       property: connectionString
-    # Define as variáveis de ambiente essenciais
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: financeiro-db
           property: internalConnectionString
+      - key: REDIS_URL # Adiciona a conexão com o Redis
+        fromService:
+          type: pserv
+          name: financeiro-redis
+          property: connectionString
       - key: FLASK_ENV
         value: production
       - key: PYTHON_VERSION
         value: 3.11
+
+  # --- IMPLEMENTAÇÃO ---
+  # Adiciona o serviço do Worker de Background
+  - type: worker # <-- O tipo de serviço correto para tarefas em segundo plano
+    name: python-dashboard-worker # Um nome diferente para o worker
+    env: docker
+    # Garante que o worker use o mesmo ambiente e código do serviço web
+    # mas com um comando de inicialização diferente.
+    plan: free
+    database:
+      name: financeiro-db
+      property: connectionString
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: financeiro-db
+          property: internalConnectionString
+      - key: REDIS_URL
+        fromService:
+          type: pserv
+          name: financeiro-redis
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.11
+    # O comando que será executado para este serviço específico
+    startCommand: "python worker.py"

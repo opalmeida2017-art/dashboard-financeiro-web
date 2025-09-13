@@ -60,7 +60,7 @@ TABLE_COLUMN_MAPS = {
         },
         'numeric': [
             'custo', 'custoTotal', 'desconto', 'km', 'kmAnterior', 'kmPrev', 'kmRodado', 'kmRodadoDec',
-            'liquido', 'mediaDesejada', 'mediaKm', 'mediaMax', 'mediaMin', 'porcAliqIcmsSubsTribItem',
+            'vlcontabil', 'mediaDesejada', 'mediaKm', 'mediaMax', 'mediaMin', 'porcAliqIcmsSubsTribItem',
             'porcIcmsItem', 'porcIpiItem', 'quantidade', 'valor', 'valorAcertoProp', 'valorBaseIcmsItem',
             'valorBaseIpiItem', 'valorBaseSubsTribItem', 'valorDescontoItem', 'valorDespesa',
             'valorFaturamento', 'valorFrete', 'valorFreteEmp', 'valorFreteMot', 'valorIcmsItem',
@@ -86,7 +86,7 @@ TABLE_COLUMN_MAPS = {
             'dataPrevista': None, 'dataVenc': None
         },
         'numeric': [
-            'kmItemNota', 'liquidoItemNota', 'pesoSaidaMotorista', 'premioSeguro',
+            'kmItemNota', 'vlcontabilItemNota', 'pesoSaidaMotorista', 'premioSeguro',
             'quantidadeItemNota', 'totalTipoPagto', 'valorIcmsNota', 'valorImpSfedNota',
             'valorIssNota', 'valorNota', 'valorPagto', 'valorProporcional',
             'valorQuebra', 'valorVenc', 'vlCofinsRetNota', 'vlCsllRetNota',

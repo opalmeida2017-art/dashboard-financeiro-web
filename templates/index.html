@@ -74,7 +74,7 @@
             </a>
         </div>
         <div class="card">
-            <h3>Lucro Liquido</h3>
+            <h3>Lucro vlcontabil</h3>
             <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">{{ summary.saldo_geral | currency }}</p>
         </div>
         <div class="card">
@@ -142,6 +142,29 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         
+        // --- INÍCIO DA VALIDAÇÃO DE DATA CORRIGIDA ---
+        const filterForm = document.querySelector('.filters form');
+        if (filterForm) {
+            filterForm.addEventListener('submit', function(event) {
+                const startDateInput = document.getElementById('start_date');
+                const endDateInput = document.getElementById('end_date');
+
+                const startDateValue = startDateInput.value;
+                const endDateValue = endDateInput.value;
+
+                // A validação só acontece se ambas as datas estiverem preenchidas
+                if (startDateValue && endDateValue) {
+                    
+                    // ALTERAÇÃO: Comparamos os textos diretamente. É mais seguro.
+                    if (startDateValue > endDateValue) {
+                        // Impede o envio do formulário (a aplicação do filtro)
+                        event.preventDefault();
+                        // Exibe um alerta para o usuário
+                        alert('Atenção: A data inicial não pode ser maior que a data final.');
+                    }
+                }
+            });
+        }
         // --- LÓGICA DO GRÁFICO ---
         const params = new URLSearchParams(window.location.search);
         const chartCanvas = document.getElementById('faturamentoDespesasChart');

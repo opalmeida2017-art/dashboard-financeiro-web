@@ -46,7 +46,7 @@
                 <canvas id="evolucaoChart"></canvas>
             </div>
             <div class="grid-item">
-                <h3>Top 10 Clientes por Faturamento</h3>
+                <h3>Clientes por Faturamento</h3>
                 <canvas id="topClientesChart"></canvas>
             </div>
             <div class="grid-item">
@@ -54,7 +54,7 @@
                 <canvas id="fatFilialChart"></canvas>
             </div>
             <div class="grid-item">
-                <h3>Top 10 Rotas Mais Frequentes</h3>
+                <h3>Rotas Mais Frequentes</h3>
                 <canvas id="topRotasChart"></canvas>
             </div>
             <div class="grid-item">
@@ -62,12 +62,16 @@
                 <canvas id="volumeRotaChart"></canvas>
             </div>
             <div class="grid-item">
-                <h3>Top 10 Veículos por No. de Viagens</h3>
+                <h3>Veículos por No. de Viagens</h3>
                 <canvas id="viagensVeiculoChart"></canvas>
             </div>
-            <div class="grid-item">
-                <h3>Top 10 Motoristas por Faturamento</h3>
+            <div class="grid-item"> 
+                <h3>Motoristas por Faturamento</h3>
                 <canvas id="fatMotoristaChart"></canvas>
+            </div>
+            <div class="grid-item">
+                <h3>Faturamento por Tipo de Mercadoria</h3>
+                <canvas id="mercadoriaChart"></canvas>
             </div>
         </div>
     </div>
@@ -80,6 +84,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(data => {
             if (data && Object.keys(data).length > 0) {
                 
+                // Gráfico 1: Evolução Faturamento vs. Custo Total
                 if (data.evolucao_faturamento_custo && data.evolucao_faturamento_custo.length > 0) {
                     const evolucaoCtx = document.getElementById('evolucaoChart').getContext('2d');
                     new Chart(evolucaoCtx, {
@@ -95,6 +100,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
 
+                // Gráfico 2: Top 10 Clientes por Faturamento
                 if (data.top_clientes && data.top_clientes.length > 0) {
                     const clientesCtx = document.getElementById('topClientesChart').getContext('2d');
                     new Chart(clientesCtx, {
@@ -107,6 +113,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
+                // Gráfico 3: Faturamento por Filial
                 if (data.faturamento_filial && data.faturamento_filial.length > 0) {
                     const filialCtx = document.getElementById('fatFilialChart').getContext('2d');
                     new Chart(filialCtx, {
@@ -118,6 +125,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
+                // Gráfico 4: Top 10 Rotas Mais Frequentes
                 if (data.top_rotas && data.top_rotas.length > 0) {
                     const rotasCtx = document.getElementById('topRotasChart').getContext('2d');
                     new Chart(rotasCtx, {
@@ -130,6 +138,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
+                // Gráfico 5: Volume de Carga (kg) por Rota
                 if (data.volume_por_rota && data.volume_por_rota.length > 0) {
                     const volumeCtx = document.getElementById('volumeRotaChart').getContext('2d');
                     new Chart(volumeCtx, {
@@ -142,6 +151,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
 
+                // Gráfico 6: Top 10 Veículos por No. de Viagens
                 if (data.viagens_por_veiculo && data.viagens_por_veiculo.length > 0) {
                     const veiculoCtx = document.getElementById('viagensVeiculoChart').getContext('2d');
                     new Chart(veiculoCtx, {
@@ -153,35 +163,79 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 }
                 
+                // Gráfico 7: Top 10 Motoristas por Faturamento
                 if (data.faturamento_motorista && data.faturamento_motorista.length > 0) {
                     const motoristaCtx = document.getElementById('fatMotoristaChart').getContext('2d');
                     new Chart(motoristaCtx, {
                         type: 'bar',
                         data: {
                             labels: data.faturamento_motorista.map(d => d.nomeMotorista),
-                            datasets: [{ label: 'Faturamento', data: data.faturamento_motorista.map(d => d.freteEmpresa), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
+                            datasets: [{ label: 'Faturamento', data: data.faturamento_motorista.map(d => d.faturamento), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
                         },
                         options: { indexAxis: 'y', scales: { x: { ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
                     });
                 }
 
+                // Gráfico 8: Faturamento por Tipo de Mercadoria
+                if (data.faturamento_por_mercadoria && data.faturamento_por_mercadoria.length > 0) {
+                    const mercadoriaCtx = document.getElementById('mercadoriaChart').getContext('2d');
+                    new Chart(mercadoriaCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.faturamento_por_mercadoria.map(d => d.mercadoria),
+                            datasets: [{
+                                label: 'Faturamento',
+                                data: data.faturamento_por_mercadoria.map(d => d.faturamento)
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    position: 'top'
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed !== null) {
+                                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
                 const gridContainer = document.querySelector('.grid-container');
                 const gridItems = document.querySelectorAll('.grid-item');
+
                 gridItems.forEach(item => {
-                    item.style.cursor = 'pointer';
+                    item.style.cursor = 'pointer'; // Muda o cursor para indicar que é clicável
                     item.addEventListener('click', function() {
+                        // Não faz nada se o item já estiver maximizado
                         if (this.classList.contains('grid-item-full')) {
                             return;
                         }
+                        
+                        // Encontra o item que está atualmente maximizado e remove a classe
                         const currentTopItem = document.querySelector('.grid-item-full');
                         if (currentTopItem) {
                             currentTopItem.classList.remove('grid-item-full');
                         }
+                        
+                        // Adiciona a classe de maximizado ao item clicado
                         this.classList.add('grid-item-full');
+                        
+                        // Move o item clicado para o início do container
                         gridContainer.insertBefore(this, gridContainer.firstChild);
                     });
                 });
-
             } else {
                 const gridContainer = document.querySelector('.grid-container');
                 if (gridContainer) {
@@ -191,5 +245,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 });
 </script>
+
 </body>
 </html>
