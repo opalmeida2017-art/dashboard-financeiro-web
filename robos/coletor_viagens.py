@@ -58,16 +58,14 @@ def executar_coleta_viagens(apartamento_id: int):
     prefs = {'download.default_directory': pasta_downloads}
     chrome_options.add_experimental_option('prefs', prefs)
 
-    # 2. Inicializar o Driver (O Selenium Manager cuida do resto)
-    # Não precisamos mais do 'service' ou do 'binary_location'
+    
     driver = webdriver.Chrome(options=chrome_options)
 
-    # 3. Definir os tempos de espera
+   
     wait = WebDriverWait(driver, 300)
     driver.set_page_load_timeout(300)
     actions = ActionChains(driver)
 
-# --- FIM DA CORREÇÃO ---
     try:
         # --- ETAPA DE LOGIN ---
         db.logar_progresso(apartamento_id, f"Acessando: {URL_LOGIN}")
@@ -87,14 +85,18 @@ def executar_coleta_viagens(apartamento_id: int):
         driver.find_element(By.CSS_SELECTOR, SELECTOR_CAMPO_SENHA).send_keys(SENHA)
         wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SELECTOR_BOTAO_ENTRAR))).click()
         print("Aguardando login...")
-        time.sleep(7)
+        time.sleep(1)
         
-        # --- ROTEIRO DE CLIQUES E DOWNLOADS ---
+        
         db.logar_progresso(apartamento_id,"Passo 1-2: Acessando 'Cadastro de Exportações'...")
-        menu_exp_imp = wait.until(EC.visibility_of_element_located((By.ID, "formMenu:j_idt600")))
+
+       
+        menu_exp_imp = wait.until(EC.visibility_of_element_located((By.XPATH, "//div[contains(@id, '_label') and contains(text(), 'Exp./Imp.')]")))
         actions.move_to_element(menu_exp_imp).perform()
         time.sleep(1)
-        submenu_cadastro = wait.until(EC.element_to_be_clickable((By.ID, "formMenu:j_idt603")))
+
+        
+        submenu_cadastro = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Cadastro de Exportações')]")))
         submenu_cadastro.click()
         time.sleep(1)
         
