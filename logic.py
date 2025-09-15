@@ -21,9 +21,9 @@ def get_monthly_summary(apartamento_id: int, start_date=None, end_date=None, pla
     print(f"<<< [LOGIC] Retornando dados mensais: {'DataFrame com dados' if not monthly_data.empty else 'DataFrame vazio'}")
     return monthly_data
 
-def get_unique_plates(apartamento_id: int):
-    print(f">>> [LOGIC] Chamando get_unique_plates para o apartamento ID: {apartamento_id}")
-    return dm.get_unique_plates(apartamento_id)
+def get_unique_plates_with_types(apartamento_id: int):
+    print(f">>> [LOGIC] Chamando get_unique_plates_with_types para o apartamento ID: {apartamento_id}")
+    return dm.get_unique_plates_with_types(apartamento_id)
 
 def get_unique_filiais(apartamento_id: int):
     print(f">>> [LOGIC] Chamando get_unique_filiais para o apartamento ID: {apartamento_id}")
@@ -131,10 +131,6 @@ def get_apartment_by_slug(slug: str):
     print(f">>> [LOGIC] Chamando get_apartment_by_slug para o slug: {slug}")
     # 'dm' é o alias para data_manager
     return dm.get_apartment_by_slug(slug)
-# Em logic.py
-
-
-
 
 def limpar_logs_antigos(apartamento_id):
     """Apaga os logs de uma execução anterior para um apartamento específico."""
@@ -146,4 +142,9 @@ def limpar_logs_antigos(apartamento_id):
         print(f"[LOG DB] Logs antigos para o apartamento {apartamento_id} foram limpos.")
     except Exception as e:
         print(f"ERRO ao limpar logs antigos: {e}")
+        
+def get_group_flags_with_tipo_d_status(apartamento_id: int):
+    """Função de ponte para buscar flags de grupo com status de Tipo D."""
+    print(f">>> [LOGIC] Chamando get_group_flags_with_tipo_d_status para o apartamento ID: {apartamento_id}")
+    return dm.get_group_flags_with_tipo_d_status(apartamento_id)
         

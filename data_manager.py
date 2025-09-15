@@ -91,6 +91,51 @@ def apply_filters_to_df(df: pd.DataFrame, start_date: datetime, end_date: dateti
     return df_filtrado
 # ADICIONE ESTA NOVA FUNÇÃO EM data_manager.py
 
+def _prepare_final_cost_and_expense_dfs(df_viagens_cliente, df_despesas_filtrado, df_flags, flags_dict):
+    """
+    Função auxiliar que centraliza a lógica de composição dos DataFrames
+    finais de Custo e Despesa, aplicando todas as regras de negócio.
+    """
+    col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
+    col_map_despesas = _get_case_insensitive_column_map(df_despesas_filtrado.columns)
+    
+    # 1. Aplica a regra de valor condicional (serie RQ vs vlContabil)
+    if all(c in col_map_despesas for c in ['serie', 'liquido', 'vlcontabil']):
+        df_despesas_filtrado['valor_calculado'] = np.where(df_despesas_filtrado[col_map_despesas['serie']] == 'RQ', df_despesas_filtrado[col_map_despesas['liquido']], df_despesas_filtrado[col_map_despesas['vlcontabil']])
+    elif 'vlcontabil' in col_map_despesas:
+        df_despesas_filtrado['valor_calculado'] = df_despesas_filtrado[col_map_despesas['vlcontabil']]
+    else:
+        df_despesas_filtrado['valor_calculado'] = 0
+        
+    # 2. Classifica as despesas da planilha
+    df_com_flags = pd.merge(df_despesas_filtrado, df_flags, left_on=col_map_despesas.get('descgrupod'), right_on='group_name', how='left')
+    df_com_flags['is_custo_viagem'] = df_com_flags['is_custo_viagem'].fillna('N')
+    df_com_flags['is_despesa'] = df_com_flags['is_despesa'].fillna('S')
+    df_custos = df_com_flags[df_com_flags['is_custo_viagem'] == 'S'].copy()
+    df_despesas_gerais = df_com_flags[df_com_flags['is_despesa'] == 'S'].copy()
+
+    # 3. Calcula e distribui Comissão e Quebra
+    if not df_viagens_cliente.empty and all(c in col_map_viagens_cli for c in ['tipofrete', 'fretemotorista', 'comissao', 'dataviagemmotorista']):
+        filtro_comissao = (df_viagens_cliente[col_map_viagens_cli['tipofrete']].astype(str) == 'P') & (pd.to_numeric(df_viagens_cliente[col_map_viagens_cli['fretemotorista']], errors='coerce') > 0)
+        df_comissao_base = df_viagens_cliente[filtro_comissao].copy()
+        if not df_comissao_base.empty:
+            frete_motorista = pd.to_numeric(df_comissao_base[col_map_viagens_cli['fretemotorista']], errors='coerce').fillna(0)
+            percentual_comissao = pd.to_numeric(df_comissao_base[col_map_viagens_cli['comissao']], errors='coerce').fillna(0)
+            df_comissao_base.loc[:, 'valor_calculado'] = frete_motorista * (percentual_comissao / 100)
+            comissao_df_data = df_comissao_base[[col_map_viagens_cli['dataviagemmotorista'], 'valor_calculado']].rename(columns={col_map_viagens_cli['dataviagemmotorista']: 'datacontrole'})
+            if flags_dict.get('COMISSÃO DE MOTORISTA', {}).get('is_custo_viagem') == 'S':
+                df_custos = pd.concat([df_custos, comissao_df_data], ignore_index=True)
+            elif flags_dict.get('COMISSÃO DE MOTORISTA', {}).get('is_despesa') == 'S':
+                df_despesas_gerais = pd.concat([df_despesas_gerais, comissao_df_data], ignore_index=True)
+
+    if not df_viagens_cliente.empty and 'valorquebra' in col_map_viagens_cli:
+        quebra_df_data = df_viagens_cliente[[col_map_viagens_cli['dataviagemmotorista'], col_map_viagens_cli['valorquebra']]].rename(columns={col_map_viagens_cli['dataviagemmotorista']: 'datacontrole', col_map_viagens_cli['valorquebra']: 'valor_calculado'})
+        if flags_dict.get('VALOR QUEBRA', {}).get('is_custo_viagem') == 'S':
+            df_custos = pd.concat([df_custos, quebra_df_data], ignore_index=True)
+        elif flags_dict.get('VALOR QUEBRA', {}).get('is_despesa') == 'S':
+            df_despesas_gerais = pd.concat([df_despesas_gerais, quebra_df_data], ignore_index=True)
+
+    return df_custos, df_despesas_gerais
 def get_prepared_data_for_dashboard(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list) -> dict:
     """
     Função mestra que carrega, filtra e prepara todos os dados, servindo como
@@ -104,6 +149,7 @@ def get_prepared_data_for_dashboard(apartamento_id: int, start_date: datetime, e
     df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
     sync_expense_groups(apartamento_id)
     df_flags = get_all_group_flags(apartamento_id)
+    
 
     # 2. Cria a "fonte da verdade": a tabela de viagens filtrada
     df_viagens_cliente = apply_filters_to_df(df_viagens_raw, start_date, end_date, placa_filter, filial_filter)
@@ -115,7 +161,8 @@ def get_prepared_data_for_dashboard(apartamento_id: int, start_date: datetime, e
         df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
     df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_filtradas_ids)]
 
-    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
+    
+    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, "Todos", filial_filter)
     
     col_map_desp = _get_case_insensitive_column_map(df_despesas_filtrado.columns)
     if all(c in col_map_desp for c in ['serie', 'liquido', 'vlcontabil']):
@@ -191,22 +238,84 @@ def get_filtered_data(apartamento_id: int, start_date: datetime, end_date: datet
 def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_date: datetime = None, placa_filter: str = "Todos", filial_filter: list = None) -> dict:
     summary = {}
     
-    # 1. USA A FUNÇÃO MESTRA para pegar dados consistentes
-    data = get_prepared_data_for_dashboard(apartamento_id, start_date, end_date, placa_filter, filial_filter)
-    df_viagens_cliente = data["viagens_cliente"]
-    df_despesas_filtrado = data["despesas_filtrado"]
-    df_fat_filtrado = data["fat_filtrado"]
-    df_contas_pagar_raw = data["contas_pagar_raw"]
-    df_contas_receber_raw = data["contas_receber_raw"]
-    df_flags = data["flags"]
+    # ETAPA 1: Carregar todos os dados
+    df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
+    df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    df_fat_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
+    df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
+    df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
+    sync_expense_groups(apartamento_id)
+    df_flags = get_all_group_flags(apartamento_id)
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
 
-    # 2. Lógica de cálculo (agora totalmente consistente)
+    # ETAPA 2: Isolar "Apoio à Frota" e depois filtrar os dados
+    col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
+    df_apoio_frota = pd.DataFrame()
+    if all(c in col_map_desp_raw for c in ['veiculoproprio', 'ved']):
+        filtro_apoio = (df_despesas_raw[col_map_desp_raw['veiculoproprio']] == 'F') & (df_despesas_raw[col_map_desp_raw['ved']] == 'V')
+        df_apoio_frota = df_despesas_raw[filtro_apoio].copy()
+        df_despesas_raw = df_despesas_raw[~filtro_apoio]
+    
+    df_apoio_frota_filtrado = apply_filters_to_df(df_apoio_frota, start_date, end_date, placa_filter, filial_filter)
+    df_viagens_cliente = apply_filters_to_df(df_viagens_raw, start_date, end_date, placa_filter, filial_filter)
+    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
+    
+    viagens_filtradas_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
+    col_map_fat_temp = _get_case_insensitive_column_map(df_fat_raw.columns)
+    if 'permitefaturar' in col_map_fat_temp:
+        df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
+    df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_filtradas_ids)]
+
+    # ETAPA 3: Calcular Faturamento
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
     summary['faturamento_total_viagens'] = df_fat_filtrado[col_map_fat['freteempresa']].sum() if not df_fat_filtrado.empty and 'freteempresa' in col_map_fat else 0
 
+    # ETAPA 4: Calcular Despesas Tipo D (com rateio)
+    df_despesas_geral_sem_placa = apply_filters_to_df(get_data_as_dataframe("relFilDespesasGerais", apartamento_id), start_date, end_date, "Todos", filial_filter)
+    col_map_despesas_geral = _get_case_insensitive_column_map(df_despesas_geral_sem_placa.columns)
+    soma_bruta_tipo_d = 0
+    if 'ved' in col_map_despesas_geral:
+        df_despesas_tipo_d_bruto = df_despesas_geral_sem_placa[df_despesas_geral_sem_placa[col_map_despesas_geral['ved']] == 'D'].copy()
+        if not df_despesas_tipo_d_bruto.empty:
+            if all(c in col_map_despesas_geral for c in ['serie', 'liquido', 'vlcontabil']):
+                df_despesas_tipo_d_bruto.loc[:, 'valor_calculado'] = np.where(df_despesas_tipo_d_bruto[col_map_despesas_geral['serie']] == 'RQ', df_despesas_tipo_d_bruto[col_map_despesas_geral['liquido']], df_despesas_tipo_d_bruto[col_map_despesas_geral['vlcontabil']])
+            elif 'vlcontabil' in col_map_despesas_geral:
+                df_despesas_tipo_d_bruto.loc[:, 'valor_calculado'] = df_despesas_tipo_d_bruto[col_map_despesas_geral['vlcontabil']]
+            else:
+                df_despesas_tipo_d_bruto.loc[:, 'valor_calculado'] = 0
+            soma_bruta_tipo_d = df_despesas_tipo_d_bruto['valor_calculado'].sum()
+
+    valor_final_tipo_d = soma_bruta_tipo_d
+    if placa_filter and placa_filter != 'Todos':
+        # 1. Chama a função correta que retorna a lista de dicionários
+        placas_com_tipos = get_unique_plates_with_types(apartamento_id)
+        
+        # 2. Extrai a lista de placas que são do tipo 'Próprio'
+        lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
+
+        # 3. O resto da lógica continua como estava, agora com os dados corretos
+        if placa_filter in lista_placas_proprias:
+            contagem_veiculos_proprios = len(lista_placas_proprias)
+            if contagem_veiculos_proprios > 0:
+                valor_final_tipo_d = soma_bruta_tipo_d / contagem_veiculos_proprios
+            else:
+                valor_final_tipo_d = 0
+    summary['total_despesas_tipo_d'] = valor_final_tipo_d
+
+    # ETAPA 5: Calcular Custo Total e Despesa Gerais
     col_map_despesas = _get_case_insensitive_column_map(df_despesas_filtrado.columns)
-    df_com_flags = pd.merge(df_despesas_filtrado, df_flags, left_on=col_map_despesas.get('descgrupod'), right_on='group_name', how='left')
+    df_despesas_principais = df_despesas_filtrado
+    if 'ved' in col_map_despesas:
+        df_despesas_principais = df_despesas_filtrado[df_despesas_filtrado[col_map_despesas['ved']] != 'D']
+
+    if all(c in col_map_despesas for c in ['serie', 'liquido', 'vlcontabil']):
+        df_despesas_principais.loc[:, 'valor_calculado'] = np.where(df_despesas_principais[col_map_despesas['serie']] == 'RQ', df_despesas_principais[col_map_despesas['liquido']], df_despesas_principais[col_map_despesas['vlcontabil']])
+    elif 'vlcontabil' in col_map_despesas:
+        df_despesas_principais.loc[:, 'valor_calculado'] = df_despesas_principais[col_map_despesas['vlcontabil']]
+    else:
+        df_despesas_principais.loc[:, 'valor_calculado'] = 0
+
+    df_com_flags = pd.merge(df_despesas_principais, df_flags, left_on=col_map_despesas.get('descgrupod'), right_on='group_name', how='left')
     df_com_flags['is_custo_viagem'] = df_com_flags['is_custo_viagem'].fillna('N')
     df_com_flags['is_despesa'] = df_com_flags['is_despesa'].fillna('S')
     df_custos = df_com_flags[df_com_flags['is_custo_viagem'] == 'S'].copy()
@@ -225,11 +334,8 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
     valor_quebra_sum = df_viagens_cliente[col_map_viagens_cli['valorquebra']].sum() if not df_viagens_cliente.empty and 'valorquebra' in col_map_viagens_cli else 0
     
-    col_map_custos = _get_case_insensitive_column_map(df_custos.columns)
-    custo_base = df_custos[col_map_custos['valor_calculado']].sum() if not df_custos.empty and 'valor_calculado' in col_map_custos else 0
-    
-    col_map_despesas_gerais = _get_case_insensitive_column_map(df_despesas_gerais.columns)
-    despesa_base = df_despesas_gerais[col_map_despesas_gerais['valor_calculado']].sum() if not df_despesas_gerais.empty and 'valor_calculado' in col_map_despesas_gerais else 0
+    custo_base = df_custos['valor_calculado'].sum() if not df_custos.empty else 0
+    despesa_base = df_despesas_gerais['valor_calculado'].sum() if not df_despesas_gerais.empty else 0
 
     if flags_dict.get('VALOR QUEBRA', {}).get('is_custo_viagem') == 'S':
         custo_base += valor_quebra_sum
@@ -242,30 +348,41 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     elif comissao_flags.get('is_despesa') == 'S':
         despesa_base += total_comissao_motorista
     
+    if not df_apoio_frota_filtrado.empty:
+        col_map_apoio = _get_case_insensitive_column_map(df_apoio_frota_filtrado.columns)
+        if all(c in col_map_apoio for c in ['serie', 'liquido', 'vlcontabil']):
+            df_apoio_frota_filtrado.loc[:, 'valor_calculado'] = np.where(df_apoio_frota_filtrado[col_map_apoio['serie']] == 'RQ', df_apoio_frota_filtrado[col_map_apoio['liquido']], df_apoio_frota_filtrado[col_map_apoio['vlcontabil']])
+        elif 'vlcontabil' in col_map_apoio:
+            df_apoio_frota_filtrado.loc[:, 'valor_calculado'] = df_apoio_frota_filtrado[col_map_apoio['vlcontabil']]
+        else:
+            df_apoio_frota_filtrado.loc[:, 'valor_calculado'] = 0
+        soma_apoio_frota = df_apoio_frota_filtrado['valor_calculado'].sum()
+        despesa_base += soma_apoio_frota
+
     summary['custo_total_viagem'] = custo_base
     summary['total_despesas_gerais'] = despesa_base
-   
+    
+    # ETAPA 6: Calcular Contas a Pagar/Receber e Lucro Final
     if not df_contas_pagar_raw.empty:
         col_map_cp = _get_case_insensitive_column_map(df_contas_pagar_raw.columns)
-        df_cp_pendentes = df_contas_pagar_raw[pd.to_numeric(df_contas_pagar_raw[col_map_cp.get('codtransacao')], errors='coerce').fillna(0) == 0]
+        df_cp_pendentes = df_contas_pagar_raw[pd.to_numeric(df_contas_pagar_raw.get(col_map_cp.get('codtransacao')), errors='coerce').fillna(0) == 0]
         summary['saldo_contas_a_pagar_pendentes'] = df_cp_pendentes[col_map_cp['liquidoitemnota']].sum() if 'liquidoitemnota' in col_map_cp else 0
     else:
         summary['saldo_contas_a_pagar_pendentes'] = 0
         
     if not df_contas_receber_raw.empty:
         col_map_cr = _get_case_insensitive_column_map(df_contas_receber_raw.columns)
-        df_cr_pendentes = df_contas_receber_raw[pd.to_numeric(df_contas_receber_raw[col_map_cr.get('codtransacao')], errors='coerce').fillna(0) == 0]
+        df_cr_pendentes = df_contas_receber_raw[pd.to_numeric(df_contas_receber_raw.get(col_map_cr.get('codtransacao')), errors='coerce').fillna(0) == 0]
         summary['saldo_contas_a_receber_pendentes'] = df_cr_pendentes[col_map_cr['valorvenc']].sum() if 'valorvenc' in col_map_cr else 0
     else:
         summary['saldo_contas_a_receber_pendentes'] = 0
 
-    custo_operacional_total = summary['custo_total_viagem'] + summary['total_despesas_gerais']
+    custo_operacional_total = summary['custo_total_viagem'] + summary['total_despesas_gerais'] + summary['total_despesas_tipo_d']
     summary['saldo_geral'] = summary['faturamento_total_viagens'] - custo_operacional_total
     summary['margem_frete'] = (summary['saldo_geral'] / summary['faturamento_total_viagens'] * 100) if summary.get('faturamento_total_viagens', 0) > 0 else 0
     
     return summary
 
-# Em data_manager.py, substitua a função inteira por esta versão corrigida
 
 def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter, filial_filter) -> pd.DataFrame:
     periodo_format = 'M'
@@ -291,20 +408,11 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
         df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
     df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_filtradas_ids)]
 
-    # ETAPA 2: Preparar Faturamento (LÓGICA OTIMIZADA PARA EVITAR WARNINGS)
+    # ETAPA 2: Preparar Faturamento (Lógica otimizada)
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
-    
-    # Seleciona apenas as colunas necessárias ANTES do merge para melhor performance
     df_viagens_essencial = df_viagens_cliente[[col_map_viagens_cli.get('numconhec'), col_map_viagens_cli.get('dataviagemmotorista')]]
     df_fat_essencial = df_fat_filtrado[['numConhec', 'freteEmpresa']]
-    
-    df_faturamento_para_grafico = pd.merge(
-        df_viagens_essencial, 
-        df_fat_essencial, 
-        left_on=col_map_viagens_cli.get('numconhec'), 
-        right_on='numConhec', 
-        how='left'
-    ).fillna(0)
+    df_faturamento_para_grafico = pd.merge(df_viagens_essencial, df_fat_essencial, left_on=col_map_viagens_cli.get('numconhec'), right_on='numConhec', how='left').fillna(0)
     
     faturamento = pd.Series(dtype=float)
     if not df_faturamento_para_grafico.empty and 'dataviagemmotorista' in col_map_viagens_cli:
@@ -312,41 +420,10 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
         faturamento = df_faturamento_para_grafico.groupby('Periodo')['freteEmpresa'].sum()
     faturamento.name = 'Faturamento'
 
-    # ETAPA 3: Preparar Custos e Despesas
-    col_map_despesas = _get_case_insensitive_column_map(df_despesas_filtrado.columns)
-    if all(c in col_map_despesas for c in ['serie', 'liquido', 'vlcontabil']):
-        df_despesas_filtrado['valor_calculado'] = np.where(df_despesas_filtrado[col_map_despesas['serie']] == 'RQ', df_despesas_filtrado[col_map_despesas['liquido']], df_despesas_filtrado[col_map_despesas['vlcontabil']])
-    elif 'vlcontabil' in col_map_despesas:
-        df_despesas_filtrado['valor_calculado'] = df_despesas_filtrado[col_map_despesas['vlcontabil']]
-    else:
-        df_despesas_filtrado['valor_calculado'] = 0
+    # ETAPA 3: Usar a nova função auxiliar para obter os DataFrames finais de Custo e Despesa
+    df_custos, df_despesas_gerais = _prepare_final_cost_and_expense_dfs(df_viagens_cliente, df_despesas_filtrado, df_flags, flags_dict)
 
-    df_com_flags = pd.merge(df_despesas_filtrado, df_flags, left_on=col_map_despesas.get('descgrupod'), right_on='group_name', how='left')
-    df_com_flags['is_custo_viagem'] = df_com_flags['is_custo_viagem'].fillna('N')
-    df_com_flags['is_despesa'] = df_com_flags['is_despesa'].fillna('S')
-    df_custos = df_com_flags[df_com_flags['is_custo_viagem'] == 'S'].copy()
-    df_despesas_gerais = df_com_flags[df_com_flags['is_despesa'] == 'S'].copy()
-
-    if not df_viagens_cliente.empty and all(c in col_map_viagens_cli for c in ['tipofrete', 'fretemotorista', 'comissao', 'dataviagemmotorista']):
-        filtro_comissao = (df_viagens_cliente[col_map_viagens_cli['tipofrete']].astype(str) == 'P') & (pd.to_numeric(df_viagens_cliente[col_map_viagens_cli['fretemotorista']], errors='coerce') > 0)
-        df_comissao_base = df_viagens_cliente[filtro_comissao].copy()
-        if not df_comissao_base.empty:
-            frete_motorista = pd.to_numeric(df_comissao_base[col_map_viagens_cli['fretemotorista']], errors='coerce').fillna(0)
-            percentual_comissao = pd.to_numeric(df_comissao_base[col_map_viagens_cli['comissao']], errors='coerce').fillna(0)
-            df_comissao_base.loc[:, 'valor_calculado'] = frete_motorista * (percentual_comissao / 100)
-            comissao_df_data = df_comissao_base[[col_map_viagens_cli['dataviagemmotorista'], 'valor_calculado']].rename(columns={col_map_viagens_cli['dataviagemmotorista']: 'datacontrole'})
-            if flags_dict.get('COMISSÃO DE MOTORISTA', {}).get('is_custo_viagem') == 'S':
-                df_custos = pd.concat([df_custos, comissao_df_data], ignore_index=True)
-            elif flags_dict.get('COMISSÃO DE MOTORISTA', {}).get('is_despesa') == 'S':
-                df_despesas_gerais = pd.concat([df_despesas_gerais, comissao_df_data], ignore_index=True)
-
-    if not df_viagens_cliente.empty and 'valorquebra' in col_map_viagens_cli:
-        quebra_df_data = df_viagens_cliente[[col_map_viagens_cli['dataviagemmotorista'], col_map_viagens_cli['valorquebra']]].rename(columns={col_map_viagens_cli['dataviagemmotorista']: 'datacontrole', col_map_viagens_cli['valorquebra']: 'valor_calculado'})
-        if flags_dict.get('VALOR QUEBRA', {}).get('is_custo_viagem') == 'S':
-            df_custos = pd.concat([df_custos, quebra_df_data], ignore_index=True)
-        elif flags_dict.get('VALOR QUEBRA', {}).get('is_despesa') == 'S':
-            df_despesas_gerais = pd.concat([df_despesas_gerais, quebra_df_data], ignore_index=True)
-
+    # ETAPA 4: Agrupamento final para o gráfico
     custos_agrupados = pd.Series(dtype=float)
     despesas_agrupadas = pd.Series(dtype=float)
     for df, series_var_name in [(df_custos, "custos_agrupados"), (df_despesas_gerais, "despesas_agrupadas")]:
@@ -421,7 +498,7 @@ def sync_expense_groups(apartamento_id: int):
 def get_all_group_flags(apartamento_id: int):
     try:
         with db.engine.connect() as conn:
-            query = text('SELECT "group_name", "is_despesa", "is_custo_viagem" FROM "static_expense_groups" WHERE "apartamento_id" = :apt_id')
+            query = text('SELECT "group_name", "is_despesa", "is_custo_viagem", "incluir_em_tipo_d" FROM "static_expense_groups" WHERE "apartamento_id" = :apt_id')
             df = pd.read_sql(query, conn, params={"apt_id": apartamento_id})
             return df
     except Exception as e:
@@ -437,42 +514,33 @@ def get_all_expense_groups(apartamento_id: int):
 def update_all_group_flags(apartamento_id: int, update_data: dict):
     print(f"DEBUG: Dados recebidos do formulário para atualização: {update_data}")
     try:
+        # --- INÍCIO DA CORREÇÃO ---
+        # Adiciona o bloco 'with' para garantir que a variável 'conn' seja definida
         with engine.connect() as conn:
             with conn.begin():
                 sql_update_flags = text("""
                     UPDATE "static_expense_groups" 
-                    SET "is_despesa" = :is_despesa, "is_custo_viagem" = :is_custo 
+                    SET "is_despesa" = :is_despesa, "is_custo_viagem" = :is_custo, "incluir_em_tipo_d" = :incluir_tipo_d
                     WHERE "group_name" = :group_name AND "apartamento_id" = :apt_id
                 """)
-                for group_name, classification in update_data.items():
+                for group_name, data in update_data.items():
+                    classification = data['classification']
                     is_despesa = 'S' if classification == 'despesa' else 'N'
                     is_custo = 'S' if classification == 'custo_viagem' else 'N'
+                    incluir_tipo_d = data['incluir_tipo_d']
+
                     conn.execute(sql_update_flags, {
                         "is_despesa": is_despesa, "is_custo": is_custo,
+                        "incluir_tipo_d": incluir_tipo_d,
                         "group_name": group_name, "apt_id": apartamento_id
                     })
+        # --- FIM DA CORREÇÃO ---
         sync_expense_groups(apartamento_id)
         print(f"Flags de grupo atualizadas com sucesso para o apartamento {apartamento_id}.")
     except Exception as e:
         print(f"Erro ao atualizar flags de grupo de despesa: {e}")
         raise e
 
-def get_unique_plates(apartamento_id: int) -> list[str]:
-    df_viagens = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
-    df_despesas = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
-    
-    col_map_viagens = _get_case_insensitive_column_map(df_viagens.columns)
-    col_map_despesas = _get_case_insensitive_column_map(df_despesas.columns)
-    
-    plates = pd.Series(dtype=str)
-    if 'placaveiculo' in col_map_viagens:
-        plates = pd.concat([plates, df_viagens[col_map_viagens['placaveiculo']].dropna().astype(str)])
-    if 'placaveiculo' in col_map_despesas:
-        plates = pd.concat([plates, df_despesas[col_map_despesas['placaveiculo']].dropna().astype(str)])
-        
-    if plates.empty:
-        return ["Todos"]
-    return ["Todos"] + sorted(plates.unique().tolist())
 
 def get_unique_filiais(apartamento_id: int) -> list[str]:
     table_names = [
@@ -512,8 +580,7 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
 
     
     df_viagens_cliente = apply_filters_to_df(df_viagens_cliente_raw, start_date, end_date, placa_filter, filial_filter)
-    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
-
+    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, "Todos", filial_filter)
     # --- Passo 3: Cálculos ---
     periodo = 'D' if start_date and end_date and (end_date - start_date).days <= 62 else 'M'
 
@@ -840,3 +907,70 @@ def get_apartment_by_slug(slug: str):
     except Exception as e:
         print(f"Erro ao buscar apartamento por slug: {e}")
         return None
+
+def get_group_flags_with_tipo_d_status(apartamento_id: int):
+    """
+    Busca as flags de classificação e adiciona uma nova coluna booleana 'has_tipo_d'
+    que é True se o grupo contém qualquer despesa com VED = 'D'.
+    """
+    df_flags = get_all_group_flags(apartamento_id)
+    df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+
+    # Se não houver despesas, nenhum grupo tem 'Tipo D'
+    if df_despesas_raw.empty or 'ved' not in _get_case_insensitive_column_map(df_despesas_raw.columns):
+        df_flags['has_tipo_d'] = False
+        return df_flags
+
+    # Encontra os nomes únicos dos grupos que possuem pelo menos uma linha com VED = 'D'
+    col_map_desp = _get_case_insensitive_column_map(df_despesas_raw.columns)
+    grupos_com_tipo_d = df_despesas_raw[df_despesas_raw[col_map_desp['ved']] == 'D'][col_map_desp['descgrupod']].unique()
+
+    # Adiciona a coluna 'has_tipo_d' ao DataFrame de flags
+    df_flags['has_tipo_d'] = df_flags['group_name'].isin(grupos_com_tipo_d)
+    return df_flags
+
+# Em data_manager.py, substitua as funções de placa existentes por esta
+
+def get_unique_plates_with_types(apartamento_id: int) -> list:
+    """
+    Busca todas as placas únicas e as classifica em 'Próprio', 'Terceiro', 
+    'Agregado', ou 'Apoio', retornando uma lista de dicionários.
+    """
+    placas_classificadas = {}
+
+    # 1. Classifica veículos de 'relFilViagensCliente' (Próprio, Terceiro, Agregado)
+    df_viagens = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
+    if not df_viagens.empty:
+        col_map_viagens = _get_case_insensitive_column_map(df_viagens.columns)
+        if all(c in col_map_viagens for c in ['placaveiculo', 'tipofrete']):
+            for index, row in df_viagens.iterrows():
+                placa = row[col_map_viagens['placaveiculo']]
+                tipo_frete = row[col_map_viagens['tipofrete']]
+                if placa and pd.notna(placa):
+                    placa_limpa = placa.strip()
+                    if tipo_frete == 'P':
+                        placas_classificadas[placa_limpa] = 'Próprio'
+                    elif tipo_frete == 'T':
+                        placas_classificadas[placa_limpa] = 'Terceiro'
+                    elif tipo_frete == 'A':
+                        placas_classificadas[placa_limpa] = 'Agregado'
+
+    # 2. Classifica veículos de 'relFilDespesasGerais' (Apoio)
+    df_despesas = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    if not df_despesas.empty:
+        col_map_despesas = _get_case_insensitive_column_map(df_despesas.columns)
+        if all(c in col_map_despesas for c in ['placaveiculo', 'veiculoproprio']):
+            df_apoio = df_despesas[df_despesas[col_map_despesas['veiculoproprio']] == 'F']
+            for placa in df_apoio[col_map_despesas['placaveiculo']].dropna().unique():
+                placa_limpa = placa.strip()
+                # Só adiciona se já não tiver uma classificação mais forte (ex: Próprio)
+                if placa_limpa not in placas_classificadas:
+                    placas_classificadas[placa_limpa] = 'Apoio'
+
+    # 3. Formata a saída para o frontend
+    lista_final = [{'placa': placa, 'tipo': tipo} for placa, tipo in placas_classificadas.items()]
+
+    # Ordena por tipo e depois por placa
+    lista_final.sort(key=lambda x: (x['tipo'], x['placa']))
+
+    return lista_final

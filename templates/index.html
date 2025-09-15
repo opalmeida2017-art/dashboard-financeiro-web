@@ -1,6 +1,12 @@
 {% extends "layout.html" %}
 
 {% block content %}
+<style>
+    .placa-próprio { color: #2980B9; font-weight: bold; }
+    .placa-terceiro { color: #27AE60; }
+    .placa-agregado { color: #F39C12; }
+    .placa-apoio { color: #8E44AD; font-style: italic; }
+</style>
     <h1>Dashboard Transporte</h1>
 
 <div class="filters">
@@ -11,12 +17,15 @@
         <label for="end_date">Data Fim:</label>
         <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
         
-        <label for="placa">Placa:</label>
         <select name="placa" id="placa">
-            {% for placa in placas %}
-                <option value="{{ placa }}" {% if placa == selected_placa %}selected{% endif %}>{{ placa }}</option>
+            <option value="Todos" {% if 'Todos' == selected_placa %}selected{% endif %}>Todos</option>
+            {% for item in placas %}
+                <option value="{{ item.placa }}" class="placa-{{ item.tipo | lower }}" {% if item.placa == selected_placa %}selected{% endif %}>
+                    {{ item.placa }} ({{ item.tipo }})
+                </option>
             {% endfor %}
-        </select> <div class="form-group">
+        </select>  
+        <div class="form-group">
             <label for="filial-multiselect-btn">Filial:</label>
             <div class="multiselect" id="filial-multiselect">
                 <button type="button" class="multiselect-btn" id="filial-multiselect-btn">
@@ -74,7 +83,11 @@
             </a>
         </div>
         <div class="card">
-            <h3>Lucro vlcontabil</h3>
+            <h3>Despesas Tipo D</h3>
+            <p style="color: #8E44AD;">{{ summary.total_despesas_tipo_d | currency }}</p>
+        </div>
+        <div class="card">
+            <h3>Lucro Liquido</h3>
             <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">{{ summary.saldo_geral | currency }}</p>
         </div>
         <div class="card">
@@ -260,9 +273,22 @@
                         for (const group in flags) {
                             const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
                             const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
+                            
+                            // --- LÓGICA DO NOVO CHECKBOX ---
+                            const isTipoDChecked = flags[group].incluir_em_tipo_d ? 'checked' : '';
+                            const hasTipoD = flags[group].has_tipo_d;
+                            
+                            let tipoDCheckboxHTML = '';
+                            // Só mostra o checkbox se o grupo tiver despesas com VED=D
+                            if (hasTipoD) {
+                                tipoDCheckboxHTML = `<br><label style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Tipo D</label>`;
+                            }
+                            // --- FIM DA LÓGICA ---
+
                             tableHTML += `<tr><td>${group}</td><td>
                                 <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
                                 <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                                ${tipoDCheckboxHTML}
                             </td></tr>`;
                         }
                         tableHTML += '</tbody></table>';

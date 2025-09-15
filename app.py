@@ -225,7 +225,7 @@ def index():
         placa_filter=filters['placa'], 
         filial_filter=filters['filial']
     )
-    placas = logic.get_unique_plates(apartamento_id=apartamento_id_alvo)
+    placas = logic.get_unique_plates_with_types(apartamento_id=apartamento_id_alvo)
     filiais = logic.get_unique_filiais(apartamento_id=apartamento_id_alvo)
     
     return render_template('index.html', 
@@ -421,7 +421,7 @@ def upload_file():
 def gerenciar_grupos_dados():
     apartamento_id_alvo = get_target_apartment_id()
     logic.sync_expense_groups(apartamento_id_alvo) 
-    df_flags = logic.get_all_group_flags(apartamento_id_alvo)
+    df_flags = logic.get_group_flags_with_tipo_d_status(apartamento_id_alvo)
     flags_dict = df_flags.set_index('group_name').to_dict('index') if not df_flags.empty else {}
     return jsonify(flags_dict)
 
@@ -431,13 +431,24 @@ def gerenciar_grupos_salvar():
     apartamento_id_alvo = get_target_apartment_id()
     all_groups = logic.get_all_expense_groups(apartamento_id_alvo)
     update_data = {}
+    
     for group in all_groups:
+        # Pega a classificação principal (Custo, Despesa ou Nenhum)
+        classification = 'nenhum'
         if f"{group}_custo" in request.form: 
-            update_data[group] = 'custo_viagem'
+            classification = 'custo_viagem'
         elif f"{group}_despesa" in request.form: 
-            update_data[group] = 'despesa'
-        else: 
-            update_data[group] = 'nenhum'
+            classification = 'despesa'
+        
+        # Captura o estado do novo checkbox 'Tipo D'
+        incluir_tipo_d = f"{group}_tipo_d" in request.form
+
+        # Cria o dicionário aninhado que a função de salvar espera
+        update_data[group] = {
+            'classification': classification,
+            'incluir_tipo_d': incluir_tipo_d
+        }
+        
     logic.update_all_group_flags(apartamento_id_alvo, update_data)
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('index'))
