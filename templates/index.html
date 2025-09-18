@@ -277,6 +277,8 @@
         const manageCloseBtn = document.querySelector('.manage-close');
         const tableContainer = document.getElementById('manageGroupsTableContainer');
 
+        // SUBSTITUA O BLOCO manageBtn.onclick EM SEU index.html
+
         if (manageBtn) {
             manageBtn.onclick = function() {
                 tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
@@ -288,22 +290,29 @@
                         for (const group in flags) {
                             const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
                             const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
-                            
-                            // --- LÓGICA DO NOVO CHECKBOX ---
                             const isTipoDChecked = flags[group].incluir_em_tipo_d ? 'checked' : '';
-                            const hasTipoD = flags[group].has_tipo_d;
                             
-                            let tipoDCheckboxHTML = '';
-                            // Só mostra o checkbox se o grupo tiver despesas com VED=D
-                            if (hasTipoD) {
-                                tipoDCheckboxHTML = `<br><label style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Tipo D</label>`;
+                            const hasTipoD = flags[group].has_tipo_d;
+                            const hasTipoV = flags[group].has_tipo_v;
+                            
+                            let custoDespesaCheckboxes = '';
+                            if (hasTipoV) {
+                                custoDespesaCheckboxes = `
+                                    <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
+                                    <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                                `;
                             }
-                            // --- FIM DA LÓGICA ---
+
+                            let tipoDCheckbox = '';
+                            if (hasTipoD) {
+                                // Adiciona uma quebra de linha se os outros checkboxes também estiverem visíveis
+                                const lineBreak = hasTipoV ? '<br>' : '';
+                                tipoDCheckbox = `${lineBreak}<label style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Tipo D</label>`;
+                            }
 
                             tableHTML += `<tr><td>${group}</td><td>
-                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
-                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
-                                ${tipoDCheckboxHTML}
+                                ${custoDespesaCheckboxes}
+                                ${tipoDCheckbox}
                             </td></tr>`;
                         }
                         tableHTML += '</tbody></table>';

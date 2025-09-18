@@ -943,28 +943,42 @@ def get_apartment_by_slug(slug: str):
         print(f"Erro ao buscar apartamento por slug: {e}")
         return None
 
+# SUBSTITUA ESTA FUNÇÃO EM data_manager.py
+
 def get_group_flags_with_tipo_d_status(apartamento_id: int):
     """
-    Busca as flags de classificação e adiciona uma nova coluna booleana 'has_tipo_d'
-    que é True se o grupo contém qualquer despesa com VED = 'D'.
+    Busca as flags de classificação e adiciona colunas booleanas que indicam
+    se o grupo contém despesas com VED = 'D' ou VED = 'V'.
+    VERSÃO CORRIGIDA: Garante que 'Comissão' e 'Quebra' sempre mostrem as flags de Custo/Despesa.
     """
     df_flags = get_all_group_flags(apartamento_id)
     df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
 
-    # Se não houver despesas, nenhum grupo tem 'Tipo D'
-    if df_despesas_raw.empty or 'ved' not in _get_case_insensitive_column_map(df_despesas_raw.columns):
-        df_flags['has_tipo_d'] = False
-        return df_flags
+    if df_flags.empty:
+        return pd.DataFrame()
 
-    # Encontra os nomes únicos dos grupos que possuem pelo menos uma linha com VED = 'D'
-    col_map_desp = _get_case_insensitive_column_map(df_despesas_raw.columns)
-    grupos_com_tipo_d = df_despesas_raw[df_despesas_raw[col_map_desp['ved']] == 'D'][col_map_desp['descgrupod']].unique()
+    # Define as colunas padrão como False
+    df_flags['has_tipo_d'] = False
+    df_flags['has_tipo_v'] = False
 
-    # Adiciona a coluna 'has_tipo_d' ao DataFrame de flags
-    df_flags['has_tipo_d'] = df_flags['group_name'].isin(grupos_com_tipo_d)
+    if not df_despesas_raw.empty:
+        col_map_desp = _get_case_insensitive_column_map(df_despesas_raw.columns)
+        
+        if 'ved' in col_map_desp and 'descgrupod' in col_map_desp:
+            grupos_com_tipo_d = df_despesas_raw[df_despesas_raw[col_map_desp['ved']] == 'D'][col_map_desp['descgrupod']].unique()
+            grupos_com_tipo_v = df_despesas_raw[df_despesas_raw[col_map_desp['ved']] == 'V'][col_map_desp['descgrupod']].unique()
+
+            df_flags['has_tipo_d'] = df_flags['group_name'].isin(grupos_com_tipo_d)
+            df_flags['has_tipo_v'] = df_flags['group_name'].isin(grupos_com_tipo_v)
+
+    # --- INÍCIO DA CORREÇÃO ---
+    # Força a flag 'has_tipo_v' a ser True para os grupos especiais,
+    # garantindo que os checkboxes de Custo/Despesa sempre apareçam para eles.
+    grupos_especiais = ['COMISSÃO DE MOTORISTA', 'VALOR QUEBRA']
+    df_flags.loc[df_flags['group_name'].isin(grupos_especiais), 'has_tipo_v'] = True
+    # --- FIM DA CORREÇÃO ---
+    
     return df_flags
-
-# Em data_manager.py, substitua as funções de placa existentes por esta
 
 def get_unique_plates_with_types(apartamento_id: int) -> list:
     """
