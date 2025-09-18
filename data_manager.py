@@ -364,9 +364,9 @@ def _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_f
 def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_date: datetime = None, placa_filter: str = "Todos", filial_filter: list = None) -> dict:
     """
     Calcula os KPIs para o dashboard principal.
-    VERSÃO CORRIGIDA: Garante que o KPI 'Despesas Tipo D' respeite as flags do Gerenciador de Grupos.
+    VERSÃO CORRIGIDA: Garante que o rateio do Tipo D só se aplique a veículos 'Próprios'.
     """
-    # 1. Carregamento e filtragem (lógica mantida)
+    # 1. Carregamento e filtragem
     df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
     df_fat_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
     df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
@@ -378,7 +378,7 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     df_viagens_cliente = apply_filters_to_df(df_viagens_raw, start_date, end_date, placa_filter, filial_filter)
     df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
 
-    # 2. Cálculo de Faturamento (lógica mantida)
+    # 2. Cálculo de Faturamento
     summary = {}
     viagens_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
     col_map_fat_temp = _get_case_insensitive_column_map(df_fat_raw.columns)
@@ -388,7 +388,7 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
     summary['faturamento_total_viagens'] = df_fat_filtrado[col_map_fat['freteempresa']].sum() if not df_fat_filtrado.empty and 'freteempresa' in col_map_fat else 0
 
-    # 3. Cálculo de Custo e Despesa Geral (lógica mantida)
+    # 3. Cálculo de Custo e Despesa Geral
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags)
     df_custos = expense_data['custos']
     df_despesas_gerais = expense_data['despesas']
@@ -396,9 +396,9 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     summary['total_despesas_gerais'] = df_despesas_gerais['valor_calculado'].sum()
     
     # --- INÍCIO DA CORREÇÃO ---
-    # 4. Lógica de Despesa Tipo D agora respeita as flags
-    
-    # Primeiro, pega todas as despesas marcadas como 'Tipo D' nos dados brutos
+    # 4. Lógica de Despesa Tipo D com verificação do tipo de veículo
+
+    # Pega o total de despesas Tipo D que foram marcadas para inclusão pelo usuário
     df_despesas_sem_placa = apply_filters_to_df(df_despesas_raw, start_date, end_date, "Todos", filial_filter)
     col_map_despesas_geral = _get_case_insensitive_column_map(df_despesas_sem_placa.columns)
     df_tipo_d_bruto = pd.DataFrame()
@@ -407,28 +407,31 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
 
     soma_bruta_tipo_d = 0
     if not df_tipo_d_bruto.empty:
-        # Junta com as flags para saber quais grupos devem ser incluídos
         df_tipo_d_com_flags = pd.merge(df_tipo_d_bruto, df_flags, left_on=col_map_despesas_geral.get('descgrupod'), right_on='group_name', how='left')
-        
-        # Filtra apenas pelos grupos que o usuário marcou para 'incluir_em_tipo_d'
         df_tipo_d_final_para_soma = df_tipo_d_com_flags[df_tipo_d_com_flags['incluir_em_tipo_d'] == True]
-        
         if not df_tipo_d_final_para_soma.empty:
             df_tipo_d_final_para_soma.loc[:, 'valor_calculado'] = np.where(df_tipo_d_final_para_soma[col_map_despesas_geral['serie']] == 'RQ', df_tipo_d_final_para_soma[col_map_despesas_geral['liquido']], df_tipo_d_final_para_soma[col_map_despesas_geral['vlcontabil']])
             soma_bruta_tipo_d = df_tipo_d_final_para_soma['valor_calculado'].sum()
 
+    # O valor padrão é a soma bruta (para quando não há filtro de placa)
     valor_final_tipo_d = soma_bruta_tipo_d
+    
     if placa_filter and placa_filter != 'Todos':
         placas_com_tipos = get_unique_plates_with_types(apartamento_id)
         lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
+        
+        # A lógica de rateio só é aplicada se a placa filtrada for do tipo 'Próprio'
         if placa_filter in lista_placas_proprias:
             contagem_veiculos_proprios = len(lista_placas_proprias)
             valor_final_tipo_d = (soma_bruta_tipo_d / contagem_veiculos_proprios) if contagem_veiculos_proprios > 0 else 0
+        else:
+            # Se o veículo não for 'Próprio' (ex: Apoio), o valor rateado é zero
+            valor_final_tipo_d = 0
             
     summary['total_despesas_tipo_d'] = valor_final_tipo_d
     # --- FIM DA CORREÇÃO ---
 
-    # 5. Restante dos cálculos (inalterado)
+    # 5. Restante dos cálculos
     if not df_contas_pagar_raw.empty:
         col_map_cp = _get_case_insensitive_column_map(df_contas_pagar_raw.columns)
         df_cp_pendentes = df_contas_pagar_raw[pd.to_numeric(df_contas_pagar_raw.get(col_map_cp.get('codtransacao')), errors='coerce').fillna(0) == 0]
