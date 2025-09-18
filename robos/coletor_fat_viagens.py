@@ -149,6 +149,7 @@ def executar_coleta_fat_viagens(apartamento_id: int):
 
         db.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
         
+        
         # Preenche as datas
         wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataIniInputDate'))).clear()
         driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataIniInputDate').send_keys(DATA_INICIAL)

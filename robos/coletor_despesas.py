@@ -148,6 +148,7 @@ def executar_coleta_despesas(apartamento_id: int):
 
         db.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
         
+        
         wait.until(EC.visibility_of_element_located((By.ID, 'formrelFilDespesasGerais:RelFilDespesasGerais_dataIniInputDate'))).clear()
         driver.find_element(By.ID, 'formrelFilDespesasGerais:RelFilDespesasGerais_dataIniInputDate').send_keys(DATA_INICIAL)
         driver.find_element(By.ID, 'formrelFilDespesasGerais:RelFilDespesasGerais_dataFimInputDate').clear()

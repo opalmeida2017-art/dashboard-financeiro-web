@@ -322,6 +322,7 @@ def process_and_import_contas_pagar(excel_source, sheet_name: str, table_name: s
         if df_import.empty:
             print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
             return extra_columns
+        
             
         # Chave primária definida como 'codItemNota'
         key_columns = ['codItemNota']

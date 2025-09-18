@@ -474,6 +474,8 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
     
+    
+    
     faturamento = pd.Series(dtype=float)
     if not df_viagens_cliente.empty and not df_fat_filtrado.empty and 'dataviagemmotorista' in col_map_viagens_cli and 'freteempresa' in col_map_fat:
         df_viagens_essencial = df_viagens_cliente[[col_map_viagens_cli['numconhec'], col_map_viagens_cli['dataviagemmotorista']]]

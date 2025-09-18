@@ -234,3 +234,4 @@ if __name__ == '__main__':
         executar_coleta_viagens(apartamento_id_teste)
     else:
         print("Para testar, forneça um ID de apartamento. Ex: python robos/coletor_viagens.py 1")
+        

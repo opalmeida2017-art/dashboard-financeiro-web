@@ -201,7 +201,6 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- ROTAS PRINCIPAIS DA APLICAÇÃO ---
 
 @app.route('/')
 @login_required

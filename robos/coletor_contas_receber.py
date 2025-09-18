@@ -213,7 +213,8 @@ def executar_coleta_contas_receber(apartamento_id: int):
         db.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:
         db.logar_progresso(apartamento_id,"Fechando o navegador.")
-        driver.quit()           
+        driver.quit() 
+                  
         
 # --- BLOCO PARA TESTE MANUAL ---
 if __name__ == '__main__':
