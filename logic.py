@@ -147,4 +147,8 @@ def get_group_flags_with_tipo_d_status(apartamento_id: int):
     """Função de ponte para buscar flags de grupo com status de Tipo D."""
     print(f">>> [LOGIC] Chamando get_group_flags_with_tipo_d_status para o apartamento ID: {apartamento_id}")
     return dm.get_group_flags_with_tipo_d_status(apartamento_id)
+
+def get_despesas_por_filial_e_grupo(apartamento_id: int, start_date, end_date, filial_filter):
+    print(f">>> [LOGIC] Chamando get_despesas_por_filial_e_grupo para o apartamento ID: {apartamento_id}")
+    return dm.get_despesas_por_filial_e_grupo(apartamento_id, start_date, end_date, filial_filter)
         

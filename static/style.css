@@ -507,3 +507,8 @@ h1, h2 {
     cursor: pointer;
     flex-grow: 1; /* Faz o label ocupar o espaço restante */
 }
+.filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Espaço entre o label e o campo */
+}

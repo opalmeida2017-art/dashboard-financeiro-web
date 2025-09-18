@@ -145,7 +145,6 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         db.logar_progresso(apartamento_id,"Aguardando a próxima tela carregar...")
         time.sleep(1)
         
-        driver.save_screenshot('screenshot_formulario_final.png')
         db.logar_progresso(apartamento_id,"-> Tela do formulário final alcançada! Um screenshot foi salvo.")
 
         db.logar_progresso(apartamento_id,"Passo 8: Preenchendo o formulário")
@@ -214,7 +213,6 @@ def executar_coleta_fat_viagens(apartamento_id: int):
         db.logar_progresso(apartamento_id,"ROTEIRO DE COLETA CONCLUÍDO.")
              
     except Exception as e:
-        driver.save_screenshot('screenshot_erro.png')
         db.logar_progresso(apartamento_id,f"Ocorreu um erro durante a coleta: {e}")
         db.logar_progresso(apartamento_id,"Um screenshot do erro foi salvo como 'screenshot_erro.png'")
     finally:

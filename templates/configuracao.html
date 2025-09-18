@@ -9,7 +9,7 @@
     
     <style>
         body {
-            background-color: #f8f9fa; /* Um cinza claro para o fundo */
+            background-color: #f8f9fa;
         }
         .tab-content {
             padding: 2rem 1.5rem;
@@ -19,7 +19,7 @@
             background-color: #fff;
         }
         #log-table-container {
-            background-color: #212529; /* Tema escuro para os logs */
+            background-color: #212529;
             border-radius: 5px;
             height: 600px;
             overflow-y: auto;
@@ -53,7 +53,7 @@
         .log-table tr.separator-row td {
             text-align: center;
             font-weight: bold;
-            color: #0d6efd; /* Azul Bootstrap */
+            color: #0d6efd;
             background-color: #2c3136;
             padding: 10px;
         }
@@ -105,16 +105,27 @@
                     </div>
                 </div>
                 <div class="tab-pane fade" id="periodo-pane" role="tabpanel">
-                    <div class="form-group mb-3"><label for="DATA_INICIAL_ROBO">Data Inicial</label><input type="text" class="form-control" id="DATA_INICIAL_ROBO" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO', '') }}" placeholder="dd/mm/aaaa"></div>
-                    <div class="form-group mb-3"><label for="DATA_FINAL_ROBO">Data Final</label><input type="text" class="form-control" id="DATA_FINAL_ROBO" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO', '') }}" placeholder="dd/mm/aaaa"></div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="DATA_INICIAL_ROBO">Data Inicial</label>
+                                <input type="date" class="form-control" id="DATA_INICIAL_ROBO" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO_YMD', '') }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="DATA_FINAL_ROBO">Data Final</label>
+                                <input type="date" class="form-control" id="DATA_FINAL_ROBO" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO_YMD', '') }}">
+                            </div>
+                        </div>
+                    </div>
                     <div class="form-check form-switch mt-4">
                       <input class="form-check-input" type="checkbox" id="live_monitoring_enabled" name="live_monitoring_enabled" {% if configs.get('live_monitoring_enabled') %}checked{% endif %}>
                       <label class="form-check-label" for="live_monitoring_enabled">
                           Ativar coleta em tempo real (a cada X minutos enquanto o dashboard estiver aberto)
                          </label>
+                    </div>
                 </div>
-                </div>
-            
             </div>
 
             <div class="d-flex justify-content-end mt-4">
@@ -163,12 +174,12 @@
                 fetch('/api/get_robot_logs')
                     .then(response => response.ok ? response.json() : Promise.reject('Erro de rede'))
                     .then(logs => {
-                        logsBody.innerHTML = ''; // Limpa o conteúdo atual
+                        logsBody.innerHTML = '';
                         if (logs.length === 0) {
                             logsBody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: #888;">Nenhum log encontrado.</td></tr>`;
                             return;
                         }
-                        logs.reverse(); // Ordem cronológica
+                        logs.reverse();
                         logs.forEach((log, index) => {
                             if (log.mensagem.includes('--- INICIANDO') && index > 0) {
                                 const sepRow = logsBody.insertRow();
@@ -188,7 +199,7 @@
                     .catch(error => {
                         console.error('Erro ao buscar logs:', error);
                         logsBody.innerHTML = `<tr><td colspan="2" style="color: #dc3545;">Falha ao carregar logs.</td></tr>`;
-                        stopLogPolling(); // Para o polling em caso de erro
+                        stopLogPolling();
                     });
             }
 
@@ -210,11 +221,10 @@
                     loadLogsBtn.classList.remove('btn-primary');
                     loadLogsBtn.classList.add('btn-danger');
                     fetchAndRenderLogs();
-                    logInterval = setInterval(fetchAndRenderLogs, 7000); // Atualiza a cada 7 segundos
+                    logInterval = setInterval(fetchAndRenderLogs, 7000);
                 }
             });
 
-            // LÓGICA PARA LIMPAR OS LOGS
             clearLogsBtn.addEventListener('click', function() {
                 if (!confirm('Tem certeza? Esta ação apagará TODOS os logs.')) return;
                 stopLogPolling();

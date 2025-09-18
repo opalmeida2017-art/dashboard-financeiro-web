@@ -18,13 +18,10 @@ from sqlalchemy import text
 from slugify import slugify
 from rq import Queue
 from apscheduler.schedulers.background import BackgroundScheduler
-from datetime import datetime, timedelta
 from db_connection import engine
-import asyncio 
 import json
 import time
 from limpar_dados import limpar_dados_importados
-
 
 app = Flask(__name__)
     
@@ -42,7 +39,7 @@ app.jinja_env.globals['config'] = app.config
 
 # --- Conexão Global com o Redis (feita uma vez no arranque) ---
 REDIS_URL = os.environ.get('REDIS_URL')
-redis_conn = None # Inicializa a variável de conexão
+redis_conn = None
 
 if REDIS_URL:
     try:
@@ -228,6 +225,8 @@ def index():
     placas = logic.get_unique_plates_with_types(apartamento_id=apartamento_id_alvo)
     filiais = logic.get_unique_filiais(apartamento_id=apartamento_id_alvo)
     
+    placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
+    
     return render_template('index.html', 
                            summary=summary_data,
                            placas=placas,
@@ -235,8 +234,9 @@ def index():
                            selected_placa=filters['placa'],
                            selected_filial=filters['filial'],
                            selected_start_date=filters['start_date_str'],
-                           selected_end_date=filters['end_date_str'])
-
+                           selected_end_date=filters['end_date_str'],
+                           placa_filtrada=placa_filtrada)
+    
 @app.route('/faturamento_detalhes')
 @login_required
 def faturamento_detalhes():
@@ -267,62 +267,35 @@ def api_monthly_summary():
     )
     return jsonify(monthly_data.to_dict(orient='records'))
 
-# --- NOVA ROTA PARA BUSCAR LOGS DO ROBÔ ---
 @app.route('/api/get_robot_logs')
 @login_required
 def api_get_robot_logs():
-    """
-    Busca os últimos 100 logs do robô para o apartamento atual no banco de dados.
-    """
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
         return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
-
     try:
         with engine.connect() as conn:
-            # Busca os últimos 100 logs, com o mais recente primeiro
-            query = text("""
-                SELECT timestamp, mensagem 
-                FROM tb_logs_robo 
-                WHERE apartamento_id = :apt_id 
-                ORDER BY timestamp DESC 
-                LIMIT 100
-            """)
+            query = text("SELECT timestamp, mensagem FROM tb_logs_robo WHERE apartamento_id = :apt_id ORDER BY timestamp DESC LIMIT 100")
             result = conn.execute(query, {"apt_id": apartamento_id_alvo})
-            
-            # Formata os resultados para enviar como JSON
-            logs = [
-                {
-                    # Formata o timestamp para um formato legível no Brasil
-                    "timestamp": row[0].strftime('%d/%m/%Y %H:%M:%S') if row[0] else '',
-                    "mensagem": row[1]
-                } for row in result
-            ]
+            logs = [{"timestamp": row[0].strftime('%d/%m/%Y %H:%M:%S') if row[0] else '', "mensagem": row[1]} for row in result]
             return jsonify(logs)
     except Exception as e:
         print(f"Erro ao buscar logs do robô: {e}")
         return jsonify({"error": f"Erro ao buscar logs: {e}"}), 500
 
-# --- NOVA ROTA PARA LIMPAR OS LOGS DO ROBÔ ---
 @app.route('/api/clear_robot_logs', methods=['POST'])
 @login_required
 def api_clear_robot_logs():
-    """
-    Apaga TODOS os logs de robô para o apartamento do utilizador atual.
-    """
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
         return jsonify({"status": "error", "message": "Contexto do apartamento não encontrado"}), 400
-
     try:
         with engine.connect() as conn:
             query = text("DELETE FROM tb_logs_robo WHERE apartamento_id = :apt_id")
             conn.execute(query, {"apt_id": apartamento_id_alvo})
-            conn.commit() # Efetiva a exclusão no banco
-        
+            conn.commit()
         flash('Logs do robô foram limpos com sucesso!', 'success')
         return jsonify({"status": "success", "message": "Logs limpos com sucesso!"})
-
     except Exception as e:
         print(f"Erro ao limpar logs do robô: {e}")
         return jsonify({"status": "error", "message": f"Erro ao limpar logs: {e}"}), 500
@@ -333,7 +306,6 @@ def api_faturamento_dashboard_data():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
         return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
-
     filters = _parse_filters()
     dashboard_data = logic.get_faturamento_details_dashboard_data(
         apartamento_id=apartamento_id_alvo,
@@ -344,22 +316,6 @@ def api_faturamento_dashboard_data():
     )
     return jsonify(dashboard_data)
 
-@app.route('/api/despesas_dashboard_data')
-@login_required
-def api_despesas_dashboard_data():
-    apartamento_id_alvo = get_target_apartment_id()
-    if apartamento_id_alvo is None:
-        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
-
-    filters = _parse_filters()
-    dashboard_data = logic.get_despesas_details_dashboard_data(
-        apartamento_id=apartamento_id_alvo,
-        start_date=filters['start_date_obj'],
-        end_date=filters['end_date_obj'],
-        placa_filter=filters['placa'],
-        filial_filter=filters['filial']
-    )
-    return jsonify(dashboard_data)
 
 @app.route('/upload', methods=['POST'])
 @login_required
@@ -383,26 +339,14 @@ def upload_file():
                     table_info = config.EXCEL_FILES_CONFIG[file_key]
                     sheet_name = table_info.get('sheet_name')
                     table_name = table_info['table']
-
                     if table_name == 'relFilDespesasGerais':
-                        extra_cols = db.process_and_import_despesas(
-                            excel_source=file,
-                            sheet_name=sheet_name,
-                            table_name=table_name,
-                            apartamento_id=apartamento_id_alvo
-                        )
+                        extra_cols = db.process_and_import_despesas(excel_source=file, sheet_name=sheet_name, table_name=table_name, apartamento_id=apartamento_id_alvo)
                     else:
                         key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
                         if not key_columns:
                             flash(f"ERRO: Chaves primárias não definidas para a tabela '{table_name}'.", 'error')
                             continue
-                        extra_cols = db.import_excel_to_db(
-                            excel_source=file,
-                            sheet_name=sheet_name,
-                            table_name=table_name,
-                            key_columns=key_columns,
-                            apartamento_id=apartamento_id_alvo
-                        )
+                        extra_cols = db.import_excel_to_db(excel_source=file, sheet_name=sheet_name, table_name=table_name, key_columns=key_columns, apartamento_id=apartamento_id_alvo)
                     
                     flash(f'Sucesso: Planilha "{filename}" importada.', 'success')
                     if extra_cols:
@@ -413,7 +357,6 @@ def upload_file():
                 flash(f'Erro: Nome de ficheiro "{filename}" não reconhecido.', 'error')
     
     logic.sync_expense_groups(apartamento_id_alvo)
-    
     return redirect(url_for('index'))
 
 @app.route('/gerenciar-grupos-dados')
@@ -433,21 +376,14 @@ def gerenciar_grupos_salvar():
     update_data = {}
     
     for group in all_groups:
-        # Pega a classificação principal (Custo, Despesa ou Nenhum)
         classification = 'nenhum'
         if f"{group}_custo" in request.form: 
             classification = 'custo_viagem'
         elif f"{group}_despesa" in request.form: 
             classification = 'despesa'
         
-        # Captura o estado do novo checkbox 'Tipo D'
         incluir_tipo_d = f"{group}_tipo_d" in request.form
-
-        # Cria o dicionário aninhado que a função de salvar espera
-        update_data[group] = {
-            'classification': classification,
-            'incluir_tipo_d': incluir_tipo_d
-        }
+        update_data[group] = {'classification': classification, 'incluir_tipo_d': incluir_tipo_d}
         
     logic.update_all_group_flags(apartamento_id_alvo, update_data)
     flash('Classificação de grupos salva com sucesso!', 'success')
@@ -475,9 +411,7 @@ def iniciar_coleta_endpoint():
             
             print(f"--- ENFILEIRANDO COLETA ASSÍNCRONA PARA APARTAMENTO {apartamento_id_alvo} ---")
             q = Queue(connection=redis_conn)
-            
             q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo, job_timeout=1800)
-            
             flash('A coleta de dados foi iniciada em segundo plano.', 'success')
             return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
 
@@ -509,8 +443,8 @@ def configuracao():
             'CODIGO_CONTAS_PAGAR': request.form.get('CODIGO_CONTAS_PAGAR'),
             'CODIGO_CONTAS_RECEBER': request.form.get('CODIGO_CONTAS_RECEBER'),
             'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
-            'DATA_INICIAL_ROBO': request.form.get('DATA_INICIAL_ROBO'),
-            'DATA_FINAL_ROBO': request.form.get('DATA_FINAL_ROBO'),
+            'DATA_INICIAL_ROBO': datetime.strptime(request.form.get('DATA_INICIAL_ROBO'), '%Y-%m-%d').strftime('%d/%m/%Y') if request.form.get('DATA_INICIAL_ROBO') else '',
+            'DATA_FINAL_ROBO': datetime.strptime(request.form.get('DATA_FINAL_ROBO'), '%Y-%m-%d').strftime('%d/%m/%Y') if request.form.get('DATA_FINAL_ROBO') else '',
             'live_monitoring_enabled': live_monitoring_enabled
         }
         logic.salvar_configuracoes_robo(apartamento_id_alvo, configs)
@@ -518,6 +452,14 @@ def configuracao():
         return redirect(url_for('configuracao'))
     
     configs_salvas = logic.ler_configuracoes_robo(apartamento_id_alvo)
+    try:
+        if configs_salvas.get('DATA_INICIAL_ROBO'):
+            configs_salvas['DATA_INICIAL_ROBO_YMD'] = datetime.strptime(configs_salvas['DATA_INICIAL_ROBO'], '%d/%m/%Y').strftime('%Y-%m-%d')
+        if configs_salvas.get('DATA_FINAL_ROBO'):
+            configs_salvas['DATA_FINAL_ROBO_YMD'] = datetime.strptime(configs_salvas['DATA_FINAL_ROBO'], '%d/%m/%Y').strftime('%Y-%m-%d')
+    except (ValueError, TypeError):
+        pass
+    
     return render_template('configuracao.html', configs=configs_salvas)
 
 @app.route('/gerenciar-usuarios')
@@ -632,7 +574,6 @@ def admin_dashboard():
         else:
             apt['access_link'] = "Sem slug definido"
     
-    # CORREÇÃO: Adicione o diretório 'super_admin' ao caminho do template
     return render_template('super_admin/dashboard.html', apartamentos=apartamentos)
 
 
@@ -674,7 +615,7 @@ def criar_apartamento():
             return redirect(url_for('admin_dashboard'))
         else:
             flash(message, 'error')
-            return render_template('super_admin/criar_apartamento.html') # <--- LINHA 1 CORRIGIDA
+            return render_template('super_admin/criar_apartamento.html')
     return render_template('super_admin/criar_apartamento.html')
 
 @app.route('/super-admin/gerir/<int:apartamento_id>', methods=['GET', 'POST'])
@@ -701,7 +642,6 @@ def gerir_apartamento(apartamento_id):
         flash("Apartamento não encontrado.", "error")
         return redirect(url_for('admin_dashboard'))
     
-    # CORREÇÃO: Adicione o diretório 'super_admin' ao caminho do template
     return render_template('super_admin/gerir_apartamento.html', apartamento=apartamento)
 
 # --- COMANDOS DE CLI ---
@@ -742,7 +682,7 @@ def api_heartbeat():
                 INSERT INTO tb_user_activity (apartamento_id, last_seen_timestamp)
                 VALUES (:apt_id, NOW())
                 ON CONFLICT (apartamento_id) DO UPDATE
-                SET SET last_seen_timestamp = NOW();
+                SET last_seen_timestamp = NOW();
             """)
             conn.execute(query, {"apt_id": apartamento_id_alvo})
             conn.commit()
@@ -781,6 +721,43 @@ def status_stream():
 
     return Response(event_generator(), mimetype='text/event-stream')
 
+@app.route('/api/despesas_por_filial_e_grupo')
+@login_required
+def api_despesas_por_filial_e_grupo():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    filters = _parse_filters()
+    data_for_chart = logic.get_despesas_por_filial_e_grupo(
+        apartamento_id=apartamento_id_alvo,
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters.get('placa'),
+        filial_filter=filters['filial']
+    )
+    return jsonify(data_for_chart)
+
+@app.route('/api/despesas_dashboard_data')
+@login_required
+def api_despesas_dashboard_data():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    filters = _parse_filters()
+    dashboard_data = logic.get_despesas_details_dashboard_data(
+        apartamento_id=apartamento_id_alvo,
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial']
+    )
+    return jsonify(dashboard_data)
+   
+# --- INICIALIZAÇÃO DO AGENDADOR (CORRIGIDO) ---
+scheduler = BackgroundScheduler(daemon=True)
+
 # --- LÓGICA DO AGENDADOR ---
 def run_scheduled_collections():
     """
@@ -812,9 +789,7 @@ def run_scheduled_collections():
 
         except Exception as e:
             print(f"ERRO no agendador de coletas: {e}")
-   
-# --- INICIALIZAÇÃO DO AGENDADOR (CORRIGIDO) ---
-scheduler = BackgroundScheduler(daemon=True)
+
 scheduler.add_job(run_scheduled_collections, 'interval', seconds=60)
 
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':

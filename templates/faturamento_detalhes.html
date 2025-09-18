@@ -6,21 +6,15 @@
     <title>Detalhes de Faturamento</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
     <style>
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-            gap: 20px;
-            padding: 20px;
+        body {
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
         }
-        .grid-item {
-            background-color: white;
+        .page-container {
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .grid-item-full {
-            grid-column: 1 / -1;
         }
         .page-header {
             display: flex;
@@ -28,223 +22,326 @@
             align-items: center;
             margin-bottom: 20px;
         }
-        body {
-            background-color: #f4f4f9;
+        
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: 55vh 1fr; /* Aumenta um pouco o espaço do gráfico principal */
+            gap: 20px;
+            height: calc(100vh - 120px);
+        }
+
+        #featured-chart-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        #featured-chart-title {
+            text-align: center;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+        
+        #thumbnail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .thumbnail-item {
+            background-color: white;
+            padding: 15px; /* Aumenta o padding */
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            height: 250px;
+            display: flex;
+            flex-direction: column;
+        }
+        .thumbnail-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        .thumbnail-item h5 {
+            text-align: center;
+            font-size: 0.85rem; /* Diminui um pouco a fonte do título */
+            flex-shrink: 0;
+            margin: 0;
+            padding-bottom: 10px; /* Adiciona espaço abaixo do título */
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .chart-canvas-wrapper {
+            position: relative;
+            flex-grow: 1; 
+        }
+
+        .chart-canvas-wrapper canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100% !important;
+            height: 100% !important;
         }
     </style>
 </head>
 <body>
-    <div style="padding: 20px;">
+    <div class="page-container">
         <div class="page-header">
             <h1>Análise Detalhada de Faturamento</h1>
             <a href="{{ url_for('index') }}?{{ request.query_string.decode('utf-8') }}" class="manage-link" style="text-decoration: none;">&larr; Voltar ao Dashboard</a>
         </div>
 
-        <div class="grid-container">
-            <div class="grid-item grid-item-full">
-                <h3>Evolução Faturamento vs. Custo Total</h3>
-                <canvas id="evolucaoChart"></canvas>
+        <div class="dashboard-layout">
+            
+            <div id="featured-chart-container">
+                <h3 id="featured-chart-title"></h3>
+                <div class="chart-canvas-wrapper">
+                    <canvas id="featuredChart"></canvas>
+                </div>
             </div>
-            <div class="grid-item">
-                <h3>Clientes por Faturamento</h3>
-                <canvas id="topClientesChart"></canvas>
+
+            <div id="thumbnail-grid">
+                <div class="thumbnail-item" data-chart-id="evolucao">
+                    <h5>Evolução Faturamento vs. Custo</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="evolucaoChart"></canvas>
+                    </div>
+                </div>
+                <div class="thumbnail-item" data-chart-id="topClientes">
+                    <h5>Clientes</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="topClientesChart"></canvas>
+                    </div>
+                </div>
+                <div class="thumbnail-item" data-chart-id="fatFilial">
+                    <h5>Faturamento por Filial</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="fatFilialChart"></canvas>
+                    </div>
+                </div>
+                <div class="thumbnail-item" data-chart-id="Rotas">
+                    <h5>Rotas</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="topRotasChart"></canvas>
+                    </div>
+                </div>
+                 <div class="thumbnail-item" data-chart-id="fatMercadoria">
+                    <h5>Faturamento por Mercadoria</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="mercadoriaChart"></canvas>
+                    </div>
+                </div>
+                <div class="thumbnail-item" data-chart-id="viagensVeiculo">
+                    <h5>Viagens por Veículo</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="viagensVeiculoChart"></canvas>
+                    </div>
+                </div>
+                <div class="thumbnail-item" data-chart-id="fatMotorista">
+                    <h5>Motoristas</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="fatMotoristaChart"></canvas>
+                    </div>
+                </div>
+                <div class="thumbnail-item" data-chart-id="volumeRota">
+                    <h5>Volume por Rota (kg)</h5>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="volumeRotaChart"></canvas>
+                    </div>
+                </div>
             </div>
-            <div class="grid-item">
-                <h3>Faturamento por Filial</h3>
-                <canvas id="fatFilialChart"></canvas>
-            </div>
-            <div class="grid-item">
-                <h3>Rotas Mais Frequentes</h3>
-                <canvas id="topRotasChart"></canvas>
-            </div>
-            <div class="grid-item">
-                <h3>Volume de Carga (kg) por Rota</h3>
-                <canvas id="volumeRotaChart"></canvas>
-            </div>
-            <div class="grid-item">
-                <h3>Veículos por No. de Viagens</h3>
-                <canvas id="viagensVeiculoChart"></canvas>
-            </div>
-            <div class="grid-item"> 
-                <h3>Motoristas por Faturamento</h3>
-                <canvas id="fatMotoristaChart"></canvas>
-            </div>
-            <div class="grid-item">
-                <h3>Faturamento por Tipo de Mercadoria</h3>
-                <canvas id="mercadoriaChart"></canvas>
-            </div>
+
         </div>
     </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
+    
     fetch(`/api/faturamento_dashboard_data?${params.toString()}`)
         .then(response => response.json())
         .then(data => {
-            if (data && Object.keys(data).length > 0) {
-                
-                // Gráfico 1: Evolução Faturamento vs. Custo Total
-                if (data.evolucao_faturamento_custo && data.evolucao_faturamento_custo.length > 0) {
-                    const evolucaoCtx = document.getElementById('evolucaoChart').getContext('2d');
-                    new Chart(evolucaoCtx, {
-                        type: 'line',
-                        data: {
-                            labels: data.evolucao_faturamento_custo.map(d => d.Periodo),
-                            datasets: [
-                                { label: 'Faturamento', data: data.evolucao_faturamento_custo.map(d => d.Faturamento), borderColor: 'rgba(41, 128, 185, 1)', fill: false },
-                                { label: 'Custo', data: data.evolucao_faturamento_custo.map(d => d.Custo), borderColor: '#E67E22', fill: false }
-                            ]
-                        },
-                        options: { scales: { y: { beginAtZero: true, ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
-                    });
-                }
-
-                // Gráfico 2: Top 10 Clientes por Faturamento
-                if (data.top_clientes && data.top_clientes.length > 0) {
-                    const clientesCtx = document.getElementById('topClientesChart').getContext('2d');
-                    new Chart(clientesCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.top_clientes.map(d => d.nomeCliente),
-                            datasets: [{ label: 'Faturamento', data: data.top_clientes.map(d => d.freteEmpresa), backgroundColor: 'rgba(41, 128, 185, 0.7)' }]
-                        },
-                        options: { indexAxis: 'y', scales: { x: { ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
-                    });
-                }
-                
-                // Gráfico 3: Faturamento por Filial
-                if (data.faturamento_filial && data.faturamento_filial.length > 0) {
-                    const filialCtx = document.getElementById('fatFilialChart').getContext('2d');
-                    new Chart(filialCtx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: data.faturamento_filial.map(d => d.nomeFilial),
-                            datasets: [{ data: data.faturamento_filial.map(d => d.freteEmpresa) }]
-                        }
-                    });
-                }
-                
-                // Gráfico 4: Top 10 Rotas Mais Frequentes
-                if (data.top_rotas && data.top_rotas.length > 0) {
-                    const rotasCtx = document.getElementById('topRotasChart').getContext('2d');
-                    new Chart(rotasCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.top_rotas.map(d => d.rota),
-                            datasets: [{ label: 'Nº de Viagens', data: data.top_rotas.map(d => d.contagem), backgroundColor: 'rgba(26, 188, 156, 0.7)' }]
-                        },
-                        options: { indexAxis: 'y' }
-                    });
-                }
-                
-                // Gráfico 5: Volume de Carga (kg) por Rota
-                if (data.volume_por_rota && data.volume_por_rota.length > 0) {
-                    const volumeCtx = document.getElementById('volumeRotaChart').getContext('2d');
-                    new Chart(volumeCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.volume_por_rota.map(d => d.rota),
-                            datasets: [{ label: 'Peso Total (kg)', data: data.volume_por_rota.map(d => d.pesoSaida), backgroundColor: 'rgba(52, 73, 94, 0.7)' }]
-                        },
-                        options: { scales: { y: { ticks: { callback: function(value) { return value.toLocaleString('pt-BR') + ' kg'; } } } } }
-                    });
-                }
-
-                // Gráfico 6: Top 10 Veículos por No. de Viagens
-                if (data.viagens_por_veiculo && data.viagens_por_veiculo.length > 0) {
-                    const veiculoCtx = document.getElementById('viagensVeiculoChart').getContext('2d');
-                    new Chart(veiculoCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.viagens_por_veiculo.map(d => d.placa),
-                            datasets: [{ label: 'Nº de Viagens', data: data.viagens_por_veiculo.map(d => d.contagem), backgroundColor: 'rgba(142, 68, 173, 0.7)' }]
-                        }
-                    });
-                }
-                
-                // Gráfico 7: Top 10 Motoristas por Faturamento
-                if (data.faturamento_motorista && data.faturamento_motorista.length > 0) {
-                    const motoristaCtx = document.getElementById('fatMotoristaChart').getContext('2d');
-                    new Chart(motoristaCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.faturamento_motorista.map(d => d.nomeMotorista),
-                            datasets: [{ label: 'Faturamento', data: data.faturamento_motorista.map(d => d.faturamento), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
-                        },
-                        options: { indexAxis: 'y', scales: { x: { ticks: { callback: function(value) { return 'R$ ' + value.toLocaleString('pt-BR'); } } } } }
-                    });
-                }
-
-                // Gráfico 8: Faturamento por Tipo de Mercadoria
-                if (data.faturamento_por_mercadoria && data.faturamento_por_mercadoria.length > 0) {
-                    const mercadoriaCtx = document.getElementById('mercadoriaChart').getContext('2d');
-                    new Chart(mercadoriaCtx, {
-                        type: 'doughnut',
-                        data: {
-                            labels: data.faturamento_por_mercadoria.map(d => d.mercadoria),
-                            datasets: [{
-                                label: 'Faturamento',
-                                data: data.faturamento_por_mercadoria.map(d => d.faturamento)
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: {
-                                    position: 'top'
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            let label = context.label || '';
-                                            if (label) {
-                                                label += ': ';
-                                            }
-                                            if (context.parsed !== null) {
-                                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                                            }
-                                            return label;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-                const gridContainer = document.querySelector('.grid-container');
-                const gridItems = document.querySelectorAll('.grid-item');
-
-                gridItems.forEach(item => {
-                    item.style.cursor = 'pointer'; // Muda o cursor para indicar que é clicável
-                    item.addEventListener('click', function() {
-                        // Não faz nada se o item já estiver maximizado
-                        if (this.classList.contains('grid-item-full')) {
-                            return;
-                        }
-                        
-                        // Encontra o item que está atualmente maximizado e remove a classe
-                        const currentTopItem = document.querySelector('.grid-item-full');
-                        if (currentTopItem) {
-                            currentTopItem.classList.remove('grid-item-full');
-                        }
-                        
-                        // Adiciona a classe de maximizado ao item clicado
-                        this.classList.add('grid-item-full');
-                        
-                        // Move o item clicado para o início do container
-                        gridContainer.insertBefore(this, gridContainer.firstChild);
-                    });
-                });
-            } else {
-                const gridContainer = document.querySelector('.grid-container');
-                if (gridContainer) {
-                    gridContainer.innerHTML = '<h2>Não há dados para os filtros selecionados.</h2>';
-                }
+            if (!data || Object.keys(data).length === 0) {
+                document.querySelector('.dashboard-layout').innerHTML = '<h2>Não há dados para os filtros selecionados.</h2>';
+                return;
             }
+            
+            const chartConfigs = new Map();
+            let featuredChartInstance = null;
+            const featuredChartCanvas = document.getElementById('featuredChart').getContext('2d');
+            const featuredChartTitle = document.getElementById('featured-chart-title');
+
+            function updateFeaturedChart(chartId) {
+                if (!chartConfigs.has(chartId)) return;
+                
+                const config = chartConfigs.get(chartId);
+                featuredChartTitle.textContent = config.title;
+
+                if (featuredChartInstance) {
+                    featuredChartInstance.destroy();
+                }
+                // Recria o gráfico principal com a legenda visível
+                featuredChartInstance = new Chart(featuredChartCanvas, {
+                    type: config.type,
+                    data: config.data,
+                    options: { ...config.options, plugins: { legend: { display: true } } } // Garante que a legenda apareça no gráfico principal
+                });
+            }
+
+            // Opções padrão para os gráficos pequenos (sem legenda)
+            const thumbnailOptions = {
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            };
+            
+            // --- INÍCIO DA CORREÇÃO: REMOÇÃO DAS LEGENDAS DAS MINIATURAS ---
+
+            // Evolução Faturamento vs. Custo
+            if (data.evolucao_faturamento_custo) {
+                const config = {
+                    title: 'Evolução Faturamento vs. Custo Total',
+                    type: 'line',
+                    data: {
+                        labels: data.evolucao_faturamento_custo.map(d => d.Periodo),
+                        datasets: [
+                            { label: 'Faturamento', data: data.evolucao_faturamento_custo.map(d => d.Faturamento), borderColor: 'rgba(41, 128, 185, 1)', fill: false },
+                            { label: 'Custo', data: data.evolucao_faturamento_custo.map(d => d.Custo), borderColor: '#E67E22', fill: false }
+                        ]
+                    },
+                    options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
+                };
+                chartConfigs.set('evolucao', config);
+                new Chart(document.getElementById('evolucaoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+            }
+
+            // Top Clientes
+            if (data.top_clientes) {
+                const config = {
+                    title: 'Clientes por Faturamento',
+                    type: 'bar',
+                    data: {
+                        labels: data.top_clientes.map(d => d.nomeCliente),
+                        datasets: [{ label: 'Faturamento', data: data.top_clientes.map(d => d.freteEmpresa), backgroundColor: 'rgba(41, 128, 185, 0.7)' }]
+                    },
+                    options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
+                };
+                chartConfigs.set('topClientes', config);
+                new Chart(document.getElementById('topClientesChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
+            }
+            
+            // Faturamento por Filial
+            if (data.faturamento_filial) {
+                const config = {
+                    title: 'Faturamento por Filial',
+                    type: 'doughnut',
+                    data: {
+                        labels: data.faturamento_filial.map(d => d.nomeFilial),
+                        datasets: [{ data: data.faturamento_filial.map(d => d.freteEmpresa) }]
+                    },
+                    options: { maintainAspectRatio: false }
+                };
+                chartConfigs.set('fatFilial', config);
+                 new Chart(document.getElementById('fatFilialChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+            }
+            
+            // Top Rotas
+            if (data.top_rotas) {
+                const config = {
+                    title: 'Rotas Mais Frequentes',
+                    type: 'bar',
+                    data: {
+                        labels: data.top_rotas.map(d => d.rota),
+                        datasets: [{ label: 'Nº de Viagens', data: data.top_rotas.map(d => d.contagem), backgroundColor: 'rgba(26, 188, 156, 0.7)' }]
+                    },
+                    options: { maintainAspectRatio: false, indexAxis: 'y' }
+                };
+                chartConfigs.set('Rotas', config);
+                new Chart(document.getElementById('topRotasChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
+            }
+            
+            // Faturamento por Mercadoria
+            if(data.faturamento_por_mercadoria) {
+                const config = {
+                     title: 'Faturamento por Tipo de Mercadoria',
+                     type: 'doughnut',
+                     data: {
+                         labels: data.faturamento_por_mercadoria.map(d => d.mercadoria),
+                         datasets: [{ data: data.faturamento_por_mercadoria.map(d => d.faturamento) }]
+                     },
+                     options: { maintainAspectRatio: false }
+                };
+                chartConfigs.set('fatMercadoria', config);
+                new Chart(document.getElementById('mercadoriaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+            }
+
+            // Viagens por Veículo
+            if(data.viagens_por_veiculo) {
+                const config = {
+                     title: 'Viagens por Veículo',
+                     type: 'bar',
+                     data: {
+                         labels: data.viagens_por_veiculo.map(d => d.placa),
+                         datasets: [{ label: 'Nº de Viagens', data: data.viagens_por_veiculo.map(d => d.contagem), backgroundColor: 'rgba(142, 68, 173, 0.7)' }]
+                     },
+                     options: { maintainAspectRatio: false }
+                };
+                chartConfigs.set('viagensVeiculo', config);
+                new Chart(document.getElementById('viagensVeiculoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+            }
+
+            // Faturamento por Motorista
+            if(data.faturamento_motorista) {
+                const config = {
+                     title: 'Motoristas por Faturamento',
+                     type: 'bar',
+                     data: {
+                         labels: data.faturamento_motorista.map(d => d.nomeMotorista),
+                         datasets: [{ label: 'Faturamento', data: data.faturamento_motorista.map(d => d.faturamento), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
+                     },
+                     options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
+                };
+                chartConfigs.set('fatMotorista', config);
+                new Chart(document.getElementById('fatMotoristaChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
+            }
+            
+            // Volume por Rota
+            if(data.volume_por_rota) {
+                const config = {
+                     title: 'Volume de Carga (kg) por Rota',
+                     type: 'bar',
+                     data: {
+                         labels: data.volume_por_rota.map(d => d.rota),
+                         datasets: [{ label: 'Peso Total (kg)', data: data.volume_por_rota.map(d => d.pesoSaida), backgroundColor: 'rgba(52, 73, 94, 0.7)' }]
+                     },
+                     options: { maintainAspectRatio: false, scales: { y: { ticks: { callback: v => v.toLocaleString('pt-BR') + ' kg' } } } }
+                };
+                chartConfigs.set('volumeRota', config);
+                new Chart(document.getElementById('volumeRotaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+            }
+
+            // Mostra o primeiro gráfico em destaque e adiciona os eventos de clique
+            updateFeaturedChart('evolucao');
+
+            document.querySelectorAll('.thumbnail-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const chartId = this.dataset.chartId;
+                    updateFeaturedChart(chartId);
+                });
+            });
         });
 });
 </script>
-
 </body>
 </html>

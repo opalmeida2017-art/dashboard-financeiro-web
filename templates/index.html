@@ -11,21 +11,30 @@
 
 <div class="filters">
     <form method="GET" action="/">
-        <label for="start_date">Data Início:</label>
-        <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
         
-        <label for="end_date">Data Fim:</label>
-        <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+        <div class="filter-item">
+            <label for="start_date">Data Início:</label>
+            <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
+        </div>
         
-        <select name="placa" id="placa">
-            <option value="Todos" {% if 'Todos' == selected_placa %}selected{% endif %}>Todos</option>
-            {% for item in placas %}
-                <option value="{{ item.placa }}" class="placa-{{ item.tipo | lower }}" {% if item.placa == selected_placa %}selected{% endif %}>
-                    {{ item.placa }} ({{ item.tipo }})
-                </option>
-            {% endfor %}
-        </select>  
-        <div class="form-group">
+        <div class="filter-item">
+            <label for="end_date">Data Fim:</label>
+            <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+        </div>
+        
+        <div class="filter-item">
+            <label for="placa">Placa:</label>
+            <select name="placa" id="placa">
+                <option value="Todos" {% if 'Todos' == selected_placa %}selected{% endif %}>Todos</option>
+                {% for item in placas %}
+                    <option value="{{ item.placa }}" class="placa-{{ item.tipo | lower }}" {% if item.placa == selected_placa %}selected{% endif %}>
+                        {{ item.placa }} ({{ item.tipo }})
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="filter-item">
             <label for="filial-multiselect-btn">Filial:</label>
             <div class="multiselect" id="filial-multiselect">
                 <button type="button" class="multiselect-btn" id="filial-multiselect-btn">
@@ -45,16 +54,16 @@
             </div>
         </div>
         
-        <button type="submit">Aplicar Filtros</button>
+        <div class="filter-item">
+            <button type="submit">Aplicar Filtros</button>
+        </div>
         
         <div class="action-buttons">
             <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
             <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
-
             {% if is_admin_in_context() %}
                 <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
             {% endif %}
-            
             <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
             <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
         </div>
@@ -76,16 +85,23 @@
             <h3>Custo Total</h3>
             <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
         </div>
-        <div class="card">
+        <div class="card card-com-link-hover">
+            <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" class="link-detalhes-container">
+                Análise Detalhada de Despesa &rarr;
+            </a>
             <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" style="text-decoration: none; color: inherit;">
                 <h3>Despesa Gerais</h3>
                 <p style="color: #C0392B;">{{ summary.total_despesas_gerais | currency }}</p>
             </a>
         </div>
         <div class="card">
-            <h3>Despesas Tipo D</h3>
+            {% if placa_filtrada %}
+                <h3 title="Valor total de Despesas Tipo D dividido pelo número de veículos próprios.">Despesa Rateada</h3>
+            {% else %}
+                <h3>Despesas Tipo D</h3>
+            {% endif %}
             <p style="color: #8E44AD;">{{ summary.total_despesas_tipo_d | currency }}</p>
-        </div>
+      </div>
         <div class="card">
             <h3>Lucro Liquido</h3>
             <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">{{ summary.saldo_geral | currency }}</p>
