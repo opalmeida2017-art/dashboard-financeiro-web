@@ -1135,3 +1135,49 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
             dashboard_data['combustivel_por_veiculo'] = combustivel_agg.to_dict(orient='records')
 
     return dashboard_data
+
+# Adicione esta função ao final de data_manager.py
+
+def get_expense_audit_data(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list):
+    """
+    Coleta e organiza os dados de despesas em categorias para auditoria detalhada,
+    com os números das notas/CT-es agrupados por nome de grupo.
+    """
+    # 1. Carrega e filtra os dados de base
+    df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
+    df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    df_flags = get_all_group_flags(apartamento_id)
+
+    df_viagens_cliente = apply_filters_to_df(df_viagens_raw, start_date, end_date, placa_filter, filial_filter)
+    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
+
+    if df_despesas_filtrado.empty and df_viagens_cliente.empty:
+        return {'custos': {}, 'despesas': {}, 'tipo_d': {}}
+
+    # 2. Obtém os DataFrames finais de despesas já classificados
+    expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags)
+    df_custos = expense_data['custos']
+    df_despesas_gerais = expense_data['despesas']
+    df_tipo_d = expense_data['tipo_d']
+
+    col_map = _get_case_insensitive_column_map(pd.concat([df_custos, df_despesas_gerais, df_tipo_d]))
+    
+    audit_data = {}
+
+    def group_data(df, group_col, key_col):
+        """Função auxiliar para agrupar e formatar os dados."""
+        if df.empty or group_col not in df.columns or key_col not in df.columns:
+            return {}
+        
+        # Agrupa pelo nome do grupo, coleta chaves únicas e converte para dicionário
+        return df.groupby(group_col)[key_col].unique().apply(list).to_dict()
+
+    # 3. Processa cada categoria
+    # Para Custos e Despesas, a chave pode ser 'numnota' ou 'numconhec' (para Quebra/Comissão)
+    key_col_custos_despesas = col_map.get('numnota', col_map.get('numconhec'))
+    
+    audit_data['custos'] = group_data(df_custos, col_map.get('descgrupod'), key_col_custos_despesas)
+    audit_data['despesas'] = group_data(df_despesas_gerais, col_map.get('descgrupod'), key_col_custos_despesas)
+    audit_data['tipo_d'] = group_data(df_tipo_d, col_map.get('descgrupod'), col_map.get('numnota'))
+
+    return audit_data

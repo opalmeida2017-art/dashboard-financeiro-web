@@ -79,7 +79,10 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
     print(f">>> [LOGIC] Chamando get_despesas_details_dashboard_data para o apartamento ID: {apartamento_id}")
     return dm.get_despesas_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
 
-# --- Funções de Configuração do Robô ---
+def get_expense_audit_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter):
+    print(f">>> [LOGIC] Chamando get_expense_audit_data para o apartamento ID: {apartamento_id}")
+    return dm.get_expense_audit_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+
 def ler_configuracoes_robo(apartamento_id: int):
     print(f">>> [LOGIC] Chamando ler_configuracoes_robo para o apartamento ID: {apartamento_id}")
     return dm.ler_configuracoes_robo(apartamento_id)

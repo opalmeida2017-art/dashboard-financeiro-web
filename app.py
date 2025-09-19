@@ -753,6 +753,23 @@ def api_despesas_dashboard_data():
         filial_filter=filters['filial']
     )
     return jsonify(dashboard_data)
+
+@app.route('/api/despesas_audit_data')
+@login_required
+def api_despesas_audit_data():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+
+    filters = _parse_filters()
+    audit_data = logic.get_expense_audit_data(
+        apartamento_id=apartamento_id_alvo,
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial']
+    )
+    return jsonify(audit_data)
    
 # --- INICIALIZAÇÃO DO AGENDADOR (CORRIGIDO) ---
 scheduler = BackgroundScheduler(daemon=True)

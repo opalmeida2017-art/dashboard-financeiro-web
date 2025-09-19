@@ -17,6 +17,43 @@
     .conhecimentos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; max-height: 400px; overflow-y: auto; }
     .conhecimento-item { background-color: #f2f2f2; padding: 5px; text-align: center; border-radius: 4px; font-weight: 500; font-size: 0.9em; }
     /* --- FIM DO CÓDIGO ACRESCENTADO --- */
+
+    /* Estilos para o novo modal de auditoria de despesas */
+.despesas-audit-modal-body {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* TRÊS colunas */
+    gap: 15px;
+    padding: 15px;
+}
+.audit-section {
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    padding: 10px;
+    background-color: #f9f9f9;
+}
+.audit-section h5 {
+    margin-top: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #ccc;
+    font-size: 1em;
+}
+.audit-list {
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 0.85em;
+}
+.audit-group h6 {
+    font-weight: bold;
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+.audit-key-list {
+    list-style-type: none;
+    padding-left: 10px;
+}
+.audit-key-list li {
+    padding: 2px 0;
+}
 </style>
     <h1>Dashboard Transporte</h1>
 
@@ -77,7 +114,7 @@
 
     {% if summary %}
     <div class="summary-cards">
-        <div class="card card-com-link-hover">
+        <div class="card card-com-link-hover" data-type="faturamento">
             <a href="#" id="link-detalhes-superior" class="link-detalhes-container">
                 Análise Detalhada de Faturamento &rarr;
             </a>
@@ -90,11 +127,11 @@
             <h3>Custo Total</h3>
             <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
         </div>
-        <div class="card card-com-link-hover">
-             <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" class="link-detalhes-container">
+        <div class="card card-com-link-hover" data-type="despesas" style="cursor: pointer;">
+            <a href="#" class="link-detalhes-container">
                 Análise Detalhada de Despesa &rarr;
             </a>
-            <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" style="text-decoration: none; color: inherit;">
+            <a href="#" style="text-decoration: none; color: inherit;">
                 <h3>Despesa Gerais</h3>
                 <p style="color: #C0392B;">{{ summary.total_despesas_gerais | currency }}</p>
             </a>
@@ -145,6 +182,26 @@
             <div id="conhecimentos-lista" class="conhecimentos-grid"></div>
         </div>
     </div>
+    <div id="despesasAuditModal" class="modal">
+    <div class="modal-content" style="max-width: 900px;">
+        <span class="close-button despesas-audit-close">&times;</span>
+        <h2>Auditoria Detalhada de Despesas</h2>
+        <div id="despesas-audit-body" class="despesas-audit-modal-body">
+            <div class="audit-section">
+                <h5>Custos de Viagem</h5>
+                <div id="audit-list-custos" class="audit-list"><p>Carregando...</p></div>
+            </div>
+            <div class="audit-section">
+                <h5>Despesas Gerais</h5>
+                <div id="audit-list-despesas" class="audit-list"><p>Carregando...</p></div>
+            </div>
+            <div class="audit-section">
+                <h5>Despesas Tipo D</h5>
+                <div id="audit-list-tipo-d" class="audit-list"><p>Carregando...</p></div>
+            </div>
+        </div>
+    </div>
+</div>
     {% else %}
         <p style="text-align: center;">Não há dados para exibir. Tente importar os dados ou ajustar os filtros.</p>
     {% endif %}
