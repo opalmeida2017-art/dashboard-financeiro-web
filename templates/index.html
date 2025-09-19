@@ -128,10 +128,10 @@
             <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
         </div>
         <div class="card card-com-link-hover" data-type="despesas" style="cursor: pointer;">
-            <a href="#" class="link-detalhes-container">
+            <a href="#" id="link-detalhes-superior-despesas" class="link-detalhes-container">
                 Análise Detalhada de Despesa &rarr;
             </a>
-            <a href="#" style="text-decoration: none; color: inherit;">
+            <a href="#" id="link-detalhes-despesas" style="text-decoration: none; color: inherit;">
                 <h3>Despesa Gerais</h3>
                 <p style="color: #C0392B;">{{ summary.total_despesas_gerais | currency }}</p>
             </a>
@@ -169,7 +169,7 @@
                 <h2>O que você deseja fazer?</h2>
                 <div class="choice-modal-buttons">
                     <button id="btnVerGrafico" class="btn-primary">📊 Ver Gráfico Detalhado</button>
-                    <button id="btnAuditarViagens">🔍 Auditar Viagens (CT-es)</button>
+                    <button id="btnAuditar">🔍 Auditar</button>
                 </div>
             </div>
         </div>
@@ -462,70 +462,114 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- Elementos do fluxo ---
-    const linkFaturamento = document.getElementById('link-detalhes-faturamento');
-    const linkSuperiorFaturamento = document.getElementById('link-detalhes-superior');
-    
-    // Modal de Decisão
+    // --- Elementos dos Modais ---
     const choiceModal = document.getElementById('choiceModal');
-    const choiceCloseBtn = document.querySelector('.choice-close');
-    const btnVerGrafico = document.getElementById('btnVerGrafico');
-    const btnAuditarViagens = document.getElementById('btnAuditarViagens');
-
-    // Modal de Auditoria
     const conhecimentosModal = document.getElementById('conhecimentosModal');
-    const conhecimentosCloseBtn = document.querySelector('.conhecimentos-close');
-    const listaContainer = document.getElementById('conhecimentos-lista');
-
-    // Dados do backend
-    const conhecimentos = {{ summary.faturamento_conhecimentos|tojson }};
-    const urlGraficoDetalhado = `{{ url_for('faturamento_detalhes') }}?${window.location.search.substring(1)}`;
-
-    function openChoiceModal(event) {
-        event.preventDefault();
-        if (choiceModal) {
-            choiceModal.style.display = 'block';
-        }
-    }
-
-    if (linkFaturamento) linkFaturamento.addEventListener('click', openChoiceModal);
-    if (linkSuperiorFaturamento) linkSuperiorFaturamento.addEventListener('click', openChoiceModal);
+    const despesasAuditModal = document.getElementById('despesasAuditModal');
     
-    if (choiceModal && conhecimentosModal) {
-        // Botão "Ver Gráfico"
-        if (btnVerGrafico) {
-            btnVerGrafico.onclick = function() {
-                window.location.href = urlGraficoDetalhado;
-            };
-        }
-
-        // Botão "Auditar Viagens"
-        if (btnAuditarViagens) {
-            btnAuditarViagens.onclick = function() {
-                choiceModal.style.display = 'none';
-                listaContainer.innerHTML = '';
-                if (conhecimentos && conhecimentos.length > 0) {
-                    conhecimentos.forEach(function(num) {
-                        const item = document.createElement('div');
-                        item.className = 'conhecimento-item';
-                        item.textContent = num;
-                        listaContainer.appendChild(item);
-                    });
-                } else {
-                    listaContainer.innerHTML = '<p>Nenhum conhecimento encontrado para os filtros selecionados.</p>';
-                }
-                conhecimentosModal.style.display = 'block';
-            };
-        }
-
-        // Lógica para fechar os modais
-        if (choiceCloseBtn) choiceCloseBtn.onclick = () => { choiceModal.style.display = 'none'; };
-        if (conhecimentosCloseBtn) conhecimentosCloseBtn.onclick = () => { conhecimentosModal.style.display = 'none'; };
-        window.onclick = function(event) {
-            if (event.target == choiceModal) choiceModal.style.display = 'none';
-            if (event.target == conhecimentosModal) conhecimentosModal.style.display = 'none';
-        };
+    // Verifica se os modais essenciais existem antes de continuar
+    if (!choiceModal || !conhecimentosModal || !despesasAuditModal) {
+        console.error("Um ou mais modais necessários não foram encontrados no HTML.");
+        return;
     }
+
+    const btnVerGrafico = choiceModal.querySelector('#btnVerGrafico');
+    const btnAuditar = choiceModal.querySelector('#btnAuditar'); // Agora usa o ID genérico
+    const choiceCloseBtn = choiceModal.querySelector('.choice-close');
+
+    // --- Seleciona os links clicáveis ---
+    const faturamentoLink1 = document.getElementById('link-detalhes-superior');
+    const faturamentoLink2 = document.getElementById('link-detalhes-faturamento');
+    const despesasLink1 = document.getElementById('link-detalhes-superior-despesas');
+    const despesasLink2 = document.getElementById('link-detalhes-despesas');
+
+    // --- URLs e Dados do Backend ---
+    const urlGraficoFaturamento = `{{ url_for('faturamento_detalhes') }}?${window.location.search.substring(1)}`;
+    const urlGraficoDespesas = `{{ url_for('despesas_detalhes') }}?${window.location.search.substring(1)}`;
+    const conhecimentos = {{ summary.faturamento_conhecimentos|tojson if summary and summary.faturamento_conhecimentos else '[]' }};
+
+    // --- Funções Dedicadas para Abrir o Modal de Decisão ---
+    function openFaturamentoChoice(event) {
+        event.preventDefault();
+        btnVerGrafico.onclick = () => { window.location.href = urlGraficoFaturamento; };
+        btnAuditar.textContent = '🔍 Auditar Viagens (CT-es)';
+        btnAuditar.onclick = openFaturamentoAuditModal;
+        choiceModal.style.display = 'block';
+    }
+
+    function openDespesasChoice(event) {
+        event.preventDefault();
+        btnVerGrafico.onclick = () => { window.location.href = urlGraficoDespesas; };
+        btnAuditar.textContent = '🔍 Auditar Despesas';
+        btnAuditar.onclick = openDespesasAuditModal;
+        choiceModal.style.display = 'block';
+    }
+
+    // --- Anexa os eventos de clique às funções dedicadas ---
+    if (faturamentoLink1) faturamentoLink1.addEventListener('click', openFaturamentoChoice);
+    if (faturamentoLink2) faturamentoLink2.addEventListener('click', openFaturamentoChoice);
+    if (despesasLink1) despesasLink1.addEventListener('click', openDespesasChoice);
+    if (despesasLink2) despesasLink2.addEventListener('click', openDespesasChoice);
+
+    // --- Funções que abrem os modais de auditoria e fecham ---
+    function openFaturamentoAuditModal() { /* ... Lógica para abrir modal de faturamento ... */ }
+    function openDespesasAuditModal() { /* ... Lógica para abrir modal de despesas com fetch ... */ }
+
+    // (O código completo para as funções acima e para fechar os modais é incluído aqui para garantir o funcionamento)
+    function openFaturamentoAuditModal() {
+        choiceModal.style.display = 'none';
+        const container = conhecimentosModal.querySelector('#conhecimentos-lista');
+        container.innerHTML = '';
+        if (conhecimentos && conhecimentos.length > 0) {
+            conhecimentos.forEach(num => {
+                const item = document.createElement('div');
+                item.className = 'conhecimento-item';
+                item.textContent = num;
+                container.appendChild(item);
+            });
+        } else { container.innerHTML = '<p>Nenhum conhecimento encontrado.</p>'; }
+        conhecimentosModal.style.display = 'block';
+    }
+
+    function openDespesasAuditModal() {
+        choiceModal.style.display = 'none';
+        const lists = despesasAuditModal.querySelectorAll('.audit-list');
+        lists.forEach(list => list.innerHTML = '<p>Carregando...</p>');
+        despesasAuditModal.style.display = 'block';
+
+        fetch(`/api/despesas_audit_data?${new URLSearchParams(window.location.search).toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                function populateGroupList(containerId, groups) {
+                    const container = despesasAuditModal.querySelector('#' + containerId);
+                    if (!container) return;
+                    container.innerHTML = '';
+                    if (groups && Object.keys(groups).length > 0) {
+                        for (const groupName in groups) {
+                            const groupDiv = document.createElement('div'); groupDiv.className = 'audit-group';
+                            const title = document.createElement('h6'); title.textContent = groupName; groupDiv.appendChild(title);
+                            const keyList = document.createElement('ul'); keyList.className = 'audit-key-list';
+                            groups[groupName].forEach(key => {
+                                const listItem = document.createElement('li'); listItem.textContent = key; keyList.appendChild(listItem);
+                            });
+                            groupDiv.appendChild(keyList); container.appendChild(groupDiv);
+                        }
+                    } else { container.innerHTML = '<p>Nenhum item encontrado.</p>'; }
+                }
+                populateGroupList('audit-list-custos', data.custos);
+                populateGroupList('audit-list-despesas', data.despesas);
+                populateGroupList('audit-list-tipo-d', data.tipo_d);
+            });
+    }
+
+    document.querySelectorAll('.modal .close-button').forEach(btn => {
+        btn.onclick = function() { this.closest('.modal').style.display = 'none'; }
+    });
+    window.addEventListener('click', (event) => {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
+        }
+    });
 });
 </script>
 {% endblock %}

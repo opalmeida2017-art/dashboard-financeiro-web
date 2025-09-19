@@ -1136,12 +1136,10 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
 
     return dashboard_data
 
-# Adicione esta função ao final de data_manager.py
-
 def get_expense_audit_data(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list):
     """
     Coleta e organiza os dados de despesas em categorias para auditoria detalhada,
-    com os números das notas/CT-es agrupados por nome de grupo.
+    com os números das notas/CT-es agrupados por nome de grupo. VERSÃO CORRIGIDA.
     """
     # 1. Carrega e filtra os dados de base
     df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
@@ -1162,8 +1160,44 @@ def get_expense_audit_data(apartamento_id: int, start_date: datetime, end_date: 
 
     col_map = _get_case_insensitive_column_map(pd.concat([df_custos, df_despesas_gerais, df_tipo_d]))
     
-    audit_data = {}
+    audit_data = {
+        'custos': {},
+        'despesas': {},
+        'tipo_d': {}
+    }
 
+    def process_category(df_category: pd.DataFrame):
+        """Função interna para processar e agrupar os dados de uma categoria."""
+        if df_category.empty:
+            return {}
+
+        grouped_data = {}
+        
+        # Separa os grupos normais dos especiais (Quebra/Comissão)
+        df_normal = df_category[~df_category[col_map['descgrupod']].isin(['VALOR QUEBRA', 'COMISSÃO DE MOTORISTA'])]
+        df_special = df_category[df_category[col_map['descgrupod']].isin(['VALOR QUEBRA', 'COMISSÃO DE MOTORISTA'])]
+
+        # Processa grupos normais (usando 'numnota')
+        if not df_normal.empty and col_map.get('numnota') in df_normal.columns:
+            normal_groups = df_normal.groupby(col_map['descgrupod'])[col_map['numnota']].unique().apply(list).to_dict()
+            grouped_data.update(normal_groups)
+
+        # Processa grupos especiais (usando 'numconhec')
+        if not df_special.empty and col_map.get('numconhec') in df_special.columns:
+            special_groups = df_special.groupby(col_map['descgrupod'])[col_map['numconhec']].unique().apply(list).to_dict()
+            grouped_data.update(special_groups)
+            
+        return grouped_data
+
+    # 3. Processa cada categoria
+    audit_data['custos'] = process_category(df_custos)
+    audit_data['despesas'] = process_category(df_despesas_gerais)
+    
+    # Tipo D nunca terá Quebra/Comissão, então o agrupamento é simples
+    if not df_tipo_d.empty and col_map.get('numnota') in df_tipo_d.columns:
+        audit_data['tipo_d'] = df_tipo_d.groupby(col_map['descgrupod'])[col_map['numnota']].unique().apply(list).to_dict()
+
+    return audit_data
     def group_data(df, group_col, key_col):
         """Função auxiliar para agrupar e formatar os dados."""
         if df.empty or group_col not in df.columns or key_col not in df.columns:
