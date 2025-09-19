@@ -361,10 +361,14 @@ def _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_f
 
 # SUBSTITUA ESTA FUNÇÃO EM data_manager.py
 
+# data_manager.py
+
+# ... (outro código do arquivo)
+
 def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_date: datetime = None, placa_filter: str = "Todos", filial_filter: list = None) -> dict:
     """
     Calcula os KPIs para o dashboard principal.
-    VERSÃO CORRIGIDA: Garante que o rateio do Tipo D só se aplique a veículos 'Próprios'.
+    VERSÃO ATUALIZADA: Adiciona a lista de 'numConhec' para a funcionalidade de auditoria.
     """
     # 1. Carregamento e filtragem
     df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
@@ -386,25 +390,31 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
         df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
     df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_ids)]
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
-    summary['faturamento_total_viagens'] = df_fat_filtrado[col_map_fat['freteempresa']].sum() if not df_fat_filtrado.empty and 'freteempresa' in col_map_fat else 0
+    
+    # --- INÍCIO DA ALTERAÇÃO NECESSÁRIA PARA A AUDITORIA ---
+    if not df_fat_filtrado.empty and 'freteempresa' in col_map_fat:
+        summary['faturamento_total_viagens'] = df_fat_filtrado[col_map_fat['freteempresa']].sum()
+        # Coleta a lista de conhecimentos para a auditoria
+        summary['faturamento_conhecimentos'] = df_fat_filtrado['numConhec'].unique().tolist()
+    else:
+        summary['faturamento_total_viagens'] = 0
+        summary['faturamento_conhecimentos'] = []
+    # --- FIM DA ALTERAÇÃO NECESSÁRIA PARA A AUDITORIA ---
 
-    # 3. Cálculo de Custo e Despesa Geral
+    # 3. Cálculo de Custo e Despesa Geral (sem alterações)
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags)
     df_custos = expense_data['custos']
     df_despesas_gerais = expense_data['despesas']
-    summary['custo_total_viagem'] = df_custos['valor_calculado'].sum()
-    summary['total_despesas_gerais'] = df_despesas_gerais['valor_calculado'].sum()
-    
-    # --- INÍCIO DA CORREÇÃO ---
-    # 4. Lógica de Despesa Tipo D com verificação do tipo de veículo
+    summary['custo_total_viagem'] = df_custos['valor_calculado'].sum() if not df_custos.empty else 0
+    summary['total_despesas_gerais'] = df_despesas_gerais['valor_calculado'].sum() if not df_despesas_gerais.empty else 0
 
-    # Pega o total de despesas Tipo D que foram marcadas para inclusão pelo usuário
+    
+    # 4. Lógica de Despesa Tipo D (sem alterações)
     df_despesas_sem_placa = apply_filters_to_df(df_despesas_raw, start_date, end_date, "Todos", filial_filter)
     col_map_despesas_geral = _get_case_insensitive_column_map(df_despesas_sem_placa.columns)
     df_tipo_d_bruto = pd.DataFrame()
     if 'ved' in col_map_despesas_geral:
         df_tipo_d_bruto = df_despesas_sem_placa[df_despesas_sem_placa[col_map_despesas_geral['ved']] == 'D'].copy()
-
     soma_bruta_tipo_d = 0
     if not df_tipo_d_bruto.empty:
         df_tipo_d_com_flags = pd.merge(df_tipo_d_bruto, df_flags, left_on=col_map_despesas_geral.get('descgrupod'), right_on='group_name', how='left')
@@ -412,45 +422,36 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
         if not df_tipo_d_final_para_soma.empty:
             df_tipo_d_final_para_soma.loc[:, 'valor_calculado'] = np.where(df_tipo_d_final_para_soma[col_map_despesas_geral['serie']] == 'RQ', df_tipo_d_final_para_soma[col_map_despesas_geral['liquido']], df_tipo_d_final_para_soma[col_map_despesas_geral['vlcontabil']])
             soma_bruta_tipo_d = df_tipo_d_final_para_soma['valor_calculado'].sum()
-
-    # O valor padrão é a soma bruta (para quando não há filtro de placa)
     valor_final_tipo_d = soma_bruta_tipo_d
-    
     if placa_filter and placa_filter != 'Todos':
         placas_com_tipos = get_unique_plates_with_types(apartamento_id)
         lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
-        
-        # A lógica de rateio só é aplicada se a placa filtrada for do tipo 'Próprio'
         if placa_filter in lista_placas_proprias:
             contagem_veiculos_proprios = len(lista_placas_proprias)
             valor_final_tipo_d = (soma_bruta_tipo_d / contagem_veiculos_proprios) if contagem_veiculos_proprios > 0 else 0
         else:
-            # Se o veículo não for 'Próprio' (ex: Apoio), o valor rateado é zero
             valor_final_tipo_d = 0
-            
     summary['total_despesas_tipo_d'] = valor_final_tipo_d
-    # --- FIM DA CORREÇÃO ---
 
-    # 5. Restante dos cálculos
+    # 5. Restante dos cálculos (sem alterações)
     if not df_contas_pagar_raw.empty:
         col_map_cp = _get_case_insensitive_column_map(df_contas_pagar_raw.columns)
         df_cp_pendentes = df_contas_pagar_raw[pd.to_numeric(df_contas_pagar_raw.get(col_map_cp.get('codtransacao')), errors='coerce').fillna(0) == 0]
         summary['saldo_contas_a_pagar_pendentes'] = df_cp_pendentes[col_map_cp['liquidoitemnota']].sum() if 'liquidoitemnota' in col_map_cp else 0
     else:
         summary['saldo_contas_a_pagar_pendentes'] = 0
-    
     if not df_contas_receber_raw.empty:
         col_map_cr = _get_case_insensitive_column_map(df_contas_receber_raw.columns)
         df_cr_pendentes = df_contas_receber_raw[pd.to_numeric(df_contas_receber_raw.get(col_map_cr.get('codtransacao')), errors='coerce').fillna(0) == 0]
         summary['saldo_contas_a_receber_pendentes'] = df_cr_pendentes[col_map_cr['valorvenc']].sum() if 'valorvenc' in col_map_cr else 0
     else:
         summary['saldo_contas_a_receber_pendentes'] = 0
-
     custo_operacional_total = summary['custo_total_viagem'] + summary['total_despesas_gerais'] + summary['total_despesas_tipo_d']
     summary['saldo_geral'] = summary['faturamento_total_viagens'] - custo_operacional_total
     summary['margem_frete'] = (summary['saldo_geral'] / summary['faturamento_total_viagens'] * 100) if summary.get('faturamento_total_viagens', 0) > 0 else 0
     
     return summary
+
 
 def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter, filial_filter) -> pd.DataFrame:
     periodo_format = 'M'

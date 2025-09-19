@@ -6,22 +6,30 @@
     .placa-terceiro { color: #27AE60; }
     .placa-agregado { color: #F39C12; }
     .placa-apoio { color: #8E44AD; font-style: italic; }
+
+    /* --- CÓDIGO ACRESCENTADO: ESTILOS PARA OS NOVOS MODAIS --- */
+    .choice-modal-body { text-align: center; padding: 20px; }
+    .choice-modal-buttons { display: flex; justify-content: center; gap: 20px; margin-top: 25px; }
+    .choice-modal-buttons button { padding: 12px 24px; font-size: 16px; cursor: pointer; border-radius: 5px; border: 1px solid #ccc; background-color: #f9f9f9; transition: background-color 0.2s; }
+    .choice-modal-buttons button:hover { background-color: #e9e9e9; }
+    .choice-modal-buttons .btn-primary { background-color: #007bff; color: white; border-color: #007bff; }
+    .choice-modal-buttons .btn-primary:hover { background-color: #0056b3; }
+    .conhecimentos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-top: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; max-height: 400px; overflow-y: auto; }
+    .conhecimento-item { background-color: #f2f2f2; padding: 5px; text-align: center; border-radius: 4px; font-weight: 500; font-size: 0.9em; }
+    /* --- FIM DO CÓDIGO ACRESCENTADO --- */
 </style>
     <h1>Dashboard Transporte</h1>
 
 <div class="filters">
     <form method="GET" action="/">
-        
         <div class="filter-item">
             <label for="start_date">Data Início:</label>
             <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
         </div>
-        
         <div class="filter-item">
             <label for="end_date">Data Fim:</label>
             <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
         </div>
-        
         <div class="filter-item">
             <label for="placa">Placa:</label>
             <select name="placa" id="placa">
@@ -52,11 +60,9 @@
                 </div>
             </div>
         </div>
-        
         <div class="filter-item">
             <button type="submit">Aplicar Filtros</button>
         </div>
-        
         <div class="action-buttons">
             <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
             <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
@@ -85,7 +91,7 @@
             <p style="color: #E67E22;">{{ summary.custo_total_viagem | currency }}</p>
         </div>
         <div class="card card-com-link-hover">
-            <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" class="link-detalhes-container">
+             <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" class="link-detalhes-container">
                 Análise Detalhada de Despesa &rarr;
             </a>
             <a href="{{ url_for('despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}" style="text-decoration: none; color: inherit;">
@@ -100,7 +106,7 @@
                 <h3>Despesas Tipo D</h3>
             {% endif %}
             <p style="color: #8E44AD;">{{ summary.total_despesas_tipo_d | currency }}</p>
-      </div>
+        </div>
         <div class="card">
             <h3>Lucro Liquido</h3>
             <p style="color: {% if summary.saldo_geral >= 0 %}#2ECC71{% else %}#C0392B{% endif %};">{{ summary.saldo_geral | currency }}</p>
@@ -116,6 +122,27 @@
         <div class="card">
             <h3>Contas a Receber Pendentes</h3>
             <p style="color: #2980B9;">{{ summary.saldo_contas_a_receber_pendentes | currency }}</p>
+        </div>
+    </div>
+
+    <div id="choiceModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button choice-close">&times;</span>
+            <div class="choice-modal-body">
+                <h2>O que você deseja fazer?</h2>
+                <div class="choice-modal-buttons">
+                    <button id="btnVerGrafico" class="btn-primary">📊 Ver Gráfico Detalhado</button>
+                    <button id="btnAuditarViagens">🔍 Auditar Viagens (CT-es)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="conhecimentosModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button conhecimentos-close">&times;</span>
+            <h2>Conhecimentos do Faturamento</h2>
+            <p>Esta é a lista de todos os conhecimentos (CT-es) que compõem o valor total de faturamento para os filtros selecionados.</p>
+            <div id="conhecimentos-lista" class="conhecimentos-grid"></div>
         </div>
     </div>
     {% else %}
@@ -146,7 +173,7 @@
                 <h2>Upload de Novas Planilhas</h2>
                 <p>Selecione uma ou mais planilhas...</p>
                 <form id="uploadForm" method="POST" action="/upload" enctype="multipart/form-data">                    
-    <div class="form-group">
+                    <div class="form-group">
                         <label for="files">1. Escolha os arquivos no seu computador:</label>
                         <input type="file" name="files[]" id="files" multiple required>
                     </div>
@@ -176,18 +203,11 @@
             filterForm.addEventListener('submit', function(event) {
                 const startDateInput = document.getElementById('start_date');
                 const endDateInput = document.getElementById('end_date');
-
                 const startDateValue = startDateInput.value;
                 const endDateValue = endDateInput.value;
-
-                // A validação só acontece se ambas as datas estiverem preenchidas
                 if (startDateValue && endDateValue) {
-                    
-                    // ALTERAÇÃO: Comparamos os textos diretamente. É mais seguro.
                     if (startDateValue > endDateValue) {
-                        // Impede o envio do formulário (a aplicação do filtro)
                         event.preventDefault();
-                        // Exibe um alerta para o usuário
                         alert('Atenção: A data inicial não pode ser maior que a data final.');
                     }
                 }
@@ -210,44 +230,22 @@
                         }
                         return; 
                     }
-
                     const labels = data.map(item => item.PeriodoLabel);
                     const faturamentoData = data.map(item => item.Faturamento);
                     const custoData = data.map(item => item.Custo);
                     const despesasGeraisData = data.map(item => item.DespesasGerais);
-                    
                     const ctx = chartCanvas.getContext('2d');
                     new Chart(ctx, {
                         type: 'bar',
                         data: {
                             labels: labels,
                             datasets: [
-                                { 
-                                    label: 'Faturamento', 
-                                    data: faturamentoData, 
-                                    backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                                    stack: 'grupoFaturamento'
-                                },
-                                { 
-                                    label: 'Custo de Viagem', 
-                                    data: custoData, 
-                                    backgroundColor: 'rgba(255, 159, 64, 0.7)',
-                                    stack: 'grupoCustos'
-                                },
-                                { 
-                                    label: 'Despesa Geral', 
-                                    data: despesasGeraisData, 
-                                    backgroundColor: 'rgba(255, 99, 132, 0.7)',
-                                    stack: 'grupoCustos'
-                                }
+                                { label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(54, 162, 235, 0.7)', stack: 'grupoFaturamento' },
+                                { label: 'Custo de Viagem', data: custoData, backgroundColor: 'rgba(255, 159, 64, 0.7)', stack: 'grupoCustos' },
+                                { label: 'Despesa Geral', data: despesasGeraisData, backgroundColor: 'rgba(255, 99, 132, 0.7)', stack: 'grupoCustos' }
                             ]
                         },
-                        options: { 
-                            scales: { 
-                                x: { stacked: false },
-                                y: { stacked: true } 
-                            } 
-                        }
+                        options: { scales: { x: { stacked: false }, y: { stacked: true } } }
                     });
                 })
                 .catch(error => {
@@ -277,8 +275,6 @@
         const manageCloseBtn = document.querySelector('.manage-close');
         const tableContainer = document.getElementById('manageGroupsTableContainer');
 
-        // SUBSTITUA O BLOCO manageBtn.onclick EM SEU index.html
-
         if (manageBtn) {
             manageBtn.onclick = function() {
                 tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
@@ -291,28 +287,15 @@
                             const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
                             const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
                             const isTipoDChecked = flags[group].incluir_em_tipo_d ? 'checked' : '';
-                            
                             const hasTipoD = flags[group].has_tipo_d;
-                            const hasTipoV = flags[group].has_tipo_v;
-                            
-                            let custoDespesaCheckboxes = '';
-                            if (hasTipoV) {
-                                custoDespesaCheckboxes = `
-                                    <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
-                                    <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
-                                `;
-                            }
-
-                            let tipoDCheckbox = '';
+                            let tipoDCheckboxHTML = '';
                             if (hasTipoD) {
-                                // Adiciona uma quebra de linha se os outros checkboxes também estiverem visíveis
-                                const lineBreak = hasTipoV ? '<br>' : '';
-                                tipoDCheckbox = `${lineBreak}<label style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Tipo D</label>`;
+                                tipoDCheckboxHTML = `<br><label style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Tipo D</label>`;
                             }
-
                             tableHTML += `<tr><td>${group}</td><td>
-                                ${custoDespesaCheckboxes}
-                                ${tipoDCheckbox}
+                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="custo" name="${group}_custo" ${isCustoChecked}> É um Custo de Viagem</label><br>
+                                <label><input type="checkbox" class="classification-cb" data-group="${group}" data-type="despesa" name="${group}_despesa" ${isDespesaChecked}> É uma Despesa Geral</label>
+                                ${tipoDCheckboxHTML}
                             </td></tr>`;
                         }
                         tableHTML += '</tbody></table>';
@@ -354,7 +337,6 @@
         const uploadForm = document.getElementById('uploadForm');
         const uploadFormContainer = document.getElementById('uploadFormContainer');
         const progressContainer = document.getElementById('progressContainer');
-
         if (uploadForm) {
             uploadForm.addEventListener('submit', function() {
                 uploadFormContainer.style.display = 'none';
@@ -386,45 +368,107 @@
                 }
             });
         }
-    const multiselect = document.getElementById('filial-multiselect');
-        
-    if (multiselect) {
-        const btn = document.getElementById('filial-multiselect-btn');
-        const dropdown = document.getElementById('filial-dropdown');
-        const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
-
-        function updateButtonText() {
-            const checkedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
-            const checkedCount = checkedCheckboxes.length;
-            
-            if (checkedCount === 0) {
-                btn.textContent = 'Selecionar Filiais';
-            } else if (checkedCount === 1) {
-                btn.textContent = checkedCheckboxes[0].value;
-            } else if (checkedCount === checkboxes.length) {
-                btn.textContent = 'Todas as filiais';
-            } else {
-                btn.textContent = `${checkedCount} filiais selecionadas`;
+        const multiselect = document.getElementById('filial-multiselect');
+        if (multiselect) {
+            const btn = document.getElementById('filial-multiselect-btn');
+            const dropdown = document.getElementById('filial-dropdown');
+            const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+            function updateButtonText() {
+                const checkedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
+                const checkedCount = checkedCheckboxes.length;
+                if (checkedCount === 0) {
+                    btn.textContent = 'Selecionar Filiais';
+                } else if (checkedCount === 1) {
+                    btn.textContent = checkedCheckboxes[0].value;
+                } else if (checkedCount === checkboxes.length) {
+                    btn.textContent = 'Todas as filiais';
+                } else {
+                    btn.textContent = `${checkedCount} filiais selecionadas`;
+                }
             }
+            btn.addEventListener('click', function(event) {
+                dropdown.classList.toggle('show');
+                event.stopPropagation();
+            });
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', updateButtonText);
+            });
+            window.addEventListener('click', function(event) {
+                if (dropdown.classList.contains('show') && !multiselect.contains(event.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+            updateButtonText();
+        }
+    });
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Elementos do fluxo ---
+    const linkFaturamento = document.getElementById('link-detalhes-faturamento');
+    const linkSuperiorFaturamento = document.getElementById('link-detalhes-superior');
+    
+    // Modal de Decisão
+    const choiceModal = document.getElementById('choiceModal');
+    const choiceCloseBtn = document.querySelector('.choice-close');
+    const btnVerGrafico = document.getElementById('btnVerGrafico');
+    const btnAuditarViagens = document.getElementById('btnAuditarViagens');
+
+    // Modal de Auditoria
+    const conhecimentosModal = document.getElementById('conhecimentosModal');
+    const conhecimentosCloseBtn = document.querySelector('.conhecimentos-close');
+    const listaContainer = document.getElementById('conhecimentos-lista');
+
+    // Dados do backend
+    const conhecimentos = {{ summary.faturamento_conhecimentos|tojson }};
+    const urlGraficoDetalhado = `{{ url_for('faturamento_detalhes') }}?${window.location.search.substring(1)}`;
+
+    function openChoiceModal(event) {
+        event.preventDefault();
+        if (choiceModal) {
+            choiceModal.style.display = 'block';
+        }
+    }
+
+    if (linkFaturamento) linkFaturamento.addEventListener('click', openChoiceModal);
+    if (linkSuperiorFaturamento) linkSuperiorFaturamento.addEventListener('click', openChoiceModal);
+    
+    if (choiceModal && conhecimentosModal) {
+        // Botão "Ver Gráfico"
+        if (btnVerGrafico) {
+            btnVerGrafico.onclick = function() {
+                window.location.href = urlGraficoDetalhado;
+            };
         }
 
-        btn.addEventListener('click', function(event) {
-            dropdown.classList.toggle('show');
-            event.stopPropagation();
-        });
+        // Botão "Auditar Viagens"
+        if (btnAuditarViagens) {
+            btnAuditarViagens.onclick = function() {
+                choiceModal.style.display = 'none';
+                listaContainer.innerHTML = '';
+                if (conhecimentos && conhecimentos.length > 0) {
+                    conhecimentos.forEach(function(num) {
+                        const item = document.createElement('div');
+                        item.className = 'conhecimento-item';
+                        item.textContent = num;
+                        listaContainer.appendChild(item);
+                    });
+                } else {
+                    listaContainer.innerHTML = '<p>Nenhum conhecimento encontrado para os filtros selecionados.</p>';
+                }
+                conhecimentosModal.style.display = 'block';
+            };
+        }
 
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', updateButtonText);
-        });
-
-        window.addEventListener('click', function(event) {
-            if (dropdown.classList.contains('show') && !multiselect.contains(event.target)) {
-                dropdown.classList.remove('show');
-            }
-        });
-        
-        updateButtonText();
+        // Lógica para fechar os modais
+        if (choiceCloseBtn) choiceCloseBtn.onclick = () => { choiceModal.style.display = 'none'; };
+        if (conhecimentosCloseBtn) conhecimentosCloseBtn.onclick = () => { conhecimentosModal.style.display = 'none'; };
+        window.onclick = function(event) {
+            if (event.target == choiceModal) choiceModal.style.display = 'none';
+            if (event.target == conhecimentosModal) conhecimentosModal.style.display = 'none';
+        };
     }
-    });
+});
 </script>
 {% endblock %}
