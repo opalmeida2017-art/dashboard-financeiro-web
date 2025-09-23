@@ -1,6 +1,7 @@
 # database.py
 from sqlalchemy import create_engine, text,inspect
 from sqlalchemy.exc import SQLAlchemyError
+import re
 import shutil
 import os
 import pandas as pd
@@ -53,56 +54,52 @@ def create_tables():
     print("AVISO: A criação de tabelas agora é gerenciada pelo Alembic.")
     pass
 
-# Em database.py
-
-# Em database.py, substitua a sua função _clean_and_convert_data por esta:
-
 def _clean_and_convert_data(df, table_key):
     """
-    Limpa e converte os tipos de dados, forçando o formato de data para YYYY-MM-DD
-    para garantir compatibilidade com qualquer configuração 'datestyle' do PostgreSQL.
+    Limpa e converte os tipos de dados.
+    VERSÃO FINAL: Primeiro remove espaços de todas as colunas de texto.
     """
-    # 1. Limpeza agressiva de valores de texto que representam nulos
-    df.replace(to_replace=r'^(nan|NaT)$', value=np.nan, regex=True, inplace=True)
+    # --- ETAPA 1: REMOÇÃO DE ESPAÇOS EM TODAS AS CÉLULAS DE TEXTO (NOVA LÓGICA) ---
+    print(" -> Removendo espaços em branco de todas as células de texto...")
+    for col in df.select_dtypes(include=['object']).columns:
+        # Usa .loc para garantir que a modificação seja feita corretamente
+        df.loc[:, col] = df[col].astype(str).str.strip()
 
+    # --- ETAPA 2: LIMPEZA AGRESSIVA DE 'nan' ---
+    df.replace(to_replace=re.compile(r'^\s*(nan|nat)\s*$', re.IGNORECASE), value=np.nan, regex=True, inplace=True)
+    
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
-
     col_maps = config.TABLE_COLUMN_MAPS.get(table_key, {})
     
-    # 2. Processa colunas de data, forçando o formato universal
+    # --- ETAPA 3: CONVERSÃO DE TIPOS ---
     date_columns_info = col_maps.get('date_formats', {})
     for col_db, date_format in date_columns_info.items():
         if col_db in df.columns:
             s = pd.to_datetime(df[col_db], errors='coerce', format=date_format, dayfirst=not date_format)
-            # Converte para o formato ISO 'YYYY-MM-DD', que é universalmente aceito.
             df[col_db] = s.dt.strftime('%Y-%m-%d')
-
-    # 3. Processa outros tipos de coluna
-    for col in df.columns:
-        if col not in date_columns_info and df[col].dtype == 'object':
-            try:
-                df.loc[:, col] = df[col].astype(str).str.strip()
-            except Exception as e:
-                print(f"Aviso: Não foi possível limpar a coluna de texto '{col}': {e}")
 
     for col_type in ['numeric', 'integer']:
         for col_db in col_maps.get(col_type, []):
             if col_db in df.columns:
                 if df[col_db].dtype == 'object':
-                    df[col_db] = df[col_db].str.replace('.', '', regex=False)
-                    df[col_db] = df[col_db].str.replace(',', '.', regex=False)
+                    df[col_db] = df[col_db].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
                 df[col_db] = pd.to_numeric(df[col_db], errors='coerce').fillna(0)
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
     
-    # 4. Tratamento final de nulos, convertendo para None
+    # --- ETAPA 4: TRATAMENTO FINAL DE NULOS ---
     df = df.astype(object).where(pd.notna(df), None)
                     
     return df
 
+def get_db_connection():
+    raw_conn = engine.raw_connection()
+    raw_conn.cursor_factory = psycopg2.extras.DictCursor
+    return raw_conn
+
+
 def _validate_columns(excel_columns, table_name):
-    """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
     try:
         with engine.connect() as conn:
             query = text("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :table_name")
@@ -111,53 +108,39 @@ def _validate_columns(excel_columns, table_name):
     except SQLAlchemyError as e:
         print(f"AVISO: Não foi possível ler colunas da tabela '{table_name}'. Erro: {e}")
         return excel_columns, []
-
     db_columns_lower = {col.lower() for col in db_columns_case_sensitive}
     extra_cols_names = [col for col in excel_columns if col.lower() not in db_columns_lower]
     valid_columns_original_case = [col for col in excel_columns if col.lower() in db_columns_lower]
     return valid_columns_original_case, extra_cols_names
 
 def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_columns: list, apartamento_id: int):
-    """
-    Importa dados do Excel, apagando apenas registros correspondentes para atualizar.
-    Usa SQLAlchemy engine para compatibilidade total com pandas e PostgreSQL.
-    """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
         df_novo = _clean_and_convert_data(df_novo, table_name)
-        
         df_novo['apartamento_id'] = apartamento_id
-
         valid_columns, extra_columns = _validate_columns(df_novo.columns.tolist(), table_name)
         df_import = df_novo[valid_columns]
-
         if df_import.empty:
             print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
             return extra_columns
-        
         with engine.begin() as conn:
             print(f"Iniciando importação com atualização para a tabela '{table_name}'...")
-            
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
-            
             where_clauses = [f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
-            
             sql_delete = text(f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = :apt_id;')
             print(f" -> Removendo registros antigos/correspondentes para evitar duplicatas...")
             result = conn.execute(sql_delete, {'apt_id': apartamento_id})
             print(f" -> {result.rowcount} registros antigos foram removidos.")
-            
             print(f" -> Inserindo {len(df_import)} novos/atualizados registros...")
             df_import.to_sql(table_name, conn, if_exists='append', index=False)
-            
             print(f" -> Importação para a tabela '{table_name}' concluída com sucesso.")
-
         return extra_columns
     except Exception as e:
         print(f"Erro ao importar dados da planilha '{sheet_name}' para '{table_name}': {e}")
         raise e
+
 
 def process_and_import_despesas(excel_source, sheet_name: str, table_name: str, apartamento_id: int):
     extra_columns = []
@@ -223,16 +206,6 @@ def import_single_excel_to_db(filepath: str, file_key: str, apartamento_id: int)
     except Exception as e:
         print(f"ERRO ao importar o arquivo '{os.path.basename(filepath)}': {e}")
         raise e
-    
-def table_exists(table_name: str) -> bool:
-    try:
-        with engine.connect() as conn:
-            query = text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = :table_name)")
-            result = conn.execute(query, {'table_name': table_name}).scalar()
-            return result or False
-    except SQLAlchemyError as e:
-        print(f"Erro ao verificar existência da tabela {table_name}: {e}")
-        return False
 
 def process_and_import_contas_pagar(excel_source, sheet_name: str, table_name: str, apartamento_id: int):
     extra_columns = []
@@ -313,6 +286,10 @@ def process_and_import_contas_receber(excel_source, sheet_name: str, table_name:
         raise e
 
 def processar_downloads_na_pasta(apartamento_id: int):
+    """
+    Processa todos os ficheiros Excel na pasta de downloads, LOGANDO cada passo
+    para o banco de dados.
+    """
     logar_progresso(apartamento_id, f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     
     pasta_principal = os.path.dirname(os.path.abspath(__file__))
@@ -324,6 +301,7 @@ def processar_downloads_na_pasta(apartamento_id: int):
 
     for filename in os.listdir(pasta_downloads):
         if filename.endswith(('.xls', '.xlsx')):
+            # Encontra a 'chave' do arquivo (ex: 'viagens', 'despesas') com base no nome do arquivo
             file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
             
             if file_key:
@@ -333,6 +311,7 @@ def processar_downloads_na_pasta(apartamento_id: int):
                     sheet_name = table_info.get('sheet_name')
                     table_name = table_info['table']
                     
+                    # Usa a lógica de importação apropriada para cada tabela
                     if table_name == 'relFilDespesasGerais':
                         process_and_import_despesas(caminho_completo, sheet_name, table_name, apartamento_id)
                     elif table_name == 'relFilContasPagarDet':
@@ -340,6 +319,7 @@ def processar_downloads_na_pasta(apartamento_id: int):
                     elif table_name == 'relFilContasReceber':
                         process_and_import_contas_receber(caminho_completo, sheet_name, table_name, apartamento_id)
                     else:
+                        # Para todas as outras tabelas, usa a importação padrão
                         key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
                         if not key_columns:
                             logar_progresso(apartamento_id, f"ERRO: Chaves primárias não definidas para '{table_name}'.")
@@ -355,3 +335,13 @@ def processar_downloads_na_pasta(apartamento_id: int):
                 logar_progresso(apartamento_id, f"Aviso: Ficheiro '{filename}' não reconhecido.")
 
     logar_progresso(apartamento_id, "--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
+
+def table_exists(table_name: str) -> bool:
+    try:
+        with engine.connect() as conn:
+            query = text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = :table_name)")
+            result = conn.execute(query, {'table_name': table_name}).scalar()
+            return result or False
+    except SQLAlchemyError as e:
+        print(f"Erro ao verificar existência da tabela {table_name}: {e}")
+        return False
