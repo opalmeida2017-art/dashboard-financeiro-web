@@ -234,7 +234,7 @@ def index():
     tipos_negocio = logic.get_unique_negocios(apartamento_id=apartamento_id_alvo) # <-- NOVO
     
     # --- INÍCIO DA ADIÇÃO PARA DEPURAÇÃO ---
-    debug_version = "v4.0_DEPLOY_FINAL" # Um número de versão claro e único
+    debug_version = "v4.1_DEPLOY_FINAL" # Um número de versão claro e único
     # --- FIM DA ADIÇÃO PARA DEPURAÇÃO ---
     
     placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
