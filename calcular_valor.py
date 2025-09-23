@@ -1,39 +1,43 @@
-import pandas as pd
 
-# CORREÇÃO 1: Alterado para o nome exato do arquivo que está na sua pasta.
-nome_do_arquivo_excel = 'relFilDespesasGerais.xls'
+import pandas as pd
+from sqlalchemy import create_engine
+from dotenv import load_dotenv
+import os
+import database as db # <-- 1. IMPORTA O ARQUIVO database.py
+
+load_dotenv()
+
+# Configurações do banco de dados e arquivos
+db_url = os.getenv('DATABASE_URL')
+engine = create_engine(db_url)
+
+# Caminho para o arquivo Excel e nome da tabela de destino
+caminho_arquivo = "downloads/2/relFilViagensFatCliente.xls"
+tabela_destino = "relFilViagensFatCliente"
+
+# IMPORTANTE: Chave da tabela conforme definido em config.py
+# Use a chave correta que corresponde a 'tabela_destino'
+key_da_tabela_no_config = 'viagens' # Ex: 'viagens' ou 'viagens_cliente'
 
 try:
-    # CORREÇÃO 2: Usando pd.read_excel() para ler o arquivo Excel.
-    # A aba 'Despesas Gerais' é a mais provável, com base no nome original do arquivo.
-    df = pd.read_excel(nome_do_arquivo_excel, sheet_name='Despesas Gerais')
+    print(f"Lendo o arquivo: {caminho_arquivo}...")
+    df = pd.read_excel(caminho_arquivo)
+    print("Leitura concluída com sucesso.")
 
-    # 1. Filtra para o grupo 'ACESSORIO'
-    df_acessorio = df[df['descGrupoD'] == 'ACESSORIOS'].copy()
+    # --- INÍCIO DA CORREÇÃO ---
+    # 2. CHAMA A FUNÇÃO DE LIMPEZA ANTES DE SALVAR
+    # Usa a mesma função de limpeza do sistema principal para garantir a consistência dos dados
+    print("Aplicando limpeza e conversão de dados...")
+    df = db._clean_and_convert_data(df, key_da_tabela_no_config)
+    print("Limpeza de dados concluída.")
+    # --- FIM DA CORREÇÃO ---
 
-    # 2. Aplica os filtros de importação do sistema
-    df_filtrado = df_acessorio[
-        (df_acessorio['VED'] != 'E') &
-        (df_acessorio['despesa'] == 'S')
-    ].copy()
-
-    # 3. Limpa e converte a coluna 'vlcontabil' para um formato numérico
-    if not df_filtrado.empty:
-        df_filtrado['vlcontabil'] = df_filtrado['vlcontabil'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
-        
-        # 4. Soma a coluna 'vlcontabil'
-        soma_vlcontabil = df_filtrado['vlcontabil'].sum()
-
-        print("\n--- CÁLCULO FINALIZADO ---")
-        print(f"Grupo: ACESSORIOS")
-        print(f"Soma da coluna 'vlcontabil' (após filtros): {soma_vlcontabil:,.2f}")
-        print("--------------------------\n")
-
-    else:
-        print("Nenhuma linha para o grupo 'ACESSORIO' passou nos filtros do sistema (VED != 'E' e despesa == 'S').")
+    # Insere os dados limpos no banco de dados
+    print(f"Inserindo dados na tabela '{tabela_destino}'...")
+    df.to_sql(tabela_destino, engine, if_exists='replace', index=False)
+    print("Dados inseridos com sucesso!")
 
 except FileNotFoundError:
-    print(f"ERRO: O arquivo '{nome_do_arquivo_excel}' não foi encontrado na pasta C:\\python\\BIWEB\\.")
+    print(f"Erro: O arquivo '{caminho_arquivo}' não foi encontrado.")
 except Exception as e:
-    print(f"Ocorreu um erro ao processar o arquivo Excel: {e}")
-    print("Dica: Verifique se o nome da aba no seu arquivo Excel é realmente 'Despesas Gerais'.")
+    print(f"Ocorreu um erro durante o processo: {e}")
