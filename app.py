@@ -233,6 +233,10 @@ def index():
     filiais = logic.get_unique_filiais(apartamento_id=apartamento_id_alvo)
     tipos_negocio = logic.get_unique_negocios(apartamento_id=apartamento_id_alvo) # <-- NOVO
     
+    # --- INÍCIO DA ADIÇÃO PARA DEPURAÇÃO ---
+    debug_version = "v4.0_DEPLOY_FINAL" # Um número de versão claro e único
+    # --- FIM DA ADIÇÃO PARA DEPURAÇÃO ---
+    
     placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
     
     return render_template('index.html', 
@@ -245,7 +249,8 @@ def index():
                            selected_start_date=filters['start_date_str'],
                            selected_end_date=filters['end_date_str'],
                            selected_tipo_negocio=selected_tipo_negocio, # <-- NOVO
-                           placa_filtrada=placa_filtrada)
+                           placa_filtrada=placa_filtrada,
+                            debug_version=debug_version)
     
 @app.route('/faturamento_detalhes')
 @login_required
@@ -840,6 +845,8 @@ def api_relatorio_viagem(num_conhec):
         dados_relatorio["custos_detalhados"] = custos_formatados
 
     return jsonify(dados_relatorio)
+
+
 
 scheduler.add_job(run_scheduled_collections, 'interval', seconds=60)
 

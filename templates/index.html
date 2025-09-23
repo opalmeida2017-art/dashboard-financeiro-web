@@ -702,4 +702,9 @@ fetch(`/api/relatorio_viagem/${numConhec}`)
     }
 });
 </script>
+{% if debug_version %}
+        <div style="position: fixed; bottom: 10px; right: 10px; background: yellow; color: black; padding: 5px; border: 1px solid black; font-weight: bold; z-index: 9999;">
+            Versão do Código: {{ debug_version }}
+        </div>
+    {% endif %}
 {% endblock %}
