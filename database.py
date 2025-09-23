@@ -55,12 +55,14 @@ def create_tables():
 
 # Em database.py
 
+# Em database.py, substitua a sua função _clean_and_convert_data por esta:
+
 def _clean_and_convert_data(df, table_key):
     """
-    Limpa e converte os tipos de dados, forçando o formato de data para YYY-MM-DD
+    Limpa e converte os tipos de dados, forçando o formato de data para YYYY-MM-DD
     para garantir compatibilidade com qualquer configuração 'datestyle' do PostgreSQL.
     """
-    # Limpeza agressiva do texto 'nan'
+    # 1. Limpeza agressiva de valores de texto que representam nulos
     df.replace(to_replace=r'^(nan|NaT)$', value=np.nan, regex=True, inplace=True)
 
     original_columns = df.columns.tolist()
@@ -68,7 +70,7 @@ def _clean_and_convert_data(df, table_key):
 
     col_maps = config.TABLE_COLUMN_MAPS.get(table_key, {})
     
-    # Processa colunas de data, forçando o formato universal
+    # 2. Processa colunas de data, forçando o formato universal
     date_columns_info = col_maps.get('date_formats', {})
     for col_db, date_format in date_columns_info.items():
         if col_db in df.columns:
@@ -76,7 +78,7 @@ def _clean_and_convert_data(df, table_key):
             # Converte para o formato ISO 'YYYY-MM-DD', que é universalmente aceito.
             df[col_db] = s.dt.strftime('%Y-%m-%d')
 
-    # Limpeza e conversão dos outros tipos
+    # 3. Processa outros tipos de coluna
     for col in df.columns:
         if col not in date_columns_info and df[col].dtype == 'object':
             try:
@@ -94,11 +96,10 @@ def _clean_and_convert_data(df, table_key):
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
     
-    # Tratamento final de nulos
+    # 4. Tratamento final de nulos, convertendo para None
     df = df.astype(object).where(pd.notna(df), None)
                     
     return df
-
 
 def _validate_columns(excel_columns, table_name):
     """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
