@@ -3,8 +3,15 @@
 TABLE_COLUMN_MAPS = {
     'relFilViagensFatCliente': {
         'date_formats': {
-            'dataViagemMotorista': None, 'cteDataReciboEnv': None, 'dataEmissao': None, 'dataEmissaoComHora': None,
-            'dataINS': None, 'dataNascimentoProp': None, 'dataPrevDescarga': None, 'dataPrevEntrega': None
+            'dataViagemMotorista': None,
+            'cteDataReciboEnv': None,
+            'dataEmissao': None,
+            'dataEmissaoComHora': '%d/%m/%Y %H:%M:%S',
+            'dataINSS': None,
+            'dataNascimentoProp': None,
+            'dataPrevDescarga': None,
+            'dataPrevEntrega': None,
+            'dataEncerramento': '%d/%m/%Y %H:%M'
         },
         'numeric': [
             'acertoSaldo', 'adValor', 'adiantamentoMotorista', 'adtoMot2', 'aliquotaCofins', 'aliquotaIss',
@@ -28,7 +35,7 @@ TABLE_COLUMN_MAPS = {
     },
     'relFilViagensCliente': {
         'date_formats': {
-            'cteDataReciboEnv': None, 'dataALT': None, 'dataEmissao': None, 'dataEmissaoComHora': None,
+            'cteDataReciboEnv': None, 'dataALT': None, 'dataEmissao': None, 'dataEmissaoComHora': '%d/%m/%Y %H:%M:%S',
             'dataINS': None, 'dataNascimentoProp': None, 'dataPrevDescarga': None, 'dataPrevEntrega': None,
             'dataVencSaldo': None, 'dataViagemMotorista': None
         },

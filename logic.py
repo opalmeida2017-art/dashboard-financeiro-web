@@ -7,17 +7,15 @@ import psycopg2
 from sqlalchemy import text
 
 
-
-
-def get_dashboard_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
+def get_dashboard_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter=None, tipo_negocio_filter="Todos"):
     print(f">>> [LOGIC] Chamando get_dashboard_summary para o apartamento ID: {apartamento_id}")
-    summary_data = dm.get_dashboard_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    summary_data = dm.get_dashboard_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
     print(f"<<< [LOGIC] Retornando dados do summary: {'Dados calculados' if summary_data else 'Vazio'}")
     return summary_data
 
-def get_monthly_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter="Todos"):
+def get_monthly_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter=None, tipo_negocio_filter="Todos"):
     print(f">>> [LOGIC] Chamando get_monthly_summary para o apartamento ID: {apartamento_id}")
-    monthly_data = dm.get_monthly_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    monthly_data = dm.get_monthly_summary(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
     print(f"<<< [LOGIC] Retornando dados mensais: {'DataFrame com dados' if not monthly_data.empty else 'DataFrame vazio'}")
     return monthly_data
 
@@ -154,5 +152,13 @@ def get_group_flags_with_tipo_d_status(apartamento_id: int):
 def get_despesas_por_filial_e_grupo(apartamento_id: int, start_date, end_date, filial_filter):
     print(f">>> [LOGIC] Chamando get_despesas_por_filial_e_grupo para o apartamento ID: {apartamento_id}")
     return dm.get_despesas_por_filial_e_grupo(apartamento_id, start_date, end_date, filial_filter)
+
+def get_unique_negocios(apartamento_id: int):
+    """Busca os valores únicos de 'descNegocio' da tabela de despesas."""
+    print(f">>> [LOGIC] Chamando get_unique_negocios para o apartamento ID: {apartamento_id}")
+    df_despesas = dm.get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    if not df_despesas.empty and 'descNegocio' in df_despesas.columns:
+        return sorted([negocio for negocio in df_despesas['descNegocio'].dropna().unique() if negocio])
+    return []
 
         

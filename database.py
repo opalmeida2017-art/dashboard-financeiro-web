@@ -1,7 +1,4 @@
 # database.py
-# Forçando a atualização para o deploy
-
-
 from sqlalchemy import create_engine, text,inspect
 from sqlalchemy.exc import SQLAlchemyError
 import shutil
@@ -57,28 +54,31 @@ def create_tables():
     pass
 
 def _clean_and_convert_data(df, table_key):
-    """Limpa e converte os tipos de dados do DataFrame antes da importação."""
+    """Limpa e converte os tipos de dados do DataFrame, usando uma limpeza inicial agressiva."""
+    
+    # --- PASSO 1: Limpeza agressiva inicial ---
+    # Substitui o TEXTO 'nan' (case-insensitive) por um nulo real (np.nan) em todo o DataFrame.
+    df.replace(to_replace=r'^(nan|NaT)$', value=np.nan, regex=True, inplace=True)
+
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
 
     col_maps = config.TABLE_COLUMN_MAPS.get(table_key, {})
     
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            try:
-                df[col] = df[col].astype(str).str.strip()
-            except Exception as e:
-                print(f"Aviso: Não foi possível limpar a coluna de texto '{col}': {e}")
-    
-    date_columns_to_process = col_maps.get('date_formats', {}).keys()
-    for col_db in date_columns_to_process:
+    # --- PASSO 2: Conversões de Tipo ---
+    # Processa colunas de data
+    date_columns_info = col_maps.get('date_formats', {})
+    for col_db, date_format in date_columns_info.items():
         if col_db in df.columns:
-            df[col_db] = pd.to_datetime(df[col_db], errors='coerce', dayfirst=True)
+            df[col_db] = pd.to_datetime(df[col_db], errors='coerce', format=date_format, dayfirst=not date_format)
 
+    # Processa colunas numéricas e inteiras
     for col_type in ['numeric', 'integer']:
         for col_db in col_maps.get(col_type, []):
             if col_db in df.columns:
                 if df[col_db].dtype == 'object':
+                    # Limpeza específica para colunas que serão convertidas para número
+                    df[col_db] = df[col_db].astype(str).str.strip()
                     df[col_db] = df[col_db].str.replace('.', '', regex=False)
                     df[col_db] = df[col_db].str.replace(',', '.', regex=False)
                 
@@ -86,6 +86,10 @@ def _clean_and_convert_data(df, table_key):
                 
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
+    
+    # --- PASSO 3: Garantia Final de Conversão de Nulos ---
+    # Converte todos os nulos restantes (NaN, NaT) para None.
+    df = df.astype(object).where(pd.notna(df), None)
                     
     return df
 
@@ -93,11 +97,7 @@ def _validate_columns(excel_columns, table_name):
     """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
     try:
         with engine.connect() as conn:
-            query = text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_schema = 'public' AND table_name = :table_name
-            """)
+            query = text("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :table_name")
             result = conn.execute(query, {'table_name': table_name})
             db_columns_case_sensitive = {row[0] for row in result}
     except SQLAlchemyError as e:
@@ -133,10 +133,7 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
             
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
             
-            where_clauses = [
-                f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' 
-                for col in key_columns
-            ]
+            where_clauses = [f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
             sql_delete = text(f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = :apt_id;')
@@ -155,20 +152,16 @@ def import_excel_to_db(excel_source, sheet_name: str, table_name: str, key_colum
         raise e
 
 def process_and_import_despesas(excel_source, sheet_name: str, table_name: str, apartamento_id: int):
-    """
-    Função específica para importar dados de despesas com as regras solicitadas.
-    A chave de identificação de duplicatas foi alterada para codItemNota.
-    """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
-        
         df_novo = _clean_and_convert_data(df_novo, table_name)
         df_novo['apartamento_id'] = apartamento_id
 
-        # Filtros mantidos
-        df_novo = df_novo[df_novo['VED'] != 'E']
-        df_novo = df_novo[df_novo['despesa'] == 'S']
+        if 'VED' in df_novo.columns:
+            df_novo = df_novo[df_novo['VED'] != 'E']
+        if 'despesa' in df_novo.columns:
+            df_novo = df_novo[df_novo['despesa'] == 'S']
         
         valid_columns, extra_columns = _validate_columns(df_novo.columns.tolist(), table_name)
         df_import = df_novo[valid_columns]
@@ -177,8 +170,6 @@ def process_and_import_despesas(excel_source, sheet_name: str, table_name: str, 
             print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
             return extra_columns
             
-        # --- ALTERAÇÃO AQUI ---
-        # A chave de identificação foi atualizada para ser apenas 'codItemNota'.
         key_columns = ['codItemNota']
 
         with engine.begin() as conn:
@@ -186,10 +177,7 @@ def process_and_import_despesas(excel_source, sheet_name: str, table_name: str, 
             
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
             
-            where_clauses = [
-                f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' 
-                for col in key_columns
-            ]
+            where_clauses = [f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
             sql_delete = text(f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = :apt_id;')
@@ -208,9 +196,6 @@ def process_and_import_despesas(excel_source, sheet_name: str, table_name: str, 
         raise e
     
 def import_single_excel_to_db(filepath: str, file_key: str, apartamento_id: int):
-    """
-    Lê um ficheiro Excel e importa os dados para a tabela correspondente no banco de dados.
-    """
     try:
         df = pd.read_excel(filepath)
         df['apartamento_id'] = apartamento_id
@@ -232,87 +217,19 @@ def import_single_excel_to_db(filepath: str, file_key: str, apartamento_id: int)
         raise e
     
 def table_exists(table_name: str) -> bool:
-    """Verifica se uma tabela existe no banco de dados, especificando o schema 'public'."""
     try:
         with engine.connect() as conn:
-            query = text("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = :table_name
-                )
-            """)
+            query = text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = :table_name)")
             result = conn.execute(query, {'table_name': table_name}).scalar()
             return result or False
-
     except SQLAlchemyError as e:
         print(f"Erro ao verificar existência da tabela {table_name}: {e}")
         return False
 
-# Modifique a função 'processar_downloads_na_pasta' que já existe no seu arquivo
-
-
-def processar_downloads_na_pasta(apartamento_id: int):
-    """
-    Processa todos os ficheiros Excel na pasta de downloads, LOGANDO cada passo
-    para o banco de dados.
-    """
-    # ... (início da função permanece igual) ...
-    logar_progresso(apartamento_id, f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
-    
-    pasta_principal = os.path.dirname(os.path.abspath(__file__))
-    pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
-
-    if not os.path.exists(pasta_downloads):
-        logar_progresso(apartamento_id, f"Aviso: Pasta de downloads não encontrada: {pasta_downloads}")
-        return
-
-    for filename in os.listdir(pasta_downloads):
-        if filename.endswith(('.xls', '.xlsx')):
-            file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
-            
-            if file_key:
-                caminho_completo = os.path.join(pasta_downloads, filename)
-                try:
-                    table_info = config.EXCEL_FILES_CONFIG[file_key]
-                    sheet_name = table_info.get('sheet_name')
-                    table_name = table_info['table']
-                    
-                    # --- ALTERAÇÃO AQUI ---
-                    if table_name == 'relFilDespesasGerais':
-                        process_and_import_despesas(caminho_completo, sheet_name, table_name, apartamento_id)
-                    elif table_name == 'relFilContasPagarDet':
-                        process_and_import_contas_pagar(caminho_completo, sheet_name, table_name, apartamento_id)
-                    elif table_name == 'relFilContasReceber': # <-- Adicionado este novo caso
-                        process_and_import_contas_receber(caminho_completo, sheet_name, table_name, apartamento_id)
-                    else:
-                        key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
-                        if not key_columns:
-                            logar_progresso(apartamento_id, f"ERRO: Chaves primárias não definidas para '{table_name}'.")
-                            continue
-                        import_excel_to_db(caminho_completo, sheet_name, table_name, key_columns, apartamento_id)
-                    # --- FIM DA ALTERAÇÃO ---
-                    
-                    os.unlink(caminho_completo)
-                    logar_progresso(apartamento_id, f"Ficheiro '{filename}' processado e removido com sucesso.")
-
-                except Exception as e:
-                    logar_progresso(apartamento_id, f"Falha ao processar '{filename}'. Erro: {e}")
-            else:
-                logar_progresso(apartamento_id, f"Aviso: Ficheiro '{filename}' não reconhecido.")
-
-    logar_progresso(apartamento_id, "--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
-
-
 def process_and_import_contas_pagar(excel_source, sheet_name: str, table_name: str, apartamento_id: int):
-    """
-    Função específica para importar dados de Contas a Pagar, usando 'codItemNota' como chave primária.
-    """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
-        
         df_novo = _clean_and_convert_data(df_novo, table_name)
         df_novo['apartamento_id'] = apartamento_id
 
@@ -322,9 +239,7 @@ def process_and_import_contas_pagar(excel_source, sheet_name: str, table_name: s
         if df_import.empty:
             print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
             return extra_columns
-        
             
-        # Chave primária definida como 'codItemNota'
         key_columns = ['codItemNota']
 
         with engine.begin() as conn:
@@ -332,11 +247,7 @@ def process_and_import_contas_pagar(excel_source, sheet_name: str, table_name: s
             
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
             
-            # Constrói a cláusula DELETE usando a chave primária
-            where_clauses = [
-                f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' 
-                for col in key_columns
-            ]
+            where_clauses = [f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
             sql_delete = text(f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = :apt_id;')
@@ -353,17 +264,11 @@ def process_and_import_contas_pagar(excel_source, sheet_name: str, table_name: s
     except Exception as e:
         print(f"Erro ao processar e importar dados de Contas a Pagar: {e}")
         raise e
-    
-# Adicione esta nova função ao seu arquivo database.py
 
 def process_and_import_contas_receber(excel_source, sheet_name: str, table_name: str, apartamento_id: int):
-    """
-    Função específica para importar dados de Contas a Receber, usando 'codDuplicataReceber' como chave primária.
-    """
     extra_columns = []
     try:
         df_novo = pd.read_excel(excel_source, sheet_name=sheet_name)
-        
         df_novo = _clean_and_convert_data(df_novo, table_name)
         df_novo['apartamento_id'] = apartamento_id
 
@@ -374,7 +279,6 @@ def process_and_import_contas_receber(excel_source, sheet_name: str, table_name:
             print(f"Nenhum dado válido para importar para a tabela '{table_name}'.")
             return extra_columns
             
-        # Chave primária definida como 'codDuplicataReceber'
         key_columns = ['codDuplicataReceber']
 
         with engine.begin() as conn:
@@ -382,11 +286,7 @@ def process_and_import_contas_receber(excel_source, sheet_name: str, table_name:
             
             df_import.to_sql('temp_import', conn, if_exists='replace', index=False)
             
-            # Constrói a cláusula DELETE usando a chave primária
-            where_clauses = [
-                f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' 
-                for col in key_columns
-            ]
+            where_clauses = [f'CAST("{col}" AS TEXT) IN (SELECT DISTINCT CAST("{col}" AS TEXT) FROM temp_import)' for col in key_columns]
             where_str = ' AND '.join(where_clauses)
             
             sql_delete = text(f'DELETE FROM "{table_name}" WHERE {where_str} AND "apartamento_id" = :apt_id;')
@@ -404,14 +304,7 @@ def process_and_import_contas_receber(excel_source, sheet_name: str, table_name:
         print(f"Erro ao processar e importar dados de Contas a Receber: {e}")
         raise e
 
-# Modifique a função 'processar_downloads_na_pasta' que já existe no seu arquivo
-
 def processar_downloads_na_pasta(apartamento_id: int):
-    """
-    Processa todos os ficheiros Excel na pasta de downloads, LOGANDO cada passo
-    para o banco de dados.
-    """
-    # ... (início da função permanece igual) ...
     logar_progresso(apartamento_id, f"--- INICIANDO PROCESSAMENTO PÓS-DOWNLOAD PARA APARTAMENTO {apartamento_id} ---")
     
     pasta_principal = os.path.dirname(os.path.abspath(__file__))
@@ -432,12 +325,11 @@ def processar_downloads_na_pasta(apartamento_id: int):
                     sheet_name = table_info.get('sheet_name')
                     table_name = table_info['table']
                     
-                    # --- ALTERAÇÃO AQUI ---
                     if table_name == 'relFilDespesasGerais':
                         process_and_import_despesas(caminho_completo, sheet_name, table_name, apartamento_id)
                     elif table_name == 'relFilContasPagarDet':
                         process_and_import_contas_pagar(caminho_completo, sheet_name, table_name, apartamento_id)
-                    elif table_name == 'relFilContasReceber': # <-- Adicionado este novo caso
+                    elif table_name == 'relFilContasReceber':
                         process_and_import_contas_receber(caminho_completo, sheet_name, table_name, apartamento_id)
                     else:
                         key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
@@ -445,7 +337,6 @@ def processar_downloads_na_pasta(apartamento_id: int):
                             logar_progresso(apartamento_id, f"ERRO: Chaves primárias não definidas para '{table_name}'.")
                             continue
                         import_excel_to_db(caminho_completo, sheet_name, table_name, key_columns, apartamento_id)
-                    # --- FIM DA ALTERAÇÃO ---
                     
                     os.unlink(caminho_completo)
                     logar_progresso(apartamento_id, f"Ficheiro '{filename}' processado e removido com sucesso.")
@@ -456,4 +347,3 @@ def processar_downloads_na_pasta(apartamento_id: int):
                 logar_progresso(apartamento_id, f"Aviso: Ficheiro '{filename}' não reconhecido.")
 
     logar_progresso(apartamento_id, "--- PROCESSAMENTO PÓS-DOWNLOAD FINALIZADO ---")
-

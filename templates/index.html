@@ -79,6 +79,17 @@
             </select>
         </div>
         <div class="filter-item">
+            <label for="tipo_negocio">Tipo de Negócio:</label>
+            <select name="tipo_negocio" id="tipo_negocio">
+                <option value="Todos" {% if 'Todos' == selected_tipo_negocio %}selected{% endif %}>Todos</option>
+                {% for tipo in tipos_negocio %}
+                    <option value="{{ tipo }}" {% if tipo == selected_tipo_negocio %}selected{% endif %}>
+                        {{ tipo }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-item">
             <label for="filial-multiselect-btn">Filial:</label>
             <div class="multiselect" id="filial-multiselect">
                 <button type="button" class="multiselect-btn" id="filial-multiselect-btn">

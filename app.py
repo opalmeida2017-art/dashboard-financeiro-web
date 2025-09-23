@@ -213,16 +213,25 @@ def index():
         flash("Não foi possível identificar a empresa. Por favor, faça login novamente.", "error")
         return redirect(url_for('logout'))
 
+    # Coleta todos os filtros da URL
     filters = _parse_filters()
+    selected_tipo_negocio = request.args.get('tipo_negocio', 'Todos') # <-- NOVO
+    filters['tipo_negocio'] = selected_tipo_negocio                   # <-- NOVO
+
+    # Passa o novo filtro para a função de resumo
     summary_data = logic.get_dashboard_summary(
         apartamento_id=apartamento_id_alvo,
-        start_date=filters['start_date_obj'], 
-        end_date=filters['end_date_obj'], 
-        placa_filter=filters['placa'], 
-        filial_filter=filters['filial']
+        start_date=filters['start_date_obj'],
+        end_date=filters['end_date_obj'],
+        placa_filter=filters['placa'],
+        filial_filter=filters['filial'],
+        tipo_negocio_filter=filters['tipo_negocio'] # <-- NOVO
     )
+    
+    # Busca os dados para preencher os dropdowns dos filtros
     placas = logic.get_unique_plates_with_types(apartamento_id=apartamento_id_alvo)
     filiais = logic.get_unique_filiais(apartamento_id=apartamento_id_alvo)
+    tipos_negocio = logic.get_unique_negocios(apartamento_id=apartamento_id_alvo) # <-- NOVO
     
     placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
     
@@ -230,10 +239,12 @@ def index():
                            summary=summary_data,
                            placas=placas,
                            filiais=filiais,
+                           tipos_negocio=tipos_negocio, # <-- NOVO
                            selected_placa=filters['placa'],
                            selected_filial=filters['filial'],
                            selected_start_date=filters['start_date_str'],
                            selected_end_date=filters['end_date_str'],
+                           selected_tipo_negocio=selected_tipo_negocio, # <-- NOVO
                            placa_filtrada=placa_filtrada)
     
 @app.route('/faturamento_detalhes')
