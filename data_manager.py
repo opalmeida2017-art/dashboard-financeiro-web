@@ -1154,6 +1154,7 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
                     if filial_do_veiculo not in df_grouped.index: df_grouped.loc[filial_do_veiculo] = 0
                     if 'Despesa Tipo D' not in df_grouped.columns: df_grouped['Despesa Tipo D'] = 0
                     df_grouped.loc[filial_do_veiculo, 'Despesa Tipo D'] = valor_rateado_tipo_d
+                    
 
         if not df_grouped.empty:
             colors = {'Custo de Viagem': 'rgba(230, 126, 34, 0.7)', 'Despesa Geral': 'rgba(231, 76, 60, 0.7)', 'Despesa Tipo D': 'rgba(142, 68, 173, 0.7)'}
