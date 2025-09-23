@@ -54,6 +54,23 @@
 .audit-key-list li {
     padding: 2px 0;
 }
+
+/* Cole este código dentro da tag <style> no topo do seu index.html */
+.conhecimento-item { 
+    background-color: #f2f2f2; 
+    padding: 5px; 
+    text-align: center; 
+    border-radius: 4px; 
+    font-weight: 500; 
+    font-size: 0.9em;
+    cursor: pointer; /* ESSENCIAL: Muda o cursor do mouse para a 'mãozinha' */
+    transition: background-color 0.2s, transform 0.2s;
+}
+.conhecimento-item:hover {
+    background-color: #d0e3f0; /* Muda a cor de fundo ao passar o mouse */
+    transform: scale(1.05); /* Efeito de zoom sutil */
+    font-weight: bold;
+}
 </style>
     <h1>Dashboard Transporte</h1>
 
@@ -191,6 +208,17 @@
             <h2>Conhecimentos do Faturamento</h2>
             <p>Esta é a lista de todos os conhecimentos (CT-es) que compõem o valor total de faturamento para os filtros selecionados.</p>
             <div id="conhecimentos-lista" class="conhecimentos-grid"></div>
+        </div>
+    </div>
+    </div>
+</div>
+
+    <div 
+    id="relatorioViagemModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="close-button relatorio-close">&times;</span>
+            <div id="relatorio-body">
+                </div>
         </div>
     </div>
     <div id="despesasAuditModal" class="modal">
@@ -581,6 +609,97 @@ document.addEventListener('DOMContentLoaded', function() {
             event.target.style.display = 'none';
         }
     });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // ... (todo o seu código JS existente) ...
+
+    // --- INÍCIO DO NOVO CÓDIGO PARA O RELATÓRIO DE VIAGEM ---
+    const relatorioModal = document.getElementById('relatorioViagemModal');
+    const relatorioBody = document.getElementById('relatorio-body');
+    const conhecimentosModal = document.getElementById('conhecimentosModal');
+
+    // Adiciona o evento de clique ao container dos CT-es
+    if (conhecimentosModal) {
+        conhecimentosModal.addEventListener('click', function(event) {
+            const cteItem = event.target.closest('.conhecimento-item');
+            if (!cteItem) return;
+
+            const numConhec = cteItem.textContent;
+            relatorioBody.innerHTML = '<p>Buscando dados da viagem...</p>';
+            relatorioModal.style.display = 'block';
+
+
+fetch(`/api/relatorio_viagem/${numConhec}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            relatorioBody.innerHTML = `<p style="color: red;">Erro: ${data.error}</p>`;
+            return;
+        }
+        
+        let custosHtml = '';
+        for (const [key, value] of Object.entries(data.custos_detalhados)) {
+            custosHtml += `<tr><td>${key}</td><td style="text-align: right;">${value}</td></tr>`;
+        }
+        if (!custosHtml) {
+            custosHtml = '<tr><td colspan="2">Nenhum custo encontrado para esta viagem.</td></tr>';
+        }
+
+        // --- INÍCIO DA CORREÇÃO ---
+        // Adiciona uma verificação: se a data existir, formata. Senão, mostra 'N/A'.
+        const dataViagemFormatada = data.data_viagem 
+            ? new Date(data.data_viagem).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) 
+            : 'N/A';
+        // --- FIM DA CORREÇÃO ---
+
+        // Monta o HTML do relatório
+        relatorioBody.innerHTML = `
+            <div style="text-align: center; margin-bottom: 20px;"><h2>Relatório de Viagem</h2></div>
+            <table class="table table-bordered table-sm">
+                <tr><th>Viagem (CT-e)</th><td>${data.num_conhec}</td><th>Data Viagem</th><td>${dataViagemFormatada}</td></tr>
+                <tr><th>Veículo</th><td>${data.placa_veiculo || 'N/A'}</td><th>Motorista</th><td>${data.motorista || 'N/A'}</td></tr>
+            </table>
+            <table class="table table-bordered table-sm mt-3">
+                <tr class="table-secondary"><th colspan="2">Dados da Viagem</th></tr>
+                <tr><th>Cliente</th><td>${data.cliente || 'N/A'}</td></tr>
+                <tr><th>Origem &rarr; Destino</th><td>${data.origem || 'N/A'} &rarr; ${data.destino || 'N/A'}</td></tr>
+                <tr><th>Peso Saída / Chegada</th><td>${data.peso_saida || 0} / ${data.peso_chegada || 0} Kg</td></tr>
+            </table>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <table class="table table-bordered table-sm">
+                        <tr class="table-secondary"><th colspan="2">Receitas</th></tr>
+                        <tr><td>Frete (Valor Bruto)</td><td style="text-align: right;">${data.frete_bruto}</td></tr>
+                        <tr class="table-success" style="font-weight: bold;"><td>TOTAL DAS RECEITAS</td><td style="text-align: right;">${data.total_receitas}</td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-bordered table-sm">
+                        <tr class="table-secondary"><th colspan="2">Custos da Viagem</th></tr>
+                        ${custosHtml}
+                        <tr class="table-danger" style="font-weight: bold;"><td>TOTAL DOS CUSTOS</td><td style="text-align: right;">${data.total_custos}</td></tr>
+                    </table>
+                </div>
+            </div>
+            <table class="table table-bordered table-sm mt-3">
+                 <tr class="table-secondary"><th colspan="2">Resultado da Viagem</th></tr>
+                 <tr style="font-weight: bold;"><td>LUCRO/PREJUÍZO</td><td style="text-align: right; color: ${data.lucro_prejuizo.includes('-') ? 'red' : 'green'};">${data.lucro_prejuizo}</td></tr>
+                 <tr style="font-weight: bold;"><td>MARGEM (%)</td><td style="text-align: right; color: ${data.margem.includes('-') ? 'red' : 'green'};">${data.margem}</td></tr>
+            </table>
+        `;
+    })
+    .catch(error => {
+        relatorioBody.innerHTML = `<p style="color: red;">Ocorreu um erro ao buscar os dados: ${error}</p>`;
+    });
+});
+    }
+
+    if (relatorioModal) {
+        relatorioModal.querySelector('.relatorio-close').onclick = function() {
+            relatorioModal.style.display = 'none';
+        }
+    }
 });
 </script>
 {% endblock %}

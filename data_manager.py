@@ -1284,3 +1284,82 @@ def get_expense_audit_data(apartamento_id: int, start_date: datetime, end_date: 
     audit_data['tipo_d'] = group_data(df_tipo_d, col_map.get('descgrupod'), col_map.get('numnota'))
 
     return audit_data
+
+# Em data_manager.py
+
+def get_relatorio_viagem_data(apartamento_id: int, num_conhec: int):
+    """
+    Busca e consolida todos os dados para o Relatório de Viagem de um único CT-e.
+    """
+    # 1. Buscar dados principais da viagem e do faturamento
+    df_viagens = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
+    df_fat = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
+
+    viagem = df_viagens[df_viagens['numConhec'] == num_conhec]
+    faturamento = df_fat[df_fat['numConhec'] == num_conhec]
+
+    if viagem.empty or faturamento.empty:
+        return {"error": "Viagem não encontrada."}
+
+    viagem_data = viagem.iloc[0].to_dict()
+    fat_data = faturamento.iloc[0].to_dict()
+
+    # 2. Buscar custos e despesas associados a esta viagem
+    # ASSUNÇÃO IMPORTANTE: Como não há um link direto entre despesa e CT-e,
+    # vamos associar as despesas pela placa do veículo na mesma data da viagem.
+    df_despesas = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    placa_viagem = viagem_data.get('placaVeiculo')
+    data_viagem = pd.to_datetime(viagem_data.get('dataViagemMotorista')).date() if pd.notna(viagem_data.get('dataViagemMotorista')) else None
+    
+    custos_viagem = pd.DataFrame()
+    if placa_viagem and data_viagem and not df_despesas.empty:
+        df_despesas['dataControle'] = pd.to_datetime(df_despesas['dataControle'], errors='coerce').dt.date
+        custos_viagem = df_despesas[
+            (df_despesas['placaVeiculo'] == placa_viagem) &
+            (df_despesas['dataControle'] == data_viagem)
+        ].copy()
+
+    # 3. Classificar custos e despesas usando a lógica que já temos
+    df_flags = get_all_group_flags(apartamento_id)
+    expense_data = _get_final_expense_dataframes(viagem, custos_viagem, df_flags)
+    df_custos = expense_data.get('custos', pd.DataFrame())
+    
+    custos_por_grupo = {}
+    if not df_custos.empty:
+        custos_por_grupo = df_custos.groupby('descGrupoD')['valor_calculado'].sum().to_dict()
+
+    # 4. Montar o dicionário final com todos os dados para o relatório
+    total_receitas = fat_data.get('freteEmpresa', 0)
+    total_custos = sum(custos_por_grupo.values())
+    lucro = total_receitas - total_custos
+    margem = (lucro / total_receitas * 100) if total_receitas > 0 else 0
+
+    relatorio = {
+        # Dados Principais
+        "num_conhec": num_conhec,
+        "data_viagem": viagem_data.get('dataViagemMotorista'),
+        "placa_veiculo": placa_viagem,
+        "motorista": viagem_data.get('nomeMotorista'),
+        # Dados da Viagem
+        "origem": viagem_data.get('cidOrigemFormat'),
+        "destino": viagem_data.get('cidDestinoFormat'),
+        "distancia": viagem_data.get('kmRodado'),
+        "cliente": fat_data.get('nomeCliente'),
+        "mercadoria": viagem_data.get('descricaoMercadoria'),
+        "peso_saida": viagem_data.get('pesoSaida'),
+        "peso_chegada": viagem_data.get('pesoChegada'),
+        "quebra_kg": viagem_data.get('quantidadeQuebra'),
+        # Receitas
+        "frete_bruto": fat_data.get('freteEmpresa'),
+        "adiantamentos": viagem_data.get('adiantamentoMotorista'),
+        "taxas": fat_data.get('despesasadicionais'), # Exemplo, pode ser outra coluna
+        "descontos": fat_data.get('outrosDescontos'),
+        "total_receitas": total_receitas,
+        # Custos
+        "custos_detalhados": custos_por_grupo,
+        "total_custos": total_custos,
+        # Resultado
+        "lucro_prejuizo": lucro,
+        "margem": margem,
+    }
+    return relatorio

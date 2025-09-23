@@ -161,4 +161,9 @@ def get_unique_negocios(apartamento_id: int):
         return sorted([negocio for negocio in df_despesas['descNegocio'].dropna().unique() if negocio])
     return []
 
+def get_relatorio_viagem_data(apartamento_id: int, num_conhec: int):
+    """Função de ponte para buscar os dados do relatório de viagem."""
+    print(f">>> [LOGIC] Chamando get_relatorio_viagem_data para o CT-e: {num_conhec}")
+    return dm.get_relatorio_viagem_data(apartamento_id, num_conhec)
+
         

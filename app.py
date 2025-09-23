@@ -816,6 +816,30 @@ def run_scheduled_collections():
 
         except Exception as e:
             print(f"ERRO no agendador de coletas: {e}")
+            
+# Em app.py
+
+@app.route('/api/relatorio_viagem/<int:num_conhec>')
+@login_required
+def api_relatorio_viagem(num_conhec):
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"error": "Apartamento não encontrado."}), 400
+    
+    dados_relatorio = logic.get_relatorio_viagem_data(apartamento_id_alvo, num_conhec)
+    
+    # Adiciona a formatação de moeda e percentual aos dados
+    if "error" not in dados_relatorio:
+        for key in ['frete_bruto', 'adiantamentos', 'taxas', 'descontos', 'total_receitas', 'total_custos', 'lucro_prejuizo']:
+            if dados_relatorio.get(key) is not None:
+                dados_relatorio[key] = format_currency(dados_relatorio[key])
+        if dados_relatorio.get('margem') is not None:
+            dados_relatorio['margem'] = format_percentage(dados_relatorio['margem'])
+        
+        custos_formatados = {k: format_currency(v) for k, v in dados_relatorio.get("custos_detalhados", {}).items()}
+        dados_relatorio["custos_detalhados"] = custos_formatados
+
+    return jsonify(dados_relatorio)
 
 scheduler.add_job(run_scheduled_collections, 'interval', seconds=60)
 
