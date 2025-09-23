@@ -53,31 +53,33 @@ def create_tables():
     print("AVISO: A criação de tabelas agora é gerenciada pelo Alembic.")
     pass
 
+# Em database.py
+
 def _clean_and_convert_data(df, table_key):
-    """Limpa e converte os tipos de dados do DataFrame, usando uma limpeza inicial agressiva."""
+    """Limpa e converte os tipos de dados do DataFrame, usando formatos de data específicos."""
     
-    # --- PASSO 1: Limpeza agressiva inicial ---
-    # Substitui o TEXTO 'nan' (case-insensitive) por um nulo real (np.nan) em todo o DataFrame.
+    # Limpeza agressiva de texto 'nan'
     df.replace(to_replace=r'^(nan|NaT)$', value=np.nan, regex=True, inplace=True)
 
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
-
     col_maps = config.TABLE_COLUMN_MAPS.get(table_key, {})
     
-    # --- PASSO 2: Conversões de Tipo ---
     # Processa colunas de data
     date_columns_info = col_maps.get('date_formats', {})
     for col_db, date_format in date_columns_info.items():
         if col_db in df.columns:
-            df[col_db] = pd.to_datetime(df[col_db], errors='coerce', format=date_format, dayfirst=not date_format)
+            if date_format:
+                df[col_db] = pd.to_datetime(df[col_db], errors='coerce', format=date_format)
+            else:
+                # ESTA LINHA É A CORREÇÃO QUE EXISTE NO SEU CÓDIGO ATUALIZADO
+                df[col_db] = pd.to_datetime(df[col_db], errors='coerce', dayfirst=True)
 
     # Processa colunas numéricas e inteiras
     for col_type in ['numeric', 'integer']:
         for col_db in col_maps.get(col_type, []):
             if col_db in df.columns:
                 if df[col_db].dtype == 'object':
-                    # Limpeza específica para colunas que serão convertidas para número
                     df[col_db] = df[col_db].astype(str).str.strip()
                     df[col_db] = df[col_db].str.replace('.', '', regex=False)
                     df[col_db] = df[col_db].str.replace(',', '.', regex=False)
@@ -87,8 +89,7 @@ def _clean_and_convert_data(df, table_key):
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
     
-    # --- PASSO 3: Garantia Final de Conversão de Nulos ---
-    # Converte todos os nulos restantes (NaN, NaT) para None.
+    # Garantia final de conversão de nulos
     df = df.astype(object).where(pd.notna(df), None)
                     
     return df
