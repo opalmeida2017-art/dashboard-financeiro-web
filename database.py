@@ -56,44 +56,48 @@ def create_tables():
 # Em database.py
 
 def _clean_and_convert_data(df, table_key):
-    """Limpa e converte os tipos de dados do DataFrame, usando formatos de data específicos."""
-    
-    # Limpeza agressiva de texto 'nan'
+    """
+    Limpa e converte os tipos de dados, forçando o formato de data para YYY-MM-DD
+    para garantir compatibilidade com qualquer configuração 'datestyle' do PostgreSQL.
+    """
+    # Limpeza agressiva do texto 'nan'
     df.replace(to_replace=r'^(nan|NaT)$', value=np.nan, regex=True, inplace=True)
 
     original_columns = df.columns.tolist()
     df.columns = [str(col).strip() for col in original_columns]
+
     col_maps = config.TABLE_COLUMN_MAPS.get(table_key, {})
     
-    # Processa colunas de data
+    # Processa colunas de data, forçando o formato universal
     date_columns_info = col_maps.get('date_formats', {})
     for col_db, date_format in date_columns_info.items():
         if col_db in df.columns:
-            if date_format:
-                df[col_db] = pd.to_datetime(df[col_db], errors='coerce', format=date_format)
-            else:
-                # ESTA LINHA É A CORREÇÃO QUE EXISTE NO SEU CÓDIGO ATUALIZADO
-                df[col_db] = pd.to_datetime(df[col_db], errors='coerce', dayfirst=True)
+            s = pd.to_datetime(df[col_db], errors='coerce', format=date_format, dayfirst=not date_format)
+            # Converte para o formato ISO 'YYYY-MM-DD', que é universalmente aceito.
+            df[col_db] = s.dt.strftime('%Y-%m-%d')
 
-    # Processa colunas numéricas e inteiras
+    # Limpeza e conversão dos outros tipos
+    for col in df.columns:
+        if col not in date_columns_info and df[col].dtype == 'object':
+            try:
+                df.loc[:, col] = df[col].astype(str).str.strip()
+            except Exception as e:
+                print(f"Aviso: Não foi possível limpar a coluna de texto '{col}': {e}")
+
     for col_type in ['numeric', 'integer']:
         for col_db in col_maps.get(col_type, []):
             if col_db in df.columns:
                 if df[col_db].dtype == 'object':
-                    df[col_db] = df[col_db].astype(str).str.strip()
                     df[col_db] = df[col_db].str.replace('.', '', regex=False)
                     df[col_db] = df[col_db].str.replace(',', '.', regex=False)
-                
                 df[col_db] = pd.to_numeric(df[col_db], errors='coerce').fillna(0)
-                
                 if col_type == 'integer':
                     df[col_db] = df[col_db].astype(int)
     
-    # Garantia final de conversão de nulos
+    # Tratamento final de nulos
     df = df.astype(object).where(pd.notna(df), None)
                     
     return df
-
 
 def _validate_columns(excel_columns, table_name):
     """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
