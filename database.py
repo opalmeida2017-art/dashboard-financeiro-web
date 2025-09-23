@@ -99,6 +99,7 @@ def _clean_and_convert_data(df, table_key):
                     
     return df
 
+
 def _validate_columns(excel_columns, table_name):
     """Valida colunas do Excel contra as colunas do banco de dados usando SQLAlchemy."""
     try:
