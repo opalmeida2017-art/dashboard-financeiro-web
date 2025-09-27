@@ -458,6 +458,7 @@ def configuracao():
             'CODIGO_CONTAS_PAGAR': request.form.get('CODIGO_CONTAS_PAGAR'),
             'CODIGO_CONTAS_RECEBER': request.form.get('CODIGO_CONTAS_RECEBER'),
             'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
+            'CODIGO_ACERTO_MOTORISTA': request.form.get('CODIGO_ACERTO_MOTORISTA'),  
             'DATA_INICIAL_ROBO': datetime.strptime(request.form.get('DATA_INICIAL_ROBO'), '%Y-%m-%d').strftime('%d/%m/%Y') if request.form.get('DATA_INICIAL_ROBO') else '',
             'DATA_FINAL_ROBO': datetime.strptime(request.form.get('DATA_FINAL_ROBO'), '%Y-%m-%d').strftime('%d/%m/%Y') if request.form.get('DATA_FINAL_ROBO') else '',
             'live_monitoring_enabled': live_monitoring_enabled

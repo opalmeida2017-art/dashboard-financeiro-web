@@ -3,15 +3,9 @@
 TABLE_COLUMN_MAPS = {
     'relFilViagensFatCliente': {
         'date_formats': {
-            'dataViagemMotorista': None,
-            'cteDataReciboEnv': None,
-            'dataEmissao': None,
-            'dataEmissaoComHora': '%d/%m/%Y %H:%M:%S',
-            'dataINSS': None,
-            'dataNascimentoProp': None,
-            'dataPrevDescarga': None,
-            'dataPrevEntrega': None,
-            'dataEncerramento': '%d/%m/%Y %H:%M'
+            'dataViagemMotorista': None, 'cteDataReciboEnv': None, 'dataEmissao': None, 
+            'dataEmissaoComHora': '%d/%m/%Y %H:%M:%S', 'dataINSS': None, 'dataNascimentoProp': None, 
+            'dataPrevDescarga': None, 'dataPrevEntrega': None, 'dataEncerramento': '%d/%m/%Y %H:%M'
         },
         'numeric': [
             'acertoSaldo', 'adValor', 'adiantamentoMotorista', 'adtoMot2', 'aliquotaCofins', 'aliquotaIss',
@@ -110,15 +104,38 @@ TABLE_COLUMN_MAPS = {
         'date_formats': {
             'dataEmissao': None, 'dataPagto': None, 'dataVenc': None
         },
-        'numeric': [
-            'valorPagto', 'valorVenc'
-        ],
+        'numeric': [ 'valorPagto', 'valorVenc' ],
         'integer': [
             'apartamento_id', 'codAcertoProprietario', 'codBaixa', 'codCliente',
             'codDuplicataReceber', 'codEmpresas', 'codFatura', 'codFilial',
             'codTransacao', 'numContabil'
         ]
+    },
+    # --- INÍCIO DA CORREÇÃO ---
+    'relFilAcertoMot': {
+        'date_formats': {
+            'dataViagemMotorista': None, 'horaFimDescarga': None, 
+            'horaFimEstadia': None, 'horaIniEstadia': None
+        },
+        'numeric': [
+            'adiantamentoMotorista', 'cargaDescarga', 'comissao', 'comissaoEstadia',
+            'despesaExtra', 'estadiaPesoChegada', 'faturaPesoChegada', 'freteEmpresaSai',
+            'freteMotoristaSai', 'horasEstadia', 'kmFim', 'kmIni', 'kmParc', 'kmRodado',
+            'mediaDesejada', 'mediaMax', 'mediaMin', 'outrosDescontos', 'outrosDescontosMot',
+            'outrosDescontosMot2', 'pesoSaidaMotorista', 'premioSeguro', 'premioSeguro2',
+            'salario', 'salarioCarteira', 'valorBalsa', 'valorEstadia', 'valorEstadiaMot',
+            'valorFaturaAdiantamento', 'valorFaturaSaldo', 'valorFreteFiscal', 'valorHoraEstadiaMot',
+            'valorINSS', 'valorINSSEmpresa', 'valorPedagio', 'valorPrecoTonMotICMS', 'valorQuebra',
+            'valorQuebraSeguro', 'vlBaseComissao', 'vlBaseComissaoCalc', 'vlCOFINS', 'vlCSLL',
+            'vlComissao', 'vlPIS', 'vlTipoProdFixo'
+        ],
+        'integer': [
+            'codAcertoMotorista', 'codAgrupador', 'codFaturaAdiantamento', 'codFaturaSaldo',
+            'codMotorista', 'codTipoVeiculo', 'codUnidadeEmbarque', 'codVeiculo',
+            'numConhec', 'numero', 'tipoCte', 'tipoProducao', 'toleranciaEstadia'
+        ]
     }
+    # --- FIM DA CORREÇÃO ---
 }
 
 EXCEL_FILES_CONFIG = {
@@ -126,17 +143,22 @@ EXCEL_FILES_CONFIG = {
     "viagens": { "path": "relFilViagensFatCliente.xls", "sheet_name": "Faturamento de Viagens por Clie", "table": "relFilViagensFatCliente" },
     "despesas": { "path": "relFilDespesasGerais.xls", "sheet_name": "Despesas Gerais", "table": "relFilDespesasGerais" },
     "contas_pagar": { "path": "relFilContasPagarDet.xls", "sheet_name": "NFeCompleto", "table": "relFilContasPagarDet" },
-    "contas_receber": { "path": "relFilContasReceber.xls", "sheet_name": "ContasRecRecebNormal", "table": "relFilContasReceber" }
+    "contas_receber": { "path": "relFilContasReceber.xls", "sheet_name": "ContasRecRecebNormal", "table": "relFilContasReceber" },
+    # --- INÍCIO DA CORREÇÃO ---
+        "acerto_motorista": { "path": "relFilAcertoMot.xls", "sheet_name": "Plan1", "table": "relFilAcertoMot" } 
+
+    # --- FIM DA CORREÇÃO ---
 }
 
 FILTER_COLUMN_MAPS = { "placa": ['placaVeiculo', 'placa'], "filial": ['nomeFilial', 'nomeFil'] }
 
-
-# NOVO: Define as colunas que identificam uma linha única em cada tabela
 TABLE_PRIMARY_KEYS = {
     "relFilViagensCliente": ["numConhec"],
     "relFilViagensFatCliente": ["numConhec"],
     "relFilDespesasGerais": ["numNota", "dataControle", "nomeForn"],
     "relFilContasPagarDet": ["numNota", "dataVenc", "nomeForn"],
-    "relFilContasReceber": ["codDuplicataReceber"]
+    "relFilContasReceber": ["codDuplicataReceber"],
+    # --- INÍCIO DA CORREÇÃO ---
+    "relFilAcertoMot": ["codAcertoMotorista"]
+    # --- FIM DA CORREÇÃO ---
 }

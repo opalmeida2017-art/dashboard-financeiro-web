@@ -43,7 +43,8 @@ def executar_todas_as_coletas(apartamento_id: int):
         os.path.join(caminho_base, "robos", "coletor_despesas.py"),
         os.path.join(caminho_base, "robos", "coletor_fat_viagens.py"),
         os.path.join(caminho_base, "robos", "coletor_contas_pagar.py"),
-        os.path.join(caminho_base, "robos", "coletor_contas_receber.py"), # <-- ADICIONE ESTA LINHA   
+        os.path.join(caminho_base, "robos", "coletor_contas_receber.py"),
+        os.path.join(caminho_base, "robos", "coletor_acerto_motorista.py"),
     ]
 
     for caminho_do_robo in robos_para_executar:

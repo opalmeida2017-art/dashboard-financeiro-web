@@ -95,15 +95,49 @@
                     <div class="form-group mb-3"><label for="USUARIO_ROBO">Usuário</label><input type="text" class="form-control" id="USUARIO_ROBO" name="USUARIO_ROBO" value="{{ configs.get('USUARIO_ROBO', '') }}"></div>
                     <div class="form-group mb-3"><label for="SENHA_ROBO">Senha</label><input type="password" class="form-control" id="SENHA_ROBO" name="SENHA_ROBO" value="{{ configs.get('SENHA_ROBO', '') }}"></div>
                 </div>
-                <div class="tab-pane fade" id="parametros-pane" role="tabpanel">
-                    <div class="row">
-                        <div class="col-md-6"><div class="form-group mb-3"><label for="CODIGO_VIAGENS_CLIENTE">Base: Viagens por Cliente</label><input type="text" class="form-control" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}"></div></div>
-                        <div class="col-md-6"><div class="form-group mb-3"><label for="CODIGO_VIAGENS_FAT_CLIENTE">Base: Fat.Viagens por Cliente</label><input type="text" class="form-control" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}"></div></div>
-                        <div class="col-md-6"><div class="form-group mb-3"><label for="CODIGO_CONTAS_PAGAR">Base: Conta a Pagar/Pagas</label><input type="text" class="form-control" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}"></div></div>
-                        <div class="col-md-6"><div class="form-group mb-3"><label for="CODIGO_CONTAS_RECEBER">Base: Conta Rec/Recebidas</label><input type="text" class="form-control" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}"></div></div>
-                        <div class="col-md-6"><div class="form-group mb-3"><label for="CODIGO_DESPESAS">Base: Despesas Contas a Pagar</label><input type="text" class="form-control" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}"></div></div>
-                    </div>
-                </div>
+                <<div class="tab-pane fade" id="parametros-pane" role="tabpanel">
+    <div class="row">
+        
+        <div class="col-md-4">
+            <div class="form-group mb-3">
+                <label for="CODIGO_VIAGENS_CLIENTE">Base: Viagens por Cliente</label>
+                <input type="text" class="form-control" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}">
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-group mb-3">
+                <label for="CODIGO_VIAGENS_FAT_CLIENTE">Base: Fat. Viagens por Cliente</label>
+                <input type="text" class="form-control" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}">
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-group mb-3">
+                <label for="CODIGO_DESPESAS">Base: Despesas</label>
+                <input type="text" class="form-control" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}">
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-group mb-3">
+                <label for="CODIGO_CONTAS_PAGAR">Base: Contas a Pagar</label>
+                <input type="text" class="form-control" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}">
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-group mb-3">
+                <label for="CODIGO_CONTAS_RECEBER">Base: Contas a Receber</label>
+                <input type="text" class="form-control" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}">
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="form-group mb-3">
+                <label for="CODIGO_ACERTO_MOTORISTA">Base: Acerto Motorista</label>
+                <input type="text" class="form-control" name="CODIGO_ACERTO_MOTORISTA" value="{{ configs.get('CODIGO_ACERTO_MOTORISTA', '') }}">
+            </div>
+        </div>
+
+    </div>
+</div>
                 <div class="tab-pane fade" id="periodo-pane" role="tabpanel">
                     <div class="row">
                         <div class="col-md-6">

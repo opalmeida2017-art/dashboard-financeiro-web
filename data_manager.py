@@ -193,105 +193,6 @@ def _prepare_final_cost_and_expense_dfs(df_viagens_cliente, df_despesas_filtrado
 
     return df_custos, df_despesas_gerais
 
-def get_prepared_data_for_dashboard(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list) -> dict:
-    """
-    Função mestra que carrega, filtra e prepara todos os dados, servindo como
-    fonte única e consistente para os KPIs e gráficos.
-    """
-    # 1. Carrega todos os dados brutos necessários
-    df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
-    df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
-    df_fat_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
-    df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
-    df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
-    sync_expense_groups(apartamento_id)
-    df_flags = get_all_group_flags(apartamento_id)
-    
-
-    # 2. Cria a "fonte da verdade": a tabela de viagens filtrada
-    df_viagens_cliente = apply_filters_to_df(df_viagens_raw, start_date, end_date, placa_filter, filial_filter)
-
-    # 3. Filtra os outros DataFrames com base na fonte da verdade
-    viagens_filtradas_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
-    col_map_fat_temp = _get_case_insensitive_column_map(df_fat_raw.columns)
-    if 'permitefaturar' in col_map_fat_temp:
-        df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
-    df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_filtradas_ids)]
-
-    
-    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, "Todos", filial_filter)
-    
-    col_map_desp = _get_case_insensitive_column_map(df_despesas_filtrado.columns)
-    if all(c in col_map_desp for c in ['serie', 'liquido', 'vlcontabil']):
-        df_despesas_filtrado['valor_calculado'] = np.where(
-            df_despesas_filtrado[col_map_desp['serie']] == 'RQ',
-            df_despesas_filtrado[col_map_desp['liquido']],
-            df_despesas_filtrado[col_map_desp['vlcontabil']]
-        )
-    elif 'vlcontabil' in col_map_desp:
-        df_despesas_filtrado['valor_calculado'] = df_despesas_filtrado[col_map_desp['vlcontabil']]
-    else:
-        df_despesas_filtrado['valor_calculado'] = 0
-
-    return {
-        "viagens_cliente": df_viagens_cliente,
-        "despesas_filtrado": df_despesas_filtrado,
-        "fat_filtrado": df_fat_filtrado,
-        "contas_pagar_raw": df_contas_pagar_raw,
-        "contas_receber_raw": df_contas_receber_raw,
-        "flags": df_flags
-    }
-def get_filtered_data(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list) -> dict:
-    """
-    Função mestra que carrega todos os dados brutos, aplica os filtros de forma
-    consistente e retorna um dicionário com todos os DataFrames limpos e prontos para uso.
-    """
-    # 1. Carrega todos os dados brutos necessários
-    df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
-    df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
-    df_fat_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
-    df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
-    df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
-    df_flags = get_all_group_flags(apartamento_id)
-
-    # 2. Cria a "fonte da verdade": a tabela de viagens filtrada
-    df_viagens_cliente = apply_filters_to_df(df_viagens_raw, start_date, end_date, placa_filter, filial_filter)
-
-    # 3. Filtra os outros DataFrames com base na fonte da verdade
-    
-    # Filtra o faturamento com base nas viagens
-    viagens_filtradas_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
-    col_map_fat_temp = _get_case_insensitive_column_map(df_fat_raw.columns)
-    if 'permitefaturar' in col_map_fat_temp:
-        df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
-    df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_filtradas_ids)]
-
-    # Filtra as despesas usando os mesmos critérios
-    df_despesas_filtrado = apply_filters_to_df(df_despesas_raw, start_date, end_date, placa_filter, filial_filter)
-    
-    # Adiciona a lógica de valor condicional que definimos
-    col_map_desp = _get_case_insensitive_column_map(df_despesas_filtrado.columns)
-    if all(c in col_map_desp for c in ['serie', 'liquido', 'vlcontabil']):
-        df_despesas_filtrado['valor_calculado'] = np.where(
-            df_despesas_filtrado[col_map_desp['serie']] == 'RQ',
-            df_despesas_filtrado[col_map_desp['liquido']],
-            df_despesas_filtrado[col_map_desp['vlcontabil']]
-        )
-    elif 'vlcontabil' in col_map_desp:
-        df_despesas_filtrado['valor_calculado'] = df_despesas_filtrado[col_map_desp['vlcontabil']]
-    else:
-        df_despesas_filtrado['valor_calculado'] = 0
-
-    # 4. Retorna um dicionário com todos os dados limpos
-    return {
-        "viagens_cliente": df_viagens_cliente,
-        "despesas_filtrado": df_despesas_filtrado,
-        "fat_filtrado": df_fat_filtrado,
-        "contas_pagar_raw": df_contas_pagar_raw,
-        "contas_receber_raw": df_contas_receber_raw,
-        "flags": df_flags
-    }
-## Em data_manager.py
 
 def _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags):
     """
@@ -390,20 +291,24 @@ def _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_f
     df_despesas_final = df_com_flags[df_com_flags['is_despesa'] == 'S'].copy()
     
     return {'custos': df_custos_final, 'despesas': df_despesas_final, 'tipo_d': df_tipo_d}
-def _get_filtered_data_for_dashboard(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list, tipo_negocio_filter: str):
+
+def _obter_dados_filtrados_mestre(apartamento_id: int, start_date: datetime, end_date: datetime, placa_filter: str, filial_filter: list, tipo_negocio_filter: str):
     """
-    Função central que carrega dados brutos e aplica toda a lógica de filtragem,
-    servindo como fonte única para KPIs e gráficos.
+    Função mestre e consolidada que carrega todos os dados brutos necessários e aplica
+    a lógica de filtragem completa, servindo como fonte única para os cálculos do dashboard.
     """
-    # Carrega todos os dados brutos
+    # 1. Carrega todos os DataFrames brutos
     df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
     df_fat_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
     df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
+    df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
+    df_flags = get_all_group_flags(apartamento_id)
 
-    # Lógica de pré-filtragem por Tipo de Negócio
+    # 2. Pré-filtra por Tipo de Negócio (se aplicável)
     df_despesas_pre_filtrado = df_despesas_raw
     df_viagens_pre_filtrado = df_viagens_raw
-
+    
     col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
     col_map_viag_raw = _get_case_insensitive_column_map(df_viagens_raw.columns)
 
@@ -413,55 +318,57 @@ def _get_filtered_data_for_dashboard(apartamento_id: int, start_date: datetime, 
 
         if 'tipofrete' in col_map_viag_raw and not df_viagens_raw.empty:
             tipo_negocio_upper = tipo_negocio_filter.upper().strip()
-            
             if tipo_negocio_upper == 'FROTA':
                 placas_de_apoio = []
                 if 'veiculoproprio' in col_map_desp_raw and 'placaveiculo' in col_map_desp_raw:
                     placas_de_apoio = df_despesas_raw[df_despesas_raw[col_map_desp_raw['veiculoproprio']] == 'F'][col_map_desp_raw['placaveiculo']].unique().tolist()
                 df_viagens_pre_filtrado = df_viagens_raw[(df_viagens_raw[col_map_viag_raw['tipofrete']] == 'P') | (df_viagens_raw[col_map_viag_raw['placaveiculo']].isin(placas_de_apoio))].copy()
-
             elif 'AGENCIAMENTO' in tipo_negocio_upper:
                 df_viagens_pre_filtrado = df_viagens_raw[df_viagens_raw[col_map_viag_raw['tipofrete']].isin(['A', 'T'])].copy()
-            
             else:
                 df_viagens_pre_filtrado = pd.DataFrame(columns=df_viagens_raw.columns)
 
-    # Aplica os filtros de interface (data, placa, filial) sobre os dados já pré-filtrados
+    # 3. Aplica os filtros principais (data, placa, filial) sobre os dados pré-filtrados
     df_viagens_cliente = apply_filters_to_df(df_viagens_pre_filtrado, start_date, end_date, placa_filter, filial_filter)
     df_despesas_filtrado = apply_filters_to_df(df_despesas_pre_filtrado, start_date, end_date, placa_filter, filial_filter)
-    
-    # Retorna um dicionário com os dados já filtrados e prontos para uso
-    return {
-        "df_viagens_cliente": df_viagens_cliente,
-        "df_despesas_filtrado": df_despesas_filtrado,
-        "df_fat_raw": df_fat_raw,
-        "df_despesas_raw": df_despesas_raw
-    }
-    
-def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_date: datetime = None, placa_filter: str = "Todos", filial_filter: list = None, tipo_negocio_filter: str = "Todos") -> dict:
-    """
-    Calcula os KPIs para o dashboard principal usando a nova função central de filtragem.
-    """
-    # 1. Busca os dados já filtrados da função central
-    filtered_data = _get_filtered_data_for_dashboard(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
-    df_viagens_cliente = filtered_data["df_viagens_cliente"]
-    df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
-    df_fat_raw = filtered_data["df_fat_raw"]
-    df_despesas_raw = filtered_data["df_despesas_raw"] # Usado para cálculo do Tipo D
 
-    # Carrega dados adicionais que não dependem do filtro de negócio
-    df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
-    df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
-    sync_expense_groups(apartamento_id)
-    df_flags = get_all_group_flags(apartamento_id)
-
-    # O restante dos cálculos permanece o mesmo, pois já operam sobre dados filtrados
-    summary = {}
-    viagens_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
+    # 4. Filtra o faturamento com base nas viagens já filtradas
+    viagens_filtradas_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
     col_map_fat_temp = _get_case_insensitive_column_map(df_fat_raw.columns)
     if 'permitefaturar' in col_map_fat_temp:
         df_fat_raw = df_fat_raw[df_fat_raw[col_map_fat_temp['permitefaturar']] == 'S']
-    df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_ids)]
+    df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_filtradas_ids)]
+
+    # 5. Retorna o dicionário completo com todos os DataFrames necessários
+    return {
+        "df_viagens_cliente": df_viagens_cliente,
+        "df_despesas_filtrado": df_despesas_filtrado,
+        "df_fat_filtrado": df_fat_filtrado,
+        "df_contas_pagar_raw": df_contas_pagar_raw,
+        "df_contas_receber_raw": df_contas_receber_raw,
+        "df_flags": df_flags,
+        "df_despesas_raw": df_despesas_raw  # Inclui o DF de despesas raw para cálculos de Tipo D
+    }
+   
+def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_date: datetime = None, placa_filter: str = "Todos", filial_filter: list = None, tipo_negocio_filter: str = "Todos") -> dict:
+    """
+    Calcula os KPIs para o dashboard principal usando a nova função mestre de filtragem.
+    """
+    # Passo 1: Sincroniza os grupos de despesa antes de qualquer cálculo.
+    sync_expense_groups(apartamento_id)
+    
+    # Passo 2: Busca todos os dados já filtrados da função mestre.
+    filtered_data = _obter_dados_filtrados_mestre(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
+    df_viagens_cliente = filtered_data["df_viagens_cliente"]
+    df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
+    df_fat_filtrado = filtered_data["df_fat_filtrado"]
+    df_contas_pagar_raw = filtered_data["df_contas_pagar_raw"]
+    df_contas_receber_raw = filtered_data["df_contas_receber_raw"]
+    df_flags = filtered_data["df_flags"]
+    df_despesas_raw = filtered_data["df_despesas_raw"]
+
+    # Passo 3: O restante dos cálculos permanece o mesmo, pois já operam sobre dados filtrados.
+    summary = {}
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
     
     if not df_fat_filtrado.empty and 'freteempresa' in col_map_fat:
@@ -482,13 +389,16 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     df_tipo_d_bruto = pd.DataFrame()
     if 'ved' in col_map_despesas_geral:
         df_tipo_d_bruto = df_despesas_sem_placa[df_despesas_sem_placa[col_map_despesas_geral['ved']] == 'D'].copy()
+    
     soma_bruta_tipo_d = 0
     if not df_tipo_d_bruto.empty:
         df_tipo_d_com_flags = pd.merge(df_tipo_d_bruto, df_flags, left_on=col_map_despesas_geral.get('descgrupod'), right_on='group_name', how='left')
         df_tipo_d_final_para_soma = df_tipo_d_com_flags[df_tipo_d_com_flags['incluir_em_tipo_d'] == True]
         if not df_tipo_d_final_para_soma.empty:
-            df_tipo_d_final_para_soma.loc[:, 'valor_calculado'] = np.where(df_tipo_d_final_para_soma[col_map_despesas_geral.get('serie')] == 'RQ', df_tipo_d_final_para_soma[col_map_despesas_geral.get('liquido')], df_tipo_d_final_para_soma[col_map_despesas_geral.get('vlcontabil')])
-            soma_bruta_tipo_d = df_tipo_d_final_para_soma['valor_calculado'].sum()
+            if all(c in col_map_despesas_geral for c in ['serie', 'liquido', 'vlcontabil']):
+                 df_tipo_d_final_para_soma.loc[:, 'valor_calculado'] = np.where(df_tipo_d_final_para_soma[col_map_despesas_geral.get('serie')] == 'RQ', df_tipo_d_final_para_soma[col_map_despesas_geral.get('liquido')], df_tipo_d_final_para_soma[col_map_despesas_geral.get('vlcontabil')])
+                 soma_bruta_tipo_d = df_tipo_d_final_para_soma['valor_calculado'].sum()
+
     valor_final_tipo_d = soma_bruta_tipo_d
     if placa_filter and placa_filter != 'Todos':
         placas_com_tipos = get_unique_plates_with_types(apartamento_id)
@@ -506,43 +416,39 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
         summary['saldo_contas_a_pagar_pendentes'] = df_cp_pendentes[col_map_cp.get('liquidoitemnota')].sum() if 'liquidoitemnota' in col_map_cp else 0
     else:
         summary['saldo_contas_a_pagar_pendentes'] = 0
+        
     if not df_contas_receber_raw.empty:
         col_map_cr = _get_case_insensitive_column_map(df_contas_receber_raw.columns)
         df_cr_pendentes = df_contas_receber_raw[pd.to_numeric(df_contas_receber_raw.get(col_map_cr.get('codtransacao')), errors='coerce').fillna(0) == 0]
         summary['saldo_contas_a_receber_pendentes'] = df_cr_pendentes[col_map_cr.get('valorvenc')].sum() if 'valorvenc' in col_map_cr else 0
     else:
         summary['saldo_contas_a_receber_pendentes'] = 0
+        
     custo_operacional_total = summary['custo_total_viagem'] + summary['total_despesas_gerais'] + summary['total_despesas_tipo_d']
     summary['saldo_geral'] = summary['faturamento_total_viagens'] - custo_operacional_total
     summary['margem_frete'] = (summary['saldo_geral'] / summary['faturamento_total_viagens'] * 100) if summary.get('faturamento_total_viagens', 0) > 0 else 0
     
     return summary
 
+# Substitua esta função em data_manager.py
 
 def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter) -> pd.DataFrame:
     """
-    Calcula os dados para o gráfico mensal/diário usando a nova função central de filtragem.
+    Calcula os dados para o gráfico mensal/diário usando a nova função mestre de filtragem.
     """
     periodo_format = 'M'
     if start_date and end_date and (end_date - start_date).days <= 62:
         periodo_format = 'D'
 
-    # --- INÍCIO DA CORREÇÃO ---
-    # A chamada para a função central agora inclui o 'tipo_negocio_filter' que estava faltando.
-    filtered_data = _get_filtered_data_for_dashboard(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
-    # --- FIM DA CORREÇÃO ---
-    
+    # Busca os dados já filtrados da função mestre.
+    filtered_data = _obter_dados_filtrados_mestre(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
     df_viagens_cliente = filtered_data["df_viagens_cliente"]
     df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
-    df_fat_raw = filtered_data["df_fat_raw"]
+    df_fat_filtrado = filtered_data["df_fat_filtrado"]
+    df_flags = filtered_data["df_flags"]
     
-    # Carrega as flags
-    df_flags = get_all_group_flags(apartamento_id)
-    
-    # O restante dos cálculos para agrupar por período permanece o mesmo
+    # O restante dos cálculos para agrupar por período permanece o mesmo.
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
-    viagens_ids = df_viagens_cliente['numConhec'].unique() if not df_viagens_cliente.empty else []
-    df_fat_filtrado = df_fat_raw[df_fat_raw['numConhec'].isin(viagens_ids)]
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
     
     faturamento = pd.Series(dtype=float)
