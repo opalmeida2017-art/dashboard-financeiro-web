@@ -145,7 +145,7 @@ EXCEL_FILES_CONFIG = {
     "contas_pagar": { "path": "relFilContasPagarDet.xls", "sheet_name": "NFeCompleto", "table": "relFilContasPagarDet" },
     "contas_receber": { "path": "relFilContasReceber.xls", "sheet_name": "ContasRecRecebNormal", "table": "relFilContasReceber" },
     # --- INÍCIO DA CORREÇÃO ---
-        "acerto_motorista": { "path": "relFilAcertoMot.xls", "sheet_name": "Plan1", "table": "relFilAcertoMot" } 
+        "acerto_motorista": { "path": "relFilAcertoMot.xls", "sheet_name": 0, "table": "relFilAcertoMot" } 
 
     # --- FIM DA CORREÇÃO ---
 }
@@ -155,10 +155,8 @@ FILTER_COLUMN_MAPS = { "placa": ['placaVeiculo', 'placa'], "filial": ['nomeFilia
 TABLE_PRIMARY_KEYS = {
     "relFilViagensCliente": ["numConhec"],
     "relFilViagensFatCliente": ["numConhec"],
-    "relFilDespesasGerais": ["numNota", "dataControle", "nomeForn"],
-    "relFilContasPagarDet": ["numNota", "dataVenc", "nomeForn"],
+    "relFilDespesasGerais": ["codItemNota"],
+    "relFilContasPagarDet": ["codItemNota"],
     "relFilContasReceber": ["codDuplicataReceber"],
-    # --- INÍCIO DA CORREÇÃO ---
     "relFilAcertoMot": ["codAcertoMotorista"]
-    # --- FIM DA CORREÇÃO ---
 }

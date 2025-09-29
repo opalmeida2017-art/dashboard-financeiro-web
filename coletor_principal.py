@@ -1,108 +1,64 @@
-from dotenv import load_dotenv
-load_dotenv()
+# coletor_principal.py (VERSÃO REATORADA)
 
 import os
-import subprocess
 import sys
 import time
 import logic
+import shutil
 import database as db
 
 # Adiciona a pasta principal ao caminho para encontrar os outros módulos
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# --- CORREÇÃO: Importando os robôs com os nomes de arquivo corretos ---
+# Importa as FUNÇÕES diretamente, não os arquivos
+from robos.coletor_viagens import executar_coleta_viagens
+from robos.coletor_despesas import executar_coleta_despesas
+from robos.coletor_fat_viagens import executar_coleta_fat_viagens
+from robos.coletor_contas_pagar import executar_coleta_contas_pagar
+from robos.coletor_contas_receber import executar_coleta_contas_receber
+from robos.coletor_acerto_motorista import executar_coleta_acerto_motorista
 
-from sqlalchemy import text
-
-# MODIFICADO: A função agora aceita o apartamento_id
 def executar_todas_as_coletas(apartamento_id: int):
-    
     """
-    Função principal que executa cada robô coletor, passando o ID do apartamento.
+    Função principal que executa cada robô coletor de forma direta e sequencial.
     """
-    print(f"--- INICIANDO ORQUESTRADOR DE COLETA PARA O APARTAMENTO ID: {apartamento_id} ---")
+    db.logar_progresso(apartamento_id, f"--- INICIANDO ORQUESTRADOR DE COLETA PARA O APARTAMENTO ID: {apartamento_id} ---")
 
-    caminho_base = os.path.dirname(os.path.abspath(__file__))
-    
-     # --- CORREÇÃO: Bloco de limpeza movido para o início do orquestrador ---
-    pasta_downloads = os.path.join(caminho_base, 'downloads', str(apartamento_id))
+    # Limpa a pasta de downloads antes de iniciar
+    pasta_principal = os.path.dirname(os.path.abspath(__file__))
+    pasta_downloads = os.path.join(pasta_principal, 'downloads', str(apartamento_id))
     if os.path.exists(pasta_downloads):
-        print(f"Limpando a pasta de downloads: {pasta_downloads}")
-        for filename in os.listdir(pasta_downloads):
-            file_path = os.path.join(pasta_downloads, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-            except Exception as e:
-                print(f'Falha ao remover {file_path}. Razão: {e}')
-    # --- FIM DO BLOCO DE LIMPEZA ---
+        db.logar_progresso(apartamento_id, f"Limpando a pasta de downloads antiga: {pasta_downloads}")
+        shutil.rmtree(pasta_downloads)
 
+    # Lista de funções de robôs a serem executadas
     robos_para_executar = [
-        os.path.join(caminho_base, "robos", "coletor_viagens.py"),
-        os.path.join(caminho_base, "robos", "coletor_despesas.py"),
-        os.path.join(caminho_base, "robos", "coletor_fat_viagens.py"),
-        os.path.join(caminho_base, "robos", "coletor_contas_pagar.py"),
-        os.path.join(caminho_base, "robos", "coletor_contas_receber.py"),
-        os.path.join(caminho_base, "robos", "coletor_acerto_motorista.py"),
+        executar_coleta_viagens,
+        executar_coleta_despesas,
+        executar_coleta_fat_viagens,
+        executar_coleta_contas_pagar,
+        executar_coleta_contas_receber,
+        executar_coleta_acerto_motorista
     ]
 
-    for caminho_do_robo in robos_para_executar:
-        nome_do_robo = os.path.basename(caminho_do_robo)
-        print(f"\n>>> INICIANDO O SCRIPT: {nome_do_robo}")
+    for funcao_robo in robos_para_executar:
+        nome_do_robo = funcao_robo.__name__
         try:
-            # --- ALTERAÇÃO CIRÚRGICA AQUI ---
-            # Adicionamos 'capture_output=True' e 'text=True' para capturar
-            # qualquer mensagem de erro que o script do robô possa gerar.
-            resultado = subprocess.run(
-                [sys.executable, caminho_do_robo, str(apartamento_id)], 
-                check=True, 
-                capture_output=True, 
-                text=True
-            )
-            print(f">>> SCRIPT {nome_do_robo} FINALIZADO COM SUCESSO.")
-            # Mostra a saída do robô, mesmo que tenha sucesso, para depuração
-            if resultado.stdout:
-                print("--- Saída do Robô ---")
-                print(resultado.stdout)
-                print("---------------------")
-    
-        except subprocess.CalledProcessError as e:
-            # Se o robô falhar, agora vamos imprimir a mensagem de erro detalhada.
-            print(f">>> ERRO! O SCRIPT {nome_do_robo} FALHOU. Código de erro: {e.returncode}")
-            print("--- Saída de Erro do Robô ---")
-            print(e.stderr) # Esta linha é a mais importante para vermos o erro
-            print("-----------------------------")
-        except FileNotFoundError:
-            print(f">>> ERRO! O arquivo do robô '{nome_do_robo}' não foi encontrado.")
+            # Chama a função do robô diretamente
+            funcao_robo(apartamento_id)
+            db.logar_progresso(apartamento_id, f">>> Robô {nome_do_robo} finalizado com sucesso.")
+        except Exception as e:
+            # Captura exceções de forma muito mais eficaz que o subprocess
+            db.logar_progresso(apartamento_id, f">>> ERRO CRÍTICO ao executar {nome_do_robo}. A execução continuará com o próximo robô. Erro: {e}")
+            # Considerar adicionar um 'return' aqui se a falha de um robô deve parar todo o processo
         
-        time.sleep(1) # Uma pequena pausa entre os robôs
+        time.sleep(2) # Pausa entre robôs para estabilidade
 
-    print("\nTodos os roteiros foram executados.")
-    print("Processando todos os arquivos baixados na pasta...")
-    
+    db.logar_progresso(apartamento_id, "Todos os roteiros de coleta foram executados. Iniciando processamento dos arquivos baixados...")
     logic.processar_downloads_na_pasta(apartamento_id)
-    
-    print("\n--- ORQUESTRADOR FINALIZADO COM SUCESSO ---")
-
-
-def registrar_notificacao(apartamento_id, mensagem):
-    """Registra uma nova notificação no banco de dados."""
-    try:
-        with db.engine.connect() as conn:
-            query = text("""
-                INSERT INTO notificacoes (apartamento_id, mensagem)
-                VALUES (:apartamento_id, :mensagem)
-            """)
-            conn.execute(query, {"apartamento_id": apartamento_id, "mensagem": mensagem})
-            conn.commit() # Garante que a transação seja salva
-            print(f"Notificação registrada para o apartamento {apartamento_id}")
-    except Exception as e:
-        print(f"Erro ao registrar notificação: {e}")
-
+    db.logar_progresso(apartamento_id, "--- ORQUESTRADOR FINALIZADO COM SUCESSO ---")
 
 if __name__ == '__main__':
-    # Bloco para teste manual. Exemplo: python coletor_principal.py 1
     if len(sys.argv) > 1:
         apartamento_id_teste = int(sys.argv[1])
         executar_todas_as_coletas(apartamento_id_teste)
