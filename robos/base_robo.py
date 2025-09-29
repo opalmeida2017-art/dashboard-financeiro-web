@@ -17,7 +17,7 @@ def configurar_driver(apartamento_id: int):
     """
     chrome_options = Options()
     # Descomente a linha abaixo para rodar em modo "visível" durante o desenvolvimento
-    # chrome_options.add_argument("--headless") 
+    chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-dev-shm-usage")
