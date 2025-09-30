@@ -10,54 +10,58 @@
         </div>
 
         <div class="table-container">
-            <h3>Apartamentos Registados</h3>
-            <form method="POST" action="{{ url_for('main.admin_dashboard') }}"> 
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nome da Empresa</th>
-                            <th>Status</th>
-                            <th>Uso de Dados (Registos)</th>
-                            <th>Intervalo (min)</th>
-                            <th>Link de Acesso do Cliente</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for apt in apartamentos %}
-                        <tr>
-                            <td>{{ apt.id }}</td>
-                            <td>{{ apt.nome_empresa }}</td>
-                            <td><span class="status-{{ apt.status }}">{{ apt.status }}</span></td>
-                            <td>{{ "{:,.0f}".format(apt.total_registos or 0).replace(",", ".") }}</td>
-                            <td>
-                                <input type="number" name="interval_{{ apt.id }}" 
-                                       value="{{ apt.live_monitoring_interval_minutes }}" 
-                                       style="width: 60px; text-align: center;">
-                            </td>
-                            <td>
-                                {% if apt.access_link != "Sem slug definido" %}
-                                    <a href="{{ apt.access_link }}" target="_blank" id="link-apt-{{ apt.id }}">{{ apt.access_link }}</a>
-                                {% else %}
-                                    <span style="color: #888;">{{ apt.access_link }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="actions-cell">
-                                <a href="{{ url_for('main.gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
-                                <button type="button" class="btn-action delete-data-btn" data-apt-id="{{ apt.id }}" style="background-color: #dc3545; color: white;">Limpar Dados</button>
-                            </td>
-                        </tr>
+    <h3>Apartamentos Registados</h3>
+    <form method="POST" action="{{ url_for('super_admin.admin_dashboard') }}"> 
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome da Empresa</th>
+                    <th>Status</th>
+                    <th>Uso de Dados (Registos)</th>
+                    <th>Intervalo (min)</th>
+                    <th>Link de Acesso do Cliente</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for apt in apartamentos %}
+                <tr>
+                    <td>{{ apt.id }}</td>
+                    <td>{{ apt.nome_empresa }}</td>
+                    <td><span class="status-{{ apt.status }}">{{ apt.status }}</span></td>
+                    <td>{{ "{:,.0f}".format(apt.total_registos or 0).replace(",", ".") }}</td>
+                    <td>
+                        <input type="number" name="interval_{{ apt.id }}" 
+                               value="{{ apt.live_monitoring_interval_minutes }}" 
+                               style="width: 60px; text-align: center;">
+                    </td>
+                    <td>
+                        {% if apt.access_link != "Sem slug definido" %}
+                            <a href="{{ apt.access_link }}" target="_blank" id="link-apt-{{ apt.id }}">{{ apt.access_link }}</a>
                         {% else %}
-                        <tr>
-                            <td colspan="7" style="text-align: center;">Nenhum apartamento encontrado.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </form>
+                            <span style="color: #888;">{{ apt.access_link }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="actions-cell">
+                        <a href="{{ url_for('super_admin.visualizar_como_cliente', apartamento_id=apt.id) }}" class="btn-action" style="background-color: #17a2b8; text-decoration: none;">Visualizar</a>
+                        <a href="{{ url_for('super_admin.gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action">Gerir</a>
+                        <button type="button" class="btn-action delete-data-btn" data-apt-id="{{ apt.id }}" style="background-color: #dc3545;">Limpar Dados</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center;">Nenhum apartamento encontrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="form-actions" style="text-align: right; margin-top: 20px;">
+            <button type="submit" class="btn-salvar">Salvar Intervalos</button>
         </div>
-    </div>
+        </form>
+</div>
 {% endblock %}
 
 {% block scripts %}

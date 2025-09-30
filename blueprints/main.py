@@ -197,8 +197,34 @@ def configuracao():
         return redirect(url_for('auth.logout'))
 
     if request.method == 'POST':
-        live_monitoring_enabled = 'live_monitoring_enabled' in request.form
-        configs = {
+        # --- INÍCIO DA VALIDAÇÃO DE DATAS NO BACKEND ---
+        start_date_str = request.form.get('DATA_INICIAL_ROBO')
+        end_date_str = request.form.get('DATA_FINAL_ROBO')
+
+        if start_date_str and end_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+
+                # Regra 1: Data final não pode ser menor que a inicial
+                if end_date < start_date:
+                    flash('Erro: A data final não pode ser anterior à data inicial.', 'error')
+                    # Recarrega a página de configuração sem salvar
+                    return redirect(url_for('main.configuracao'))
+                
+                # Regra 2: Intervalo não pode ser maior que 60 dias
+                if (end_date - start_date).days > 60:
+                    flash('Erro: O intervalo entre a data inicial e a final não pode ser maior que 60 dias.', 'error')
+                    # Recarrega a página de configuração sem salvar
+                    return redirect(url_for('main.configuracao'))
+
+            except ValueError:
+                flash('Formato de data inválido.', 'error')
+                return redirect(url_for('main.configuracao'))
+        # --- FIM DA VALIDAÇÃO DE DATAS NO BACKEND ---
+
+        # Se a validação passar, o código de salvamento continua normalmente
+        configs_to_save = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
             'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
             'SENHA_ROBO': request.form.get('SENHA_ROBO'),
@@ -208,14 +234,15 @@ def configuracao():
             'CODIGO_CONTAS_RECEBER': request.form.get('CODIGO_CONTAS_RECEBER'),
             'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
             'CODIGO_ACERTO_MOTORISTA': request.form.get('CODIGO_ACERTO_MOTORISTA'),  
-            'DATA_INICIAL_ROBO': datetime.strptime(request.form.get('DATA_INICIAL_ROBO'), '%Y-%m-%d').strftime('%d/%m/%Y') if request.form.get('DATA_INICIAL_ROBO') else '',
-            'DATA_FINAL_ROBO': datetime.strptime(request.form.get('DATA_FINAL_ROBO'), '%Y-%m-%d').strftime('%d/%m/%Y') if request.form.get('DATA_FINAL_ROBO') else '',
-            'live_monitoring_enabled': live_monitoring_enabled
+            'DATA_INICIAL_ROBO': datetime.strptime(start_date_str, '%Y-%m-%d').strftime('%d/%m/%Y') if start_date_str else '',
+            'DATA_FINAL_ROBO': datetime.strptime(end_date_str, '%Y-%m-%d').strftime('%d/%m/%Y') if end_date_str else '',
+            'live_monitoring_enabled': 'live_monitoring_enabled' in request.form
         }
-        logic.salvar_configuracoes_robo(apartamento_id_alvo, configs)
+        logic.salvar_configuracoes_robo(apartamento_id_alvo, configs_to_save)
         flash('Configurações salvas com sucesso!', 'success')
         return redirect(url_for('main.configuracao'))
     
+    # Lógica para GET (exibir a página) permanece a mesma
     configs_salvas = logic.ler_configuracoes_robo(apartamento_id_alvo)
     try:
         if configs_salvas.get('DATA_INICIAL_ROBO'):
@@ -226,7 +253,6 @@ def configuracao():
         pass
     
     return render_template('configuracao.html', configs=configs_salvas)
-
 @main_bp.route('/gerenciar-usuarios')
 @login_required
 def gerenciar_usuarios():
@@ -324,10 +350,31 @@ def apagar_usuario(user_id):
         flash(message, 'error')
     return redirect(url_for('main.gerenciar_usuarios'))
 
-@main_bp.route('/super-admin')
+@main_bp.route('/super-admin', methods=['GET', 'POST']) # <-- Adicionado 'POST'
 @login_required
 @super_admin_required
 def admin_dashboard():
+    # --- INÍCIO DA CORREÇÃO (LÓGICA PARA SALVAR) ---
+    if request.method == 'POST':
+        # Itera sobre todos os dados enviados pelo formulário
+        for key, value in request.form.items():
+            # Verifica se é um campo de intervalo (ex: 'interval_2')
+            if key.startswith('interval_'):
+                try:
+                    # Extrai o ID do apartamento do nome do campo
+                    apartamento_id = int(key.split('_')[1])
+                    # Cria um dicionário com a chave e valor a serem salvos
+                    config_para_salvar = {'live_monitoring_interval_minutes': value}
+                    # Chama a função de lógica para salvar a configuração
+                    logic.salvar_configuracoes_robo(apartamento_id, config_para_salvar)
+                except (ValueError, IndexError):
+                    flash(f'Erro ao processar o intervalo para o campo {key}.', 'error')
+        
+        flash('Intervalos atualizados com sucesso!', 'success')
+        return redirect(url_for('main.admin_dashboard'))
+    # --- FIM DA CORREÇÃO ---
+
+    # A lógica para exibir a página (GET) permanece a mesma
     session.pop('force_customer_view', None)
     session.pop('viewing_apartment_id', None)
     apartamentos = logic.get_apartments_with_usage_stats()

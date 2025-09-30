@@ -11,10 +11,31 @@ from .helpers import super_admin_required
 
 super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/super-admin')
 
-@super_admin_bp.route('/')
+@super_admin_bp.route('/', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
 def admin_dashboard():
+    # Bloco de código para lidar com o envio do formulário (POST)
+    if request.method == 'POST':
+        # Itera sobre todos os dados enviados pelo formulário
+        for key, value in request.form.items():
+            # Verifica se é um campo de intervalo (ex: 'interval_2')
+            if key.startswith('interval_'):
+                try:
+                    # Extrai o ID do apartamento do nome do campo
+                    apartamento_id = int(key.split('_')[1])
+                    # Cria um dicionário com a chave e valor a serem salvos
+                    config_para_salvar = {'live_monitoring_interval_minutes': value}
+                    # Chama a função de lógica para salvar a configuração
+                    logic.salvar_configuracoes_robo(apartamento_id, config_para_salvar)
+                except (ValueError, IndexError):
+                    flash(f'Erro ao processar o intervalo para o campo {key}.', 'error')
+        
+        flash('Intervalos atualizados com sucesso!', 'success')
+        # Redireciona de volta para a mesma página para evitar reenvio do formulário
+        return redirect(url_for('super_admin.admin_dashboard'))
+
+    # A lógica para carregar a página (GET) permanece a mesma
     session.pop('force_customer_view', None)
     session.pop('viewing_apartment_id', None)
     apartamentos = logic.get_apartments_with_usage_stats()

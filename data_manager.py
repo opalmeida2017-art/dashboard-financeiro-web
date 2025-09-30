@@ -889,21 +889,31 @@ def get_apartments_with_usage_stats():
     data_tables = [info["table"] for info in config.EXCEL_FILES_CONFIG.values()]
     try:
         with engine.connect() as conn:
+            # A query principal não muda
             df_apartamentos = pd.read_sql('SELECT id, nome_empresa, status, data_criacao, slug FROM apartamentos', conn)
             if df_apartamentos.empty:
                 return []
+            
             apartamentos_list = df_apartamentos.to_dict(orient='records')
+
             for apt in apartamentos_list:
                 total_registos = 0
                 apt_id = apt['id']
                 for table in data_tables:
                     if db.table_exists(table):
-                        query = text(f'SELECT COUNT(*) FROM "{table}" WHERE "apartamento_id" = :apt_id')
-                        result = conn.execute(query, {"apt_id": apt_id})
-                        count = result.scalar_one_or_none()
+                        query_count = text(f'SELECT COUNT(*) FROM "{table}" WHERE "apartamento_id" = :apt_id')
+                        count = conn.execute(query_count, {"apt_id": apt_id}).scalar_one_or_none()
                         if count:
                             total_registos += count
                 apt['total_registos'] = total_registos
+
+                # --- INÍCIO DA CORREÇÃO (LÓGICA PARA BUSCAR O VALOR) ---
+                # Para cada apartamento, busca suas configurações de robô
+                configs = ler_configuracoes_robo(apt_id) 
+                # Adiciona o valor do intervalo ao dicionário do apartamento
+                apt['live_monitoring_interval_minutes'] = configs.get('live_monitoring_interval_minutes', '')
+                # --- FIM DA CORREÇÃO ---
+
             return apartamentos_list
     except Exception as e:
         print(f"Erro ao buscar apartamentos com estatísticas de uso: {e}")

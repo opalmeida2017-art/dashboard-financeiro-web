@@ -282,6 +282,41 @@
                     });
             });
         });
+        // --- INÍCIO DA NOVA VALIDAÇÃO DE DATAS ---
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form[action="{{ url_for('main.configuracao') }}"]');
+            const startDateInput = document.getElementById('DATA_INICIAL_ROBO');
+            const endDateInput = document.getElementById('DATA_FINAL_ROBO');
+
+            form.addEventListener('submit', function(event) {
+                const startDateStr = startDateInput.value;
+                const endDateStr = endDateInput.value;
+
+                // Só valida se ambas as datas estiverem preenchidas
+                if (startDateStr && endDateStr) {
+                    const startDate = new Date(startDateStr);
+                    const endDate = new Date(endDateStr);
+
+                    // Regra 1: Data final não pode ser menor que a inicial
+                    if (endDate < startDate) {
+                        alert('Erro: A data final não pode ser anterior à data inicial.');
+                        event.preventDefault(); // Impede o envio do formulário
+                        return;
+                    }
+
+                    // Regra 2: Intervalo não pode ser maior que 60 dias
+                    const diffTime = Math.abs(endDate - startDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    if (diffDays > 60) {
+                        alert('Erro: O intervalo entre a data inicial e a final não pode ser maior que 60 dias.');
+                        event.preventDefault(); // Impede o envio do formulário
+                        return;
+                    }
+                }
+            });
+        });
+        // --- FIM DA NOVA VALIDAÇÃO DE DATAS ---
     </script>
 </body>
 </html>

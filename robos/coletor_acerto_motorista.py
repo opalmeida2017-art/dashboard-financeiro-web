@@ -13,7 +13,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
-def executar_coleta_acerto_motorista(apartamento_id: int):
+def executar_coleta_acerto_motorista(apartamento_id: int, start_date_str: str = None, end_date_str: str = None):
     db.logar_progresso(apartamento_id, f"\n--- INICIANDO ROBÔ: ACERTO DE MOTORISTA ---")
     
     driver = None
@@ -22,9 +22,10 @@ def executar_coleta_acerto_motorista(apartamento_id: int):
         configs = logic.ler_configuracoes_robo(apartamento_id)
         configs['apartamento_id'] = apartamento_id # Adiciona o ID ao dict para uso no login
         CODIGO_RELATORIO = configs.get('CODIGO_ACERTO_MOTORISTA')
-        DATA_INICIAL = configs.get('DATA_INICIAL_ROBO')
-        DATA_FINAL = configs.get('DATA_FINAL_ROBO')
-
+        
+        DATA_INICIAL = start_date_str or configs.get('DATA_INICIAL_ROBO', '01/01/2000')
+        DATA_FINAL = end_date_str or configs.get('DATA_FINAL_ROBO', '31/12/2999')
+        
         if not all([configs.get('USUARIO_ROBO'), configs.get('SENHA_ROBO'), configs.get('URL_LOGIN')]):
             db.logar_progresso(apartamento_id, "ERRO: As configurações de URL, Usuário ou Senha não foram definidas.")
             return

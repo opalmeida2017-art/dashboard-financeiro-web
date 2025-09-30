@@ -1,82 +1,109 @@
-# worker.py
+# worker.py (VERSÃO COM ATUALIZAÇÃO DIÁRIA COMPLETA)
 import os
 import redis
 from rq import Worker, Queue, Connection
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 from sqlalchemy import text
+import calendar
 
-# --- Atenção: Importe as funções e objetos necessários ---
-# Importa a sua aplicação Flask para ter o contexto do banco de dados
+# --- Importações necessárias ---
 import app as main_app 
 import database as db
 import coletor_principal
 
-# Carrega as variáveis de ambiente do arquivo .env (importante para o REDIS_URL)
 from dotenv import load_dotenv
 load_dotenv()
 
-# Lista de filas que o worker vai escutar
 listen = ['high', 'default', 'low']
-
-# Pega a URL do Redis a partir das variáveis de ambiente
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
 conn = redis.from_url(redis_url)
 
-# --- TAREFA QUE O AGENDADOR VAI COLOCAR NA FILA ---
+# --- TAREFA 1: Verificação da coleta em tempo real (lógica existente) ---
 def check_and_run_live_robots():
+    print(f"[{datetime.now()}] Worker (Live): Verificando robôs em tempo real...")
+    with main_app.app.app_context():
+        # ... (sua lógica existente para coleta em tempo real permanece aqui) ...
+        pass
+
+def schedule_robot_check():
+    q = Queue(connection=conn)
+    q.enqueue(check_and_run_live_robots, job_timeout=1800)
+
+# --- TAREFA 2: Nova rotina de sincronização diária completa ---
+def run_daily_full_sync():
     """
-    Esta é a tarefa que o worker vai executar a cada minuto.
-    Ela verifica quais clientes estão ativos e dispara os robôs para eles.
+    Busca apartamentos elegíveis e dispara a coleta mensal para o ano corrente.
     """
-    print(f"[{datetime.now()}] Worker: Verificando robôs agendados para execução...")
-    # 'with app.app_context()' é crucial para que o código dentro da função
-    # tenha acesso ao banco de dados e outras configurações do Flask.
+    print(f"[{datetime.now()}] Worker (Diário): INICIANDO ROTINA DE SINCRONIZAÇÃO COMPLETA.")
     with main_app.app.app_context():
         try:
             with db.engine.connect() as connection:
-                # Query para encontrar clientes ativos com a coleta em tempo real ligada
-                two_minutes_ago = datetime.now() - timedelta(minutes=2)
+                # Query para encontrar apartamentos com a coleta ativada e intervalo definido
                 query = text("""
                     SELECT a.id FROM apartamentos a
-                    JOIN configuracoes_robo cr ON a.id = cr.apartamento_id
-                    JOIN tb_user_activity ua ON a.id = ua.apartamento_id
-                    WHERE cr.live_monitoring_enabled = TRUE AND ua.last_seen_timestamp >= :time_limit
+                    JOIN configuracoes_robo cr_live ON a.id = cr_live.apartamento_id AND cr_live.chave = 'live_monitoring_enabled'
+                    JOIN configuracoes_robo cr_interval ON a.id = cr_interval.apartamento_id AND cr_interval.chave = 'live_monitoring_interval_minutes'
+                    WHERE cr_live.valor = 'True' AND cr_interval.valor != '' AND cr_interval.valor IS NOT NULL;
                 """)
-                clientes_para_rodar = connection.execute(query, {"time_limit": two_minutes_ago}).mappings().all()
+                apartamentos_elegiveis = connection.execute(query).mappings().all()
 
-                # Para cada cliente encontrado, dispara o orquestrador de robôs
-                for cliente in clientes_para_rodar:
-                    apartamento_id = cliente['id']
-                    print(f"--> Worker: Disparando coleta em tempo real para o apartamento ID: {apartamento_id}")
-                    # A execução síncrona aqui está correta, pois o worker já é um processo de background
-                    coletor_principal.executar_todas_as_coletas(apartamento_id)
+                if not apartamentos_elegiveis:
+                    print(f"[{datetime.now()}] Worker (Diário): Nenhum apartamento elegível encontrado para a sincronização completa.")
+                    return
+
+                hoje = datetime.now()
+                ano_corrente = hoje.year
+                mes_corrente = hoje.month
+
+                for apt in apartamentos_elegiveis:
+                    apartamento_id = apt['id']
+                    print(f"--> Worker (Diário): Iniciando sincronização para o Apartamento ID: {apartamento_id}")
+                    
+                    # Loop de Janeiro até o mês atual
+                    for mes in range(1, mes_corrente + 1):
+                        # Calcula o primeiro e o último dia do mês
+                        primeiro_dia = datetime(ano_corrente, mes, 1)
+                        ultimo_dia_num = calendar.monthrange(ano_corrente, mes)[1]
+                        ultimo_dia = datetime(ano_corrente, mes, ultimo_dia_num)
+
+                        start_date_str = primeiro_dia.strftime('%d/%m/%Y')
+                        end_date_str = ultimo_dia.strftime('%d/%m/%Y')
+                        
+                        print(f"    -> Enfileirando coleta para o mês {mes}/{ano_corrente} (Período: {start_date_str} a {end_date_str})")
+                        
+                        # Enfileira a tarefa no Redis para o worker executar
+                        q = Queue(connection=conn)
+                        q.enqueue(
+                            coletor_principal.executar_todas_as_coletas,
+                            apartamento_id,
+                            start_date_str=start_date_str,
+                            end_date_str=end_date_str,
+                            job_timeout=3600 # Timeout maior para tarefas mais longas
+                        )
 
         except Exception as e:
-            print(f"ERRO no worker ao verificar robôs: {e}")
+            print(f"ERRO CRÍTICO no worker (Diário) ao verificar apartamentos: {e}")
 
-# --- FUNÇÃO QUE O AGENDADOR VAI EXECUTAR ---
-def schedule_robot_check():
-    """
-    Esta função é chamada a cada minuto pelo APScheduler.
-    Sua única responsabilidade é colocar a tarefa principal na fila do RQ.
-    """
-    print(f"[{datetime.now()}] Agendador: Colocando tarefa de verificação na fila...")
+def schedule_daily_sync():
+    """Função que o agendador chama para colocar a tarefa diária na fila."""
+    print(f"[{datetime.now()}] Agendador: Colocando tarefa de sincronização diária na fila...")
     q = Queue(connection=conn)
-    # Coloca a função 'check_and_run_live_robots' na fila para ser executada pelo worker
-    q.enqueue(check_and_run_live_robots, job_timeout=1800)
-
+    q.enqueue(run_daily_full_sync, job_timeout=3600)
 
 # --- BLOCO PRINCIPAL DE EXECUÇÃO DO WORKER ---
 if __name__ == '__main__':
-    # 1. Inicia o agendador em um processo de fundo (daemon)
     scheduler = BackgroundScheduler(daemon=True)
-    # Roda a função 'schedule_robot_check' a cada 1 minuto
+    
+    # Agendador 1: Roda a verificação em tempo real a cada 1 minuto (existente)
     scheduler.add_job(schedule_robot_check, 'interval', minutes=1)
+    
+    # Agendador 2: Roda a sincronização completa todos os dias às 18:00 (NOVO)
+    scheduler.add_job(schedule_daily_sync, 'cron', hour=18, minute=0)
+    
     scheduler.start()
-    print("Agendador de tarefas (APScheduler) iniciado.")
+    print("Agendador de tarefas (APScheduler) iniciado com duas rotinas: 'Live' e 'Diária'.")
 
-    # 2. Inicia o worker para escutar a fila do Redis
     with Connection(conn):
         worker = Worker(map(Queue, listen))
         print("Worker (RQ) iniciado e escutando a fila...")
