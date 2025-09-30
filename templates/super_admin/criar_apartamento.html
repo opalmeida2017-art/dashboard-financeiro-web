@@ -11,12 +11,12 @@
         <div class="page-header">
             <h1>Criar Novo Apartamento</h1>
             <div class="header-actions">
-                <a href="{{ url_for('admin_dashboard') }}" class="manage-link" style="text-decoration: none;">Voltar ao Painel</a>
+                <a href="{{ url_for('main.admin_dashboard') }}" class="manage-link" style="text-decoration: none;">Voltar ao Painel</a>
             </div>
         </div>
 
         <div class="form-container" style="background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <form method="POST" action="{{ url_for('criar_apartamento') }}">
+            <form method="POST" action="{{ url_for('main.criar_apartamento') }}">
                 <h3>Dados da Empresa (Apartamento)</h3>
                 <div class="form-group">
                     <label for="nome_empresa">Nome da Empresa</label>

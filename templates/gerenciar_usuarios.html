@@ -12,7 +12,7 @@
             <h1>Gerir Utilizadores</h1>
             <div class="header-actions">
                 <button id="addUserBtn" class="btn-salvar">Adicionar Novo Utilizador</button>
-                <a href="{{ url_for('index') }}" class="manage-link" style="text-decoration: none;">Voltar ao Dashboard</a>
+                <a href="{{ url_for('main.index') }}" class="manage-link" style="text-decoration: none;">Voltar ao Dashboard</a>
             </div>
         </div>
 
@@ -42,7 +42,7 @@
                         <td>{{ user.role }}</td>
                         <td class="actions-cell">
                             <button class="btn-action edit" data-userid="{{ user.id }}">Editar</button>
-                            <form action="{{ url_for('apagar_usuario', user_id=user.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem a certeza que deseja apagar este utilizador?');">
+                            <form action="{{ url_for('main.apagar_usuario', user_id=user.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem a certeza que deseja apagar este utilizador?');">
                                 <button type="submit" class="btn-action delete">Apagar</button>
                             </form>
                         </td>
@@ -57,7 +57,6 @@
         </div>
     </div>
 
-    <!-- Modal para Adicionar/Editar Utilizador -->
     <div id="userModal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
@@ -102,7 +101,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Abrir modal para adicionar novo utilizador
     addUserBtn.onclick = function() {
         userForm.reset();
-        userForm.action = "{{ url_for('adicionar_usuario') }}";
+        // --- ALTERAÇÃO 1 ---
+        userForm.action = "{{ url_for('main.adicionar_usuario') }}";
         modalTitle.textContent = 'Adicionar Novo Utilizador';
         passwordInput.required = true;
         passwordHelp.style.display = 'none';
@@ -124,8 +124,11 @@ document.addEventListener('DOMContentLoaded', function() {
         button.addEventListener('click', function() {
             const userId = this.dataset.userid;
             
+            // --- ALTERAÇÃO 2: URL da API ---
+            const url_get_data = "{{ url_for('main.get_user_data', user_id=0) }}".replace('0', userId);
+
             // Buscar dados do utilizador via API
-            fetch(`/gerenciar-usuarios/dados/${userId}`)
+            fetch(url_get_data)
                 .then(response => response.json())
                 .then(data => {
                     if(data.error) {
@@ -133,7 +136,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
                     userForm.reset();
-                    userForm.action = `/gerenciar-usuarios/editar/${userId}`;
+                    
+                    // --- ALTERAÇÃO 3: Ação do formulário de edição ---
+                    const url_edit_action = "{{ url_for('main.editar_usuario', user_id=0) }}".replace('0', userId);
+                    userForm.action = url_edit_action;
+
                     modalTitle.textContent = 'Editar Utilizador';
                     
                     document.getElementById('nome').value = data.nome;

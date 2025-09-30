@@ -393,7 +393,7 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     soma_bruta_tipo_d = 0
     if not df_tipo_d_bruto.empty:
         df_tipo_d_com_flags = pd.merge(df_tipo_d_bruto, df_flags, left_on=col_map_despesas_geral.get('descgrupod'), right_on='group_name', how='left')
-        df_tipo_d_final_para_soma = df_tipo_d_com_flags[df_tipo_d_com_flags['incluir_em_tipo_d'] == True]
+        df_tipo_d_final_para_soma = df_tipo_d_com_flags[df_tipo_d_com_flags['incluir_em_tipo_d'] == True].copy()
         if not df_tipo_d_final_para_soma.empty:
             if all(c in col_map_despesas_geral for c in ['serie', 'liquido', 'vlcontabil']):
                  df_tipo_d_final_para_soma.loc[:, 'valor_calculado'] = np.where(df_tipo_d_final_para_soma[col_map_despesas_geral.get('serie')] == 'RQ', df_tipo_d_final_para_soma[col_map_despesas_geral.get('liquido')], df_tipo_d_final_para_soma[col_map_despesas_geral.get('vlcontabil')])

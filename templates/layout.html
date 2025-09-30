@@ -16,7 +16,7 @@
                     <span class="navbar-text me-3">
                         Olá, {{ current_user.nome }}
                     </span>
-                    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">Sair</a>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Sair</a>
                 {% endif %}
             </div>
         </div>

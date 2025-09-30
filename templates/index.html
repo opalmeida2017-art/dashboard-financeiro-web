@@ -132,9 +132,9 @@
             <button type="button" id="openUploadModalBtn" class="upload-link">Fazer Upload</button>
             <button type="button" id="openModalBtn" class="manage-link">Gerenciar Grupos</button>
             {% if is_admin_in_context() %}
-                <a href="{{ url_for('gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
+                <a href="{{ url_for('main.gerenciar_usuarios') }}" class="manage-link">Gerir Utilizadores</a>
             {% endif %}
-            <a href="{{ url_for('configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
+            <a href="{{ url_for('main.configuracao') }}" class="config-link" style="padding: 8px 12px; background-color: #ffc107; color: black; text-decoration: none; border-radius: 4px; font-weight: 500;">Configurar Robô</a>
             <button type="button" id="btn-iniciar-coleta" class="run-automation-link" style="padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Atualizar Dados</button>
         </div>
     </form>
@@ -255,8 +255,7 @@
             <span class="close-button manage-close">&times;</span>
             <h2>Gerenciar Grupos de Despesa</h2>
             <p>Classifique cada grupo...</p>
-            <form method="POST" action="{{ url_for('gerenciar_grupos_salvar') }}">
-                <div id="manageGroupsTableContainer"><p>Carregando grupos...</p></div>
+           <form method="POST" action="{{ url_for('main.gerenciar_grupos_salvar') }}">                <div id="manageGroupsTableContainer"><p>Carregando grupos...</p></div>
                 <button type="submit" class="btn-salvar">Salvar Alterações</button>
             </form>
         </div>
@@ -292,46 +291,38 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        
-        // --- INÍCIO DA VALIDAÇÃO DE DATA CORRIGIDA ---
+        // --- LÓGICA GERAL DA PÁGINA ---
+        const params = new URLSearchParams(window.location.search);
+
+        // Validação de data
         const filterForm = document.querySelector('.filters form');
         if (filterForm) {
             filterForm.addEventListener('submit', function(event) {
-                const startDateInput = document.getElementById('start_date');
-                const endDateInput = document.getElementById('end_date');
-                const startDateValue = startDateInput.value;
-                const endDateValue = endDateInput.value;
-                if (startDateValue && endDateValue) {
-                    if (startDateValue > endDateValue) {
-                        event.preventDefault();
-                        alert('Atenção: A data inicial não pode ser maior que a data final.');
-                    }
+                const startDateValue = document.getElementById('start_date').value;
+                const endDateValue = document.getElementById('end_date').value;
+                if (startDateValue && endDateValue && startDateValue > endDateValue) {
+                    event.preventDefault();
+                    alert('Atenção: A data inicial não pode ser maior que a data final.');
                 }
             });
         }
-        // --- LÓGICA DO GRÁFICO ---
-        const params = new URLSearchParams(window.location.search);
+        
+        // Lógica do gráfico principal
         const chartCanvas = document.getElementById('faturamentoDespesasChart');
         if (chartCanvas) {
             fetch(`/api/monthly_summary?${params.toString()}`)
-                .then(response => {
-                    if (!response.ok) { throw new Error('Erro na resposta da rede.'); }
-                    return response.json();
-                })
+                .then(response => response.ok ? response.json() : Promise.reject('Erro de rede'))
                 .then(data => {
                     const chartContainer = document.getElementById('secao-grafico');
                     if (!data || data.length === 0) {
-                        if(chartContainer) {
-                            chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; padding-top: 20px;">Nenhum dado disponível para o período selecionado.</p>';
-                        }
+                        if(chartContainer) chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; padding-top: 20px;">Nenhum dado disponível para o período selecionado.</p>';
                         return; 
                     }
                     const labels = data.map(item => item.PeriodoLabel);
                     const faturamentoData = data.map(item => item.Faturamento);
                     const custoData = data.map(item => item.Custo);
                     const despesasGeraisData = data.map(item => item.DespesasGerais);
-                    const ctx = chartCanvas.getContext('2d');
-                    new Chart(ctx, {
+                    new Chart(chartCanvas.getContext('2d'), {
                         type: 'bar',
                         data: {
                             labels: labels,
@@ -347,35 +338,35 @@
                 .catch(error => {
                     console.error('Erro ao buscar ou processar dados para o gráfico:', error);
                     const chartContainer = document.getElementById('secao-grafico');
-                    if(chartContainer) {
-                        chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; color: red; padding-top: 20px;">Ocorreu um erro ao carregar os dados do gráfico.</p>';
-                    }
+                    if(chartContainer) chartContainer.innerHTML = '<h2>Faturamento vs. Despesas (Mensal/Diário)</h2><p style="text-align: center; color: red; padding-top: 20px;">Ocorreu um erro ao carregar os dados do gráfico.</p>';
                 });
         }
 
-        // --- LÓGICA PARA OS LINKS DA NOVA PÁGINA ---
-        const detalhesLink = document.getElementById('link-detalhes-faturamento');
-        if (detalhesLink) {
-            const paramsLink = new URLSearchParams(window.location.search);
-            detalhesLink.href = `{{ url_for('faturamento_detalhes') }}?${paramsLink.toString()}`;
-        }
-        const linkSuperior = document.getElementById('link-detalhes-superior');
-        if (linkSuperior) {
-            const paramsSuperior = new URLSearchParams(window.location.search);
-            linkSuperior.href = `{{ url_for('faturamento_detalhes') }}?${paramsSuperior.toString()}`;
-        }
+        // --- LÓGICA DOS MODAIS (GERAL) ---
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            const closeButton = modal.querySelector('.close-button');
+            if (closeButton) {
+                closeButton.onclick = () => modal.style.display = 'none';
+            }
+        });
+        window.addEventListener('click', (event) => {
+            modals.forEach(modal => {
+                if (event.target == modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
         
-        // --- LÓGICA DOS POPUPS (MODAIS) ---
+        // Modal de Gerenciar Grupos
         const manageModal = document.getElementById('manageGroupsModal');
         const manageBtn = document.getElementById('openModalBtn');
-        const manageCloseBtn = document.querySelector('.manage-close');
-        const tableContainer = document.getElementById('manageGroupsTableContainer');
-
         if (manageBtn) {
             manageBtn.onclick = function() {
+                const tableContainer = document.getElementById('manageGroupsTableContainer');
                 tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
                 manageModal.style.display = 'block';
-                fetch("{{ url_for('gerenciar_grupos_dados') }}")
+                fetch("{{ url_for('main.gerenciar_grupos_dados') }}")
                     .then(response => response.json())
                     .then(flags => {
                         let tableHTML = `<table><thead><tr><th>Nome do Grupo de Despesa</th><th>Classificação</th></tr></thead><tbody>`;
@@ -396,50 +387,38 @@
                         }
                         tableHTML += '</tbody></table>';
                         tableContainer.innerHTML = tableHTML;
-                        setupExclusiveCheckboxes();
+                        
+                        const checkboxes = document.querySelectorAll('.classification-cb');
+                        checkboxes.forEach(cb => {
+                            cb.addEventListener('change', function() {
+                                if (this.checked) {
+                                    const currentGroup = this.dataset.group;
+                                    const currentType = this.dataset.type;
+                                    checkboxes.forEach(otherCb => {
+                                        if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
+                                            otherCb.checked = false;
+                                        }
+                                    });
+                                }
+                            });
+                        });
                     });
             }
         }
-        if (manageCloseBtn) { manageCloseBtn.onclick = function() { manageModal.style.display = 'none'; } }
 
-        function setupExclusiveCheckboxes() {
-            const checkboxes = document.querySelectorAll('.classification-cb');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', function() {
-                    if (this.checked) {
-                        const currentGroup = this.dataset.group;
-                        const currentType = this.dataset.type;
-                        checkboxes.forEach(otherCb => {
-                            if (otherCb.dataset.group === currentGroup && otherCb.dataset.type !== currentType) {
-                                otherCb.checked = false;
-                            }
-                        });
-                    }
-                });
-            });
-        }
-        
+        // Modal de Upload
         const uploadModal = document.getElementById('uploadModal');
         const uploadBtn = document.getElementById('openUploadModalBtn');
-        const uploadCloseBtn = document.querySelector('.upload-close');
-        if(uploadBtn) { uploadBtn.onclick = function() { uploadModal.style.display = 'block'; } }
-        if(uploadCloseBtn) { uploadCloseBtn.onclick = function() { uploadModal.style.display = 'none'; } }
-        
-        window.addEventListener('click', function(event) {
-            if (event.target == manageModal) { manageModal.style.display = 'none'; }
-            if (event.target == uploadModal) { uploadModal.style.display = 'none'; }
-        });
-        
+        if (uploadBtn) uploadBtn.onclick = () => uploadModal.style.display = 'block';
         const uploadForm = document.getElementById('uploadForm');
-        const uploadFormContainer = document.getElementById('uploadFormContainer');
-        const progressContainer = document.getElementById('progressContainer');
         if (uploadForm) {
             uploadForm.addEventListener('submit', function() {
-                uploadFormContainer.style.display = 'none';
-                progressContainer.style.display = 'block';
+                document.getElementById('uploadFormContainer').style.display = 'none';
+                document.getElementById('progressContainer').style.display = 'block';
             });
         }
 
+        // Botão de Iniciar Coleta
         const btnColeta = document.getElementById('btn-iniciar-coleta');
         if (btnColeta) {
             btnColeta.addEventListener('click', function() {
@@ -449,46 +428,41 @@
                     fetch('/iniciar-coleta', { method: 'POST' })
                         .then(response => response.json())
                         .then(data => {
-                            alert(data.mensagem);
-                            alert("A página será recarregada em aproximadamente 3 minutos para exibir os dados atualizados. Por favor, aguarde.");
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 180000); // 3 minutos
+                            alert(data.mensagem + " A página será recarregada para exibir os dados atualizados.");
+                            window.location.reload();
                         })
                         .catch(error => {
                             console.error('Erro ao iniciar a coleta:', error);
-                            alert('Ocorreu um erro ao tentar iniciar a coleta. O botão foi reativado.');
+                            alert('Ocorreu um erro ao tentar iniciar a coleta.');
                             btnColeta.disabled = false;
                             btnColeta.textContent = 'Atualizar Dados';
                         });
                 }
             });
         }
+        
+        // Lógica do filtro multi-select
         const multiselect = document.getElementById('filial-multiselect');
         if (multiselect) {
             const btn = document.getElementById('filial-multiselect-btn');
             const dropdown = document.getElementById('filial-dropdown');
             const checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+            
             function updateButtonText() {
                 const checkedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked);
                 const checkedCount = checkedCheckboxes.length;
-                if (checkedCount === 0) {
-                    btn.textContent = 'Selecionar Filiais';
-                } else if (checkedCount === 1) {
-                    btn.textContent = checkedCheckboxes[0].value;
-                } else if (checkedCount === checkboxes.length) {
-                    btn.textContent = 'Todas as filiais';
-                } else {
-                    btn.textContent = `${checkedCount} filiais selecionadas`;
-                }
+                if (checkedCount === 0) btn.textContent = 'Selecionar Filiais';
+                else if (checkedCount === 1) btn.textContent = checkedCheckboxes[0].value;
+                else if (checkedCount === checkboxes.length) btn.textContent = 'Todas as filiais';
+                else btn.textContent = `${checkedCount} filiais selecionadas`;
             }
+
             btn.addEventListener('click', function(event) {
                 dropdown.classList.toggle('show');
                 event.stopPropagation();
             });
-            checkboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', updateButtonText);
-            });
+            checkboxes.forEach(checkbox => checkbox.addEventListener('change', updateButtonText));
+            
             window.addEventListener('click', function(event) {
                 if (dropdown.classList.contains('show') && !multiselect.contains(event.target)) {
                     dropdown.classList.remove('show');
@@ -496,215 +470,155 @@
             });
             updateButtonText();
         }
-    });
-</script>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // --- Elementos dos Modais ---
-    const choiceModal = document.getElementById('choiceModal');
-    const conhecimentosModal = document.getElementById('conhecimentosModal');
-    const despesasAuditModal = document.getElementById('despesasAuditModal');
-    
-    // Verifica se os modais essenciais existem antes de continuar
-    if (!choiceModal || !conhecimentosModal || !despesasAuditModal) {
-        console.error("Um ou mais modais necessários não foram encontrados no HTML.");
-        return;
-    }
-
-    const btnVerGrafico = choiceModal.querySelector('#btnVerGrafico');
-    const btnAuditar = choiceModal.querySelector('#btnAuditar'); // Agora usa o ID genérico
-    const choiceCloseBtn = choiceModal.querySelector('.choice-close');
-
-    // --- Seleciona os links clicáveis ---
-    const faturamentoLink1 = document.getElementById('link-detalhes-superior');
-    const faturamentoLink2 = document.getElementById('link-detalhes-faturamento');
-    const despesasLink1 = document.getElementById('link-detalhes-superior-despesas');
-    const despesasLink2 = document.getElementById('link-detalhes-despesas');
-
-    // --- URLs e Dados do Backend ---
-    const urlGraficoFaturamento = `{{ url_for('faturamento_detalhes') }}?${window.location.search.substring(1)}`;
-    const urlGraficoDespesas = `{{ url_for('despesas_detalhes') }}?${window.location.search.substring(1)}`;
-    const conhecimentos = {{ summary.faturamento_conhecimentos|tojson if summary and summary.faturamento_conhecimentos else '[]' }};
-
-    // --- Funções Dedicadas para Abrir o Modal de Decisão ---
-    function openFaturamentoChoice(event) {
-        event.preventDefault();
-        btnVerGrafico.onclick = () => { window.location.href = urlGraficoFaturamento; };
-        btnAuditar.textContent = '🔍 Auditar Viagens (CT-es)';
-        btnAuditar.onclick = openFaturamentoAuditModal;
-        choiceModal.style.display = 'block';
-    }
-
-    function openDespesasChoice(event) {
-        event.preventDefault();
-        btnVerGrafico.onclick = () => { window.location.href = urlGraficoDespesas; };
-        btnAuditar.textContent = '🔍 Auditar Despesas';
-        btnAuditar.onclick = openDespesasAuditModal;
-        choiceModal.style.display = 'block';
-    }
-
-    // --- Anexa os eventos de clique às funções dedicadas ---
-    if (faturamentoLink1) faturamentoLink1.addEventListener('click', openFaturamentoChoice);
-    if (faturamentoLink2) faturamentoLink2.addEventListener('click', openFaturamentoChoice);
-    if (despesasLink1) despesasLink1.addEventListener('click', openDespesasChoice);
-    if (despesasLink2) despesasLink2.addEventListener('click', openDespesasChoice);
-
-    // --- Funções que abrem os modais de auditoria e fecham ---
-    function openFaturamentoAuditModal() { /* ... Lógica para abrir modal de faturamento ... */ }
-    function openDespesasAuditModal() { /* ... Lógica para abrir modal de despesas com fetch ... */ }
-
-    // (O código completo para as funções acima e para fechar os modais é incluído aqui para garantir o funcionamento)
-    function openFaturamentoAuditModal() {
-        choiceModal.style.display = 'none';
-        const container = conhecimentosModal.querySelector('#conhecimentos-lista');
-        container.innerHTML = '';
-        if (conhecimentos && conhecimentos.length > 0) {
-            conhecimentos.forEach(num => {
-                const item = document.createElement('div');
-                item.className = 'conhecimento-item';
-                item.textContent = num;
-                container.appendChild(item);
-            });
-        } else { container.innerHTML = '<p>Nenhum conhecimento encontrado.</p>'; }
-        conhecimentosModal.style.display = 'block';
-    }
-
-    function openDespesasAuditModal() {
-        choiceModal.style.display = 'none';
-        const lists = despesasAuditModal.querySelectorAll('.audit-list');
-        lists.forEach(list => list.innerHTML = '<p>Carregando...</p>');
-        despesasAuditModal.style.display = 'block';
-
-        fetch(`/api/despesas_audit_data?${new URLSearchParams(window.location.search).toString()}`)
-            .then(response => response.json())
-            .then(data => {
-                function populateGroupList(containerId, groups) {
-                    const container = despesasAuditModal.querySelector('#' + containerId);
-                    if (!container) return;
-                    container.innerHTML = '';
-                    if (groups && Object.keys(groups).length > 0) {
-                        for (const groupName in groups) {
-                            const groupDiv = document.createElement('div'); groupDiv.className = 'audit-group';
-                            const title = document.createElement('h6'); title.textContent = groupName; groupDiv.appendChild(title);
-                            const keyList = document.createElement('ul'); keyList.className = 'audit-key-list';
-                            groups[groupName].forEach(key => {
-                                const listItem = document.createElement('li'); listItem.textContent = key; keyList.appendChild(listItem);
-                            });
-                            groupDiv.appendChild(keyList); container.appendChild(groupDiv);
-                        }
-                    } else { container.innerHTML = '<p>Nenhum item encontrado.</p>'; }
-                }
-                populateGroupList('audit-list-custos', data.custos);
-                populateGroupList('audit-list-despesas', data.despesas);
-                populateGroupList('audit-list-tipo-d', data.tipo_d);
-            });
-    }
-
-    document.querySelectorAll('.modal .close-button').forEach(btn => {
-        btn.onclick = function() { this.closest('.modal').style.display = 'none'; }
-    });
-    window.addEventListener('click', (event) => {
-        if (event.target.classList.contains('modal')) {
-            event.target.style.display = 'none';
-        }
-    });
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    // ... (todo o seu código JS existente) ...
-
-    // --- INÍCIO DO NOVO CÓDIGO PARA O RELATÓRIO DE VIAGEM ---
-    const relatorioModal = document.getElementById('relatorioViagemModal');
-    const relatorioBody = document.getElementById('relatorio-body');
-    const conhecimentosModal = document.getElementById('conhecimentosModal');
-
-    // Adiciona o evento de clique ao container dos CT-es
-    if (conhecimentosModal) {
-        conhecimentosModal.addEventListener('click', function(event) {
-            const cteItem = event.target.closest('.conhecimento-item');
-            if (!cteItem) return;
-
-            const numConhec = cteItem.textContent;
-            relatorioBody.innerHTML = '<p>Buscando dados da viagem...</p>';
-            relatorioModal.style.display = 'block';
-
-
-fetch(`/api/relatorio_viagem/${numConhec}`)
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            relatorioBody.innerHTML = `<p style="color: red;">Erro: ${data.error}</p>`;
-            return;
-        }
+        // Lógica dos modais de auditoria
+        const choiceModal = document.getElementById('choiceModal');
+        const conhecimentosModal = document.getElementById('conhecimentosModal');
+        const despesasAuditModal = document.getElementById('despesasAuditModal');
+        const relatorioModal = document.getElementById('relatorioViagemModal');
         
-        let custosHtml = '';
-        for (const [key, value] of Object.entries(data.custos_detalhados)) {
-            custosHtml += `<tr><td>${key}</td><td style="text-align: right;">${value}</td></tr>`;
-        }
-        if (!custosHtml) {
-            custosHtml = '<tr><td colspan="2">Nenhum custo encontrado para esta viagem.</td></tr>';
-        }
+        if (choiceModal && conhecimentosModal && despesasAuditModal) {
+            const btnVerGrafico = choiceModal.querySelector('#btnVerGrafico');
+            const btnAuditar = choiceModal.querySelector('#btnAuditar');
+            
+            const urlGraficoFaturamento = `{{ url_for('main.faturamento_detalhes') }}?${params.toString()}`;            
+            const urlGraficoDespesas = `{{ url_for('main.despesas_detalhes') }}?${params.toString()}`;
+            const conhecimentos = {{ summary.faturamento_conhecimentos|tojson if summary and summary.faturamento_conhecimentos else '[]' }};
 
-        // --- INÍCIO DA CORREÇÃO ---
-        // Adiciona uma verificação: se a data existir, formata. Senão, mostra 'N/A'.
-        const dataViagemFormatada = data.data_viagem 
-            ? new Date(data.data_viagem).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) 
-            : 'N/A';
-        // --- FIM DA CORREÇÃO ---
+            const faturamentoCards = document.querySelectorAll('.card[data-type="faturamento"]');
+            const despesasCards = document.querySelectorAll('.card[data-type="despesas"]');
 
-        // Monta o HTML do relatório
-        relatorioBody.innerHTML = `
-            <div style="text-align: center; margin-bottom: 20px;"><h2>Relatório de Viagem</h2></div>
-            <table class="table table-bordered table-sm">
-                <tr><th>Viagem (CT-e)</th><td>${data.num_conhec}</td><th>Data Viagem</th><td>${dataViagemFormatada}</td></tr>
-                <tr><th>Veículo</th><td>${data.placa_veiculo || 'N/A'}</td><th>Motorista</th><td>${data.motorista || 'N/A'}</td></tr>
-            </table>
-            <table class="table table-bordered table-sm mt-3">
-                <tr class="table-secondary"><th colspan="2">Dados da Viagem</th></tr>
-                <tr><th>Cliente</th><td>${data.cliente || 'N/A'}</td></tr>
-                <tr><th>Origem &rarr; Destino</th><td>${data.origem || 'N/A'} &rarr; ${data.destino || 'N/A'}</td></tr>
-                <tr><th>Peso Saída / Chegada</th><td>${data.peso_saida || 0} / ${data.peso_chegada || 0} Kg</td></tr>
-            </table>
-            <div class="row mt-3">
-                <div class="col-md-6">
-                    <table class="table table-bordered table-sm">
-                        <tr class="table-secondary"><th colspan="2">Receitas</th></tr>
-                        <tr><td>Frete (Valor Bruto)</td><td style="text-align: right;">${data.frete_bruto}</td></tr>
-                        <tr class="table-success" style="font-weight: bold;"><td>TOTAL DAS RECEITAS</td><td style="text-align: right;">${data.total_receitas}</td></tr>
-                    </table>
-                </div>
-                <div class="col-md-6">
-                    <table class="table table-bordered table-sm">
-                        <tr class="table-secondary"><th colspan="2">Custos da Viagem</th></tr>
-                        ${custosHtml}
-                        <tr class="table-danger" style="font-weight: bold;"><td>TOTAL DOS CUSTOS</td><td style="text-align: right;">${data.total_custos}</td></tr>
-                    </table>
-                </div>
-            </div>
-            <table class="table table-bordered table-sm mt-3">
-                 <tr class="table-secondary"><th colspan="2">Resultado da Viagem</th></tr>
-                 <tr style="font-weight: bold;"><td>LUCRO/PREJUÍZO</td><td style="text-align: right; color: ${data.lucro_prejuizo.includes('-') ? 'red' : 'green'};">${data.lucro_prejuizo}</td></tr>
-                 <tr style="font-weight: bold;"><td>MARGEM (%)</td><td style="text-align: right; color: ${data.margem.includes('-') ? 'red' : 'green'};">${data.margem}</td></tr>
-            </table>
-        `;
-    })
-    .catch(error => {
-        relatorioBody.innerHTML = `<p style="color: red;">Ocorreu um erro ao buscar os dados: ${error}</p>`;
+            faturamentoCards.forEach(card => card.addEventListener('click', (event) => {
+                event.preventDefault();
+                btnVerGrafico.onclick = () => { window.location.href = urlGraficoFaturamento; };
+                btnAuditar.textContent = '🔍 Auditar Viagens (CT-es)';
+                btnAuditar.onclick = () => {
+                    choiceModal.style.display = 'none';
+                    const container = conhecimentosModal.querySelector('#conhecimentos-lista');
+                    container.innerHTML = '';
+                    if (conhecimentos && conhecimentos.length > 0) {
+                        conhecimentos.forEach(num => {
+                            const item = document.createElement('div');
+                            item.className = 'conhecimento-item';
+                            item.textContent = num;
+                            container.appendChild(item);
+                        });
+                    } else { container.innerHTML = '<p>Nenhum conhecimento encontrado.</p>'; }
+                    conhecimentosModal.style.display = 'block';
+                };
+                choiceModal.style.display = 'block';
+            }));
+
+            despesasCards.forEach(card => card.addEventListener('click', (event) => {
+                event.preventDefault();
+                btnVerGrafico.onclick = () => { window.location.href = urlGraficoDespesas; };
+                btnAuditar.textContent = '🔍 Auditar Despesas';
+                btnAuditar.onclick = () => {
+                    choiceModal.style.display = 'none';
+                    const lists = despesasAuditModal.querySelectorAll('.audit-list');
+                    lists.forEach(list => list.innerHTML = '<p>Carregando...</p>');
+                    despesasAuditModal.style.display = 'block';
+
+                    fetch(`/api/despesas_audit_data?${params.toString()}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            function populateGroupList(containerId, groups) {
+                                const container = despesasAuditModal.querySelector('#' + containerId);
+                                if (!container) return;
+                                container.innerHTML = '';
+                                if (groups && Object.keys(groups).length > 0) {
+                                    for (const groupName in groups) {
+                                        const groupDiv = document.createElement('div');
+                                        groupDiv.className = 'audit-group';
+                                        const title = document.createElement('h6');
+                                        title.textContent = groupName;
+                                        groupDiv.appendChild(title);
+                                        const keyList = document.createElement('ul');
+                                        keyList.className = 'audit-key-list';
+                                        groups[groupName].forEach(key => {
+                                            const listItem = document.createElement('li');
+                                            listItem.textContent = key;
+                                            keyList.appendChild(listItem);
+                                        });
+                                        groupDiv.appendChild(keyList);
+                                        container.appendChild(groupDiv);
+                                    }
+                                } else { container.innerHTML = '<p>Nenhum item encontrado.</p>'; }
+                            }
+                            populateGroupList('audit-list-custos', data.custos);
+                            populateGroupList('audit-list-despesas', data.despesas);
+                            populateGroupList('audit-list-tipo-d', data.tipo_d);
+                        });
+                };
+                choiceModal.style.display = 'block';
+            }));
+
+            if (conhecimentosModal) {
+                conhecimentosModal.addEventListener('click', function(event) {
+                    const cteItem = event.target.closest('.conhecimento-item');
+                    if (!cteItem) return;
+
+                    const numConhec = cteItem.textContent;
+                    const relatorioBody = document.getElementById('relatorio-body');
+                    relatorioBody.innerHTML = '<p>Buscando dados da viagem...</p>';
+                    relatorioModal.style.display = 'block';
+
+                    fetch(`/api/relatorio_viagem/${numConhec}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                relatorioBody.innerHTML = `<p style="color: red;">Erro: ${data.error}</p>`;
+                                return;
+                            }
+                            let custosHtml = '';
+                            for (const [key, value] of Object.entries(data.custos_detalhados)) {
+                                custosHtml += `<tr><td>${key}</td><td style="text-align: right;">${value}</td></tr>`;
+                            }
+                            if (!custosHtml) {
+                                custosHtml = '<tr><td colspan="2">Nenhum custo encontrado para esta viagem.</td></tr>';
+                            }
+                            const dataViagemFmt = data.data_viagem ? new Date(data.data_viagem).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : 'N/A';
+                            relatorioBody.innerHTML = `
+                                <div style="text-align: center; margin-bottom: 20px;"><h2>Relatório de Viagem</h2></div>
+                                <table class="table table-bordered table-sm">
+                                    <tr><th>Viagem (CT-e)</th><td>${data.num_conhec}</td><th>Data Viagem</th><td>${dataViagemFmt}</td></tr>
+                                    <tr><th>Veículo</th><td>${data.placa_veiculo || 'N/A'}</td><th>Motorista</th><td>${data.motorista || 'N/A'}</td></tr>
+                                </table>
+                                <table class="table table-bordered table-sm mt-3">
+                                    <tr class="table-secondary"><th colspan="2">Dados da Viagem</th></tr>
+                                    <tr><th>Cliente</th><td>${data.cliente || 'N/A'}</td></tr>
+                                    <tr><th>Origem &rarr; Destino</th><td>${data.origem || 'N/A'} &rarr; ${data.destino || 'N/A'}</td></tr>
+                                    <tr><th>Peso Saída / Chegada</th><td>${data.peso_saida || 0} / ${data.peso_chegada || 0} Kg</td></tr>
+                                </table>
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <table class="table table-bordered table-sm">
+                                            <tr class="table-secondary"><th colspan="2">Receitas</th></tr>
+                                            <tr><td>Frete (Valor Bruto)</td><td style="text-align: right;">${data.frete_bruto}</td></tr>
+                                            <tr class="table-success" style="font-weight: bold;"><td>TOTAL DAS RECEITAS</td><td style="text-align: right;">${data.total_receitas}</td></tr>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <table class="table table-bordered table-sm">
+                                            <tr class="table-secondary"><th colspan="2">Custos da Viagem</th></tr>
+                                            ${custosHtml}
+                                            <tr class="table-danger" style="font-weight: bold;"><td>TOTAL DOS CUSTOS</td><td style="text-align: right;">${data.total_custos}</td></tr>
+                                        </table>
+                                    </div>
+                                </div>
+                                <table class="table table-bordered table-sm mt-3">
+                                    <tr class="table-secondary"><th colspan="2">Resultado da Viagem</th></tr>
+                                    <tr style="font-weight: bold;"><td>LUCRO/PREJUÍZO</td><td style="text-align: right; color: ${data.lucro_prejuizo.includes('-') ? 'red' : 'green'};">${data.lucro_prejuizo}</td></tr>
+                                    <tr style="font-weight: bold;"><td>MARGEM (%)</td><td style="text-align: right; color: ${data.margem.includes('-') ? 'red' : 'green'};">${data.margem}</td></tr>
+                                </table>
+                            `;
+                        })
+                        .catch(error => {
+                            relatorioBody.innerHTML = `<p style="color: red;">Ocorreu um erro ao buscar os dados: ${error}</p>`;
+                        });
+                });
+            }
+        }
     });
-});
-    }
-
-    if (relatorioModal) {
-        relatorioModal.querySelector('.relatorio-close').onclick = function() {
-            relatorioModal.style.display = 'none';
-        }
-    }
-});
 </script>
-{% if debug_version %}
-        <div style="position: fixed; bottom: 10px; right: 10px; background: yellow; color: black; padding: 5px; border: 1px solid black; font-weight: bold; z-index: 9999;">
-            Versão do Código: {{ debug_version }}
-        </div>
-    {% endif %}
 {% endblock %}

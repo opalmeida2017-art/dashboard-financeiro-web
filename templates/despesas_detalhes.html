@@ -1,297 +1,125 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Detalhes de Despesas</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    
-    <style>
-        body {
-            background-color: #f4f4ff9;
-            margin: 0;
-            padding: 0;
-        }
-        .page-container {
-            padding: 20px;
-        }
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .dashboard-layout {
-            display: grid;
-            grid-template-columns: 1fr;
-            grid-template-rows: 55vh 1fr;
-            gap: 20px;
-            height: calc(100vh - 120px);
-        }
+{% extends "layout.html" %}
 
-        #featured-chart-container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-        }
-        #featured-chart-title {
-            text-align: center;
-            margin-bottom: 15px;
-            flex-shrink: 0;
-        }
-        
-        #thumbnail-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-        }
+{% block content %}
+<style>
+    /* Estilos específicos desta página podem ficar aqui ou movidos para style.css */
+    .page-container {
+        padding-top: 0;
+    }
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-template-rows: 55vh 1fr;
+        gap: 20px;
+        height: calc(100vh - 150px); /* Ajustado para caber no layout */
+    }
+    #featured-chart-container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+    }
+    #featured-chart-title {
+        text-align: center;
+        margin-bottom: 15px;
+        flex-shrink: 0;
+    }
+    #thumbnail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+    }
+    .thumbnail-item {
+        background-color: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        cursor: pointer;
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        height: 250px;
+        display: flex;
+        flex-direction: column;
+    }
+    .thumbnail-item:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .thumbnail-item h5 {
+        text-align: center;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+        margin: 0;
+        padding-bottom: 10px;
+        height: 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .chart-canvas-wrapper {
+        position: relative;
+        flex-grow: 1; 
+    }
+    .chart-canvas-wrapper canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100% !important;
+        height: 100% !important;
+    }
+</style>
 
-        .thumbnail-item {
-            background-color: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            cursor: pointer;
-            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-            height: 250px;
-            display: flex;
-            flex-direction: column;
-        }
-        .thumbnail-item:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        }
-        .thumbnail-item h5 {
-            text-align: center;
-            font-size: 0.85rem;
-            flex-shrink: 0;
-            margin: 0;
-            padding-bottom: 10px;
-            height: 35px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .chart-canvas-wrapper {
-            position: relative;
-            flex-grow: 1; 
-        }
-
-        .chart-canvas-wrapper canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100% !important;
-            height: 100% !important;
-        }
-    </style>
-</head>
-<body>
-    <div class="page-container">
-        <div class="page-header">
-            <h1>Análise Detalhada de Despesas</h1>
-            <a href="{{ url_for('index') }}?{{ request.query_string.decode('utf-8') }}" class="manage-link" style="text-decoration: none;">&larr; Voltar ao Dashboard</a>
-        </div>
-
-        <div class="dashboard-layout">
-            
-            <div id="featured-chart-container">
-                <h3 id="featured-chart-title"></h3>
-                <div class="chart-canvas-wrapper">
-                    <canvas id="featuredChart"></canvas>
-                </div>
-            </div>
-
-            <div id="thumbnail-grid">
-                <div class="thumbnail-item" data-chart-id="composicaoFilial">
-                    <h5>Composição das Despesas por Filial</h5>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="despesaComposicaoFilialChart"></canvas>
-                    </div>
-                </div>
-                <div class="thumbnail-item" data-chart-id="despesaGrupo">
-                    <h5>Despesas por Grupo</h5>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="superGrupoChart"></canvas>
-                    </div>
-                </div>
-                <div class="thumbnail-item" data-chart-id="despesaFilial">
-                    <h5>Despesas por Filial</h5>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="despesaFilialChart"></canvas>
-                    </div>
-                </div>
-                <div class="thumbnail-item" data-chart-id="manutencaoVeiculo">
-                    <h5>Custo de Manutenção por Veículo</h5>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="manutencaoVeiculoChart"></canvas>
-                    </div>
-                </div>
-                <div class="thumbnail-item" data-chart-id="gastoCombustivelItem">
-                    <h5>Total Gasto por Combustível</h5>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="gastosPorCombustivelChart"></canvas>
-                    </div>
-                </div>
-                <div class="thumbnail-item" data-chart-id="gastoCombustivelVeiculo">
-                    <h5>Gasto com Combustível por Veículo</h5>
-                    <div class="chart-canvas-wrapper">
-                        <canvas id="combustivelPorVeiculoChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-        </div>
+<div class="page-container">
+    <div class="page-header">
+        <h1>Análise Detalhada de Despesas</h1>
+        <a href="{{ url_for('main.index') }}?{{ request.query_string.decode('utf-8') }}" class="manage-link" ...>&larr; Voltar ao Dashboard</a>
     </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const params = new URLSearchParams(window.location.search);
-    
-    // API Endpoint Alterado
-    fetch(`/api/despesas_dashboard_data?${params.toString()}`)
-        .then(response => response.json())
-        .then(data => {
-            if (!data || Object.keys(data).length === 0) {
-                document.querySelector('.dashboard-layout').innerHTML = '<h2>Não há dados de despesas para os filtros selecionados.</h2>';
-                return;
-            }
-            
-            const chartConfigs = new Map();
-            let featuredChartInstance = null;
-            const featuredChartCanvas = document.getElementById('featuredChart').getContext('2d');
-            const featuredChartTitle = document.getElementById('featured-chart-title');
+    <div class="dashboard-layout">
+        <div id="featured-chart-container">
+            <h3 id="featured-chart-title"></h3>
+            <div class="chart-canvas-wrapper">
+                <canvas id="featuredChart"></canvas>
+            </div>
+        </div>
 
-            function updateFeaturedChart(chartId) {
-                if (!chartConfigs.has(chartId)) return;
-                
-                const config = chartConfigs.get(chartId);
-                featuredChartTitle.textContent = config.title;
+        <div id="thumbnail-grid">
+            <div class="thumbnail-item" data-chart-id="composicaoFilial">
+                <h5>Composição das Despesas por Filial</h5>
+                <div class="chart-canvas-wrapper"><canvas id="despesaComposicaoFilialChart"></canvas></div>
+            </div>
+            <div class="thumbnail-item" data-chart-id="despesaGrupo">
+                <h5>Despesas por Grupo</h5>
+                <div class="chart-canvas-wrapper"><canvas id="superGrupoChart"></canvas></div>
+            </div>
+            <div class="thumbnail-item" data-chart-id="despesaFilial">
+                <h5>Despesas por Filial</h5>
+                <div class="chart-canvas-wrapper"><canvas id="despesaFilialChart"></canvas></div>
+            </div>
+            <div class="thumbnail-item" data-chart-id="manutencaoVeiculo">
+                <h5>Custo de Manutenção por Veículo</h5>
+                <div class="chart-canvas-wrapper"><canvas id="manutencaoVeiculoChart"></canvas></div>
+            </div>
+            <div class="thumbnail-item" data-chart-id="gastoCombustivelItem">
+                <h5>Total Gasto por Combustível</h5>
+                <div class="chart-canvas-wrapper"><canvas id="gastosPorCombustivelChart"></canvas></div>
+            </div>
+            <div class="thumbnail-item" data-chart-id="gastoCombustivelVeiculo">
+                <h5>Gasto com Combustível por Veículo</h5>
+                <div class="chart-canvas-wrapper"><canvas id="combustivelPorVeiculoChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-                if (featuredChartInstance) {
-                    featuredChartInstance.destroy();
-                }
-                featuredChartInstance = new Chart(featuredChartCanvas, {
-                    type: config.type,
-                    data: config.data,
-                    options: { ...config.options, plugins: { legend: { display: true } } }
-                });
-            }
-
-            const thumbnailOptions = {
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } }
-            };
-
-            // --- Configuração dos Gráficos de DESPESA ---
-
-            // Composição das Despesas por Filial (Barras Empilhadas)
-            if (data.despesas_por_filial_e_grupo && data.despesas_por_filial_e_grupo.labels) {
-                const config = {
-                    title: 'Composição das Despesas por Filial',
-                    type: 'bar',
-                    data: {
-                        labels: data.despesas_por_filial_e_grupo.labels,
-                        datasets: data.despesas_por_filial_e_grupo.datasets
-                    },
-                    options: { maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
-                };
-                chartConfigs.set('composicaoFilial', config);
-                new Chart(document.getElementById('despesaComposicaoFilialChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
-            }
-            
-            // Despesas por Grupo (Rosca)
-            if (data.despesa_super_grupo) {
-                const config = {
-                    title: 'Despesas por Grupo',
-                    type: 'doughnut',
-                    data: {
-                        labels: data.despesa_super_grupo.map(d => d.descSuperGrupoD),
-                        datasets: [{ data: data.despesa_super_grupo.map(d => d.vlcontabil) }]
-                    },
-                    options: { maintainAspectRatio: false }
-                };
-                chartConfigs.set('despesaGrupo', config);
-                new Chart(document.getElementById('superGrupoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
-            }
-
-            // Despesas por Filial (Barra)
-            if (data.despesa_filial) {
-                const config = {
-                    title: 'Despesas por Filial',
-                    type: 'bar',
-                    data: {
-                        labels: data.despesa_filial.map(d => d.nomeFil),
-                        datasets: [{ label: 'Despesa Total', data: data.despesa_filial.map(d => d.vlcontabil), backgroundColor: 'rgba(26, 188, 156, 0.7)' }]
-                    },
-                    options: { maintainAspectRatio: false, scales: { y: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
-                };
-                chartConfigs.set('despesaFilial', config);
-                new Chart(document.getElementById('despesaFilialChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
-            }
-
-            // Custo de Manutenção por Veículo (Barra Horizontal)
-            if (data.custo_manutencao_veiculo) {
-                const config = {
-                    title: 'Custo de Manutenção por Veículo',
-                    type: 'bar',
-                    data: {
-                        labels: data.custo_manutencao_veiculo.map(d => d.placaVeiculo),
-                        datasets: [{ label: 'Custo de Manutenção', data: data.custo_manutencao_veiculo.map(d => d.vlcontabil), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
-                    },
-                    options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
-                };
-                chartConfigs.set('manutencaoVeiculo', config);
-                new Chart(document.getElementById('manutencaoVeiculoChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
-            }
-
-            // Total Gasto por Tipo de Combustível (Barra Horizontal)
-            if (data.gastos_por_combustivel) {
-                const config = {
-                    title: 'Total Gasto por Tipo de Combustível',
-                    type: 'bar',
-                    data: {
-                        labels: data.gastos_por_combustivel.map(d => d.item),
-                        datasets: [{ label: 'Valor Gasto (R$)', data: data.gastos_por_combustivel.map(d => d.valor_total), backgroundColor: 'rgba(142, 68, 173, 0.7)' }]
-                    },
-                    options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
-                };
-                chartConfigs.set('gastoCombustivelItem', config);
-                new Chart(document.getElementById('gastosPorCombustivelChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
-            }
-            
-            // Gasto com Combustível por Veículo (Barra Horizontal)
-            if (data.combustivel_por_veiculo) {
-                const config = {
-                    title: 'Gasto com Combustível por Veículo',
-                    type: 'bar',
-                    data: {
-                        labels: data.combustivel_por_veiculo.map(d => d.placaVeiculo),
-                        datasets: [{ label: 'Valor Gasto (R$)', data: data.combustivel_por_veiculo.map(d => d.valor_total), backgroundColor: 'rgba(52, 73, 94, 0.7)' }]
-                    },
-                    options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
-                };
-                chartConfigs.set('gastoCombustivelVeiculo', config);
-                new Chart(document.getElementById('combustivelPorVeiculoChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
-            }
-
-            // Mostra o primeiro gráfico (Composição) em destaque
-            updateFeaturedChart('composicaoFilial');
-
-            document.querySelectorAll('.thumbnail-item').forEach(item => {
-                item.addEventListener('click', function() {
-                    const chartId = this.dataset.chartId;
-                    updateFeaturedChart(chartId);
-                });
-            });
-        });
-});
-</script>
-</body>
-</html>
+{% block scripts %}
+    <script src="{{ url_for('static', filename='js/despesasDetalhes.js') }}"></script>
+{% endblock %}

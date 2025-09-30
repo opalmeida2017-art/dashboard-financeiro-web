@@ -5,13 +5,13 @@
         <div class="page-header">
             <h1>Painel do Síndico</h1>
             <div class="header-actions">
-                <a href="{{ url_for('criar_apartamento') }}" class="btn-salvar" style="text-decoration: none;">Criar Novo Apartamento</a>
+                <a href="{{ url_for('main.criar_apartamento') }}" class="btn-salvar" style="text-decoration: none;">Criar Novo Apartamento</a>
             </div>
         </div>
 
         <div class="table-container">
             <h3>Apartamentos Registados</h3>
-            <form method="POST" action="{{ url_for('admin_dashboard') }}"> 
+            <form method="POST" action="{{ url_for('main.admin_dashboard') }}"> 
                 <table>
                     <thead>
                         <tr>
@@ -44,7 +44,7 @@
                                 {% endif %}
                             </td>
                             <td class="actions-cell">
-                                <a href="{{ url_for('gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
+                                <a href="{{ url_for('main.gerir_apartamento', apartamento_id=apt.id) }}" class="btn-action" style="text-decoration: none;">Gerir</a>
                                 <button type="button" class="btn-action delete-data-btn" data-apt-id="{{ apt.id }}" style="background-color: #dc3545; color: white;">Limpar Dados</button>
                             </td>
                         </tr>

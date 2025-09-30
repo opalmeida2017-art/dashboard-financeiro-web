@@ -167,10 +167,9 @@
         {% endwith %}
 
         {% if apartamento and apartamento.slug %}
-            <form method="POST" action="{{ url_for('login_por_slug', slug=apartamento.slug) }}">
+            <form method="POST" action="{{ url_for('auth.login_por_slug', slug=apartamento.slug) }}">
         {% else %}
-            <form method="POST" action="{{ url_for('login') }}">
-        {% endif %}
+            <form method="POST" action="{{ url_for('auth.login') }}">        {% endif %}
             <div class="form-group">
                 <label for="email">Seu e-mail</label>
                 <input type="email" id="email" name="email" required>

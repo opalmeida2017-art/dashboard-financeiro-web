@@ -64,7 +64,7 @@
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <h1 class="h2">Configurações do Robô de Coleta</h1>
             <div class="btn-toolbar mb-2 mb-md-0">
-                <a href="{{ url_for('index') }}" class="btn btn-secondary">Fechar</a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Fechar</a>
             </div>
         </div>
 
@@ -76,7 +76,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('configuracao') }}">
+        <form method="POST" action="{{ url_for('main.configuracao') }}">
             <ul class="nav nav-tabs" id="configTab" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="conexao-tab" data-bs-toggle="tab" data-bs-target="#conexao-pane" type="button">Conexão SAT</button>
@@ -95,49 +95,46 @@
                     <div class="form-group mb-3"><label for="USUARIO_ROBO">Usuário</label><input type="text" class="form-control" id="USUARIO_ROBO" name="USUARIO_ROBO" value="{{ configs.get('USUARIO_ROBO', '') }}"></div>
                     <div class="form-group mb-3"><label for="SENHA_ROBO">Senha</label><input type="password" class="form-control" id="SENHA_ROBO" name="SENHA_ROBO" value="{{ configs.get('SENHA_ROBO', '') }}"></div>
                 </div>
-                <<div class="tab-pane fade" id="parametros-pane" role="tabpanel">
-    <div class="row">
-        
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label for="CODIGO_VIAGENS_CLIENTE">Base: Viagens por Cliente</label>
-                <input type="text" class="form-control" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}">
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label for="CODIGO_VIAGENS_FAT_CLIENTE">Base: Fat. Viagens por Cliente</label>
-                <input type="text" class="form-control" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}">
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label for="CODIGO_DESPESAS">Base: Despesas</label>
-                <input type="text" class="form-control" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}">
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label for="CODIGO_CONTAS_PAGAR">Base: Contas a Pagar</label>
-                <input type="text" class="form-control" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}">
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label for="CODIGO_CONTAS_RECEBER">Base: Contas a Receber</label>
-                <input type="text" class="form-control" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}">
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label for="CODIGO_ACERTO_MOTORISTA">Base: Acerto Motorista</label>
-                <input type="text" class="form-control" name="CODIGO_ACERTO_MOTORISTA" value="{{ configs.get('CODIGO_ACERTO_MOTORISTA', '') }}">
-            </div>
-        </div>
-
-    </div>
-</div>
+                <div class="tab-pane fade" id="parametros-pane" role="tabpanel">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group mb-3">
+                                <label for="CODIGO_VIAGENS_CLIENTE">Base: Viagens por Cliente</label>
+                                <input type="text" class="form-control" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group mb-3">
+                                <label for="CODIGO_VIAGENS_FAT_CLIENTE">Base: Fat. Viagens por Cliente</label>
+                                <input type="text" class="form-control" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group mb-3">
+                                <label for="CODIGO_DESPESAS">Base: Despesas</label>
+                                <input type="text" class="form-control" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group mb-3">
+                                <label for="CODIGO_CONTAS_PAGAR">Base: Contas a Pagar</label>
+                                <input type="text" class="form-control" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group mb-3">
+                                <label for="CODIGO_CONTAS_RECEBER">Base: Contas a Receber</label>
+                                <input type="text" class="form-control" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group mb-3">
+                                <label for="CODIGO_ACERTO_MOTORISTA">Base: Acerto Motorista</label>
+                                <input type="text" class="form-control" name="CODIGO_ACERTO_MOTORISTA" value="{{ configs.get('CODIGO_ACERTO_MOTORISTA', '') }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="tab-pane fade" id="periodo-pane" role="tabpanel">
                     <div class="row">
                         <div class="col-md-6">
@@ -195,7 +192,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // LÓGICA DE LOGS (Carregamento contínuo)
             const loadLogsBtn = document.getElementById('loadLogsBtn');
             const clearLogsBtn = document.getElementById('clearLogsBtn');
             const logsBody = document.getElementById('logs-body');
@@ -205,7 +201,8 @@
             let logInterval = null;
 
             function fetchAndRenderLogs() {
-                fetch('/api/get_robot_logs')
+                // ALTERAÇÃO 3
+                fetch("{{ url_for('api.api_get_robot_logs') }}")
                     .then(response => response.ok ? response.json() : Promise.reject('Erro de rede'))
                     .then(logs => {
                         logsBody.innerHTML = '';
@@ -213,9 +210,9 @@
                             logsBody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: #888;">Nenhum log encontrado.</td></tr>`;
                             return;
                         }
-                        logs.reverse();
+                        logs.reverse(); // A query já busca em ordem decrescente, não precisa reverter.
                         logs.forEach((log, index) => {
-                            if (log.mensagem.includes('--- INICIANDO') && index > 0) {
+                            if (log.mensagem.includes('--- INICIANDO') && index > 0 && index < logs.length -1) {
                                 const sepRow = logsBody.insertRow();
                                 sepRow.className = 'separator-row';
                                 const sepCell = sepRow.insertCell();
@@ -265,7 +262,8 @@
                 btnTextClear.textContent = 'Limpando...';
                 clearLogsBtn.disabled = true;
                 
-                fetch('/api/clear_robot_logs', { method: 'POST' })
+                // ALTERAÇÃO 4
+                fetch("{{ url_for('api.api_clear_robot_logs') }}", { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
@@ -287,4 +285,3 @@
     </script>
 </body>
 </html>
-
