@@ -140,15 +140,18 @@ def gerenciar_grupos_dados():
 @login_required
 def gerenciar_grupos_salvar():
     apartamento_id_alvo = get_target_apartment_id()
+    if not is_admin_in_context():
+        flash("Acesso negado.", "error")
+        return redirect(url_for('main.index'))
+        
     all_groups = logic.get_all_expense_groups(apartamento_id_alvo)
     update_data = {}
     
     for group in all_groups:
-        classification = 'nenhum'
-        if f"{group}_custo" in request.form: 
-            classification = 'custo_viagem'
-        elif f"{group}_despesa" in request.form: 
-            classification = 'despesa'
+        # --- INÍCIO DA CORREÇÃO ---
+        # Lê o valor do campo de rádio correto (ex: 'COMBUSTIVEL_class')
+        classification = request.form.get(f"{group}_class", 'nenhum')
+        # --- FIM DA CORREÇÃO ---
         
         incluir_tipo_d = f"{group}_tipo_d" in request.form
         update_data[group] = {'classification': classification, 'incluir_tipo_d': incluir_tipo_d}

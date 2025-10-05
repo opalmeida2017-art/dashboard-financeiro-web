@@ -50,7 +50,7 @@ TABLE_COLUMN_MAPS = {
         'integer': [
             'apartamento_id', 'codClDest', 'codClRemet', 'codCliente', 'codColetaEntregaAg', 'codEmpresas',
             'codFaturaSaldo', 'codFilial', 'codMercadoria', 'codOrdemCar', 'codProp', 'codRota',
-            'codServicoNfs', 'codUnidadeEmb', 'numConhec', 'numeroConhecimento'
+            'codServicoNfs', 'codUnidadeEmb', 'numConhec', 'numeroConhecimento','numNotaNF'
         ]
     },
     'relFilDespesasGerais': {
@@ -153,8 +153,8 @@ EXCEL_FILES_CONFIG = {
 FILTER_COLUMN_MAPS = { "placa": ['placaVeiculo', 'placa'], "filial": ['nomeFilial', 'nomeFil'] }
 
 TABLE_PRIMARY_KEYS = {
-    "relFilViagensCliente": ["numConhec"],
-    "relFilViagensFatCliente": ["numConhec"],
+    "relFilViagensCliente": ["numero"],
+    "relFilViagensFatCliente": ["numero"],
     "relFilDespesasGerais": ["codItemNota"],
     "relFilContasPagarDet": ["codItemNota"],
     "relFilContasReceber": ["codDuplicataReceber"],

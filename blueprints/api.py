@@ -82,13 +82,18 @@ def api_faturamento_dashboard_data():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
         return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+    
+    # A função _parse_filters() já busca o 'tipo_negocio', então está correta.
     filters = _parse_filters()
+    
     dashboard_data = logic.get_faturamento_details_dashboard_data(
         apartamento_id=apartamento_id_alvo,
         start_date=filters['start_date_obj'],
         end_date=filters['end_date_obj'],
         placa_filter=filters['placa'],
-        filial_filter=filters['filial']
+        filial_filter=filters['filial'],
+        # --- LINHA ADICIONADA ---
+        tipo_negocio_filter=filters['tipo_negocio']
     )
     return jsonify(dashboard_data)
 
@@ -104,7 +109,8 @@ def api_despesas_dashboard_data():
         start_date=filters['start_date_obj'],
         end_date=filters['end_date_obj'],
         placa_filter=filters['placa'],
-        filial_filter=filters['filial']
+        filial_filter=filters['filial'],
+        tipo_negocio_filter=filters['tipo_negocio']
     )
     return jsonify(dashboard_data)
 
@@ -120,44 +126,32 @@ def api_despesas_audit_data():
         start_date=filters['start_date_obj'],
         end_date=filters['end_date_obj'],
         placa_filter=filters['placa'],
-        filial_filter=filters['filial']
+        filial_filter=filters['filial'],
+        # --- LINHA ADICIONADA ---
+        tipo_negocio_filter=filters['tipo_negocio']
     )
     return jsonify(audit_data)
 
-@api_bp.route('/relatorio_viagem/<int:num_conhec>')
+@api_bp.route('/relatorio_viagem/<int:numero>') # ALTERADO AQUI
 @login_required
-def api_relatorio_viagem(num_conhec):
+def api_relatorio_viagem(numero): # ALTERADO AQUI
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
         return jsonify({"error": "Apartamento não encontrado."}), 400
     
-    # --- INÍCIO DA CORREÇÃO ---
     try:
-        dados_relatorio = logic.get_relatorio_viagem_data(apartamento_id_alvo, num_conhec)
+        dias_janela = request.args.get('dias_janela', 10, type=int)
+        dados_relatorio = logic.get_relatorio_viagem_data(apartamento_id_alvo, numero, dias_janela=dias_janela) # ALTERADO AQUI
         
-        # Se a lógica interna já identificou um erro (ex: Viagem não encontrada), retorne-o.
         if "error" in dados_relatorio:
             return jsonify(dados_relatorio), 404
-
-        # Formata os valores de moeda e percentual para exibição
-        for key in ['frete_bruto', 'adiantamentos', 'taxas', 'descontos', 'total_receitas', 'total_custos', 'lucro_prejuizo']:
-            if dados_relatorio.get(key) is not None:
-                dados_relatorio[key] = current_app.jinja_env.filters['currency'](dados_relatorio[key])
-        if dados_relatorio.get('margem') is not None:
-            dados_relatorio['margem'] = current_app.jinja_env.filters['percentage'](dados_relatorio['margem'])
-        
-        custos_formatados = {k: current_app.jinja_env.filters['currency'](v) for k, v in dados_relatorio.get("custos_detalhados", {}).items()}
-        dados_relatorio["custos_detalhados"] = custos_formatados
 
         return jsonify(dados_relatorio)
 
     except Exception as e:
-        # Se qualquer erro inesperado acontecer (KeyError, TypeError, etc.),
-        # ele será capturado aqui.
-        print(f"ERRO CRÍTICO na API /api/relatorio_viagem para o CT-e {num_conhec}: {e}")
-        # Retorna uma resposta JSON de erro, em vez de deixar o servidor quebrar.
+        print(f"ERRO CRÍTICO na API /api/relatorio_viagem para o CT-e {numero}: {e}") # ALTERADO AQUI
         return jsonify({"error": "Ocorreu um erro inesperado no servidor ao processar os dados desta viagem."}), 500
-    # --- FIM DA CORREÇÃO ---
+
     
 @api_bp.route('/heartbeat', methods=['POST'])
 @login_required
@@ -203,3 +197,60 @@ def status_stream():
                 time.sleep(5)
 
     return Response(event_generator(), mimetype='text/event-stream')
+
+# Em blueprints/api.py, substitua estas duas funções:
+
+@api_bp.route('/associar_despesa_viagem', methods=['POST'])
+@login_required
+def associar_despesa_viagem():
+    data = request.get_json()
+    apartamento_id_alvo = get_target_apartment_id()
+    numero = data.get('numero') # ALTERADO AQUI
+    cod_item_nota = data.get('cod_item_nota')
+
+    if not all([apartamento_id_alvo, numero, cod_item_nota]):
+        return jsonify({"status": "error", "message": "Dados incompletos."}), 400
+
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                query_delete = text('DELETE FROM despesas_viagem_excluidas WHERE apartamento_id = :apt_id AND numero = :numero AND "coditemnota" = :cod_item_nota')
+                conn.execute(query_delete, {"apt_id": apartamento_id_alvo, "numero": numero, "cod_item_nota": cod_item_nota})
+
+                query_insert = text("""
+                    INSERT INTO despesas_viagem_associadas (apartamento_id, numero, "coditemnota")
+                    VALUES (:apt_id, :numero, :cod_item_nota)
+                    ON CONFLICT (apartamento_id, numero, "coditemnota") DO NOTHING;
+                """)
+                conn.execute(query_insert, {"apt_id": apartamento_id_alvo, "numero": numero, "cod_item_nota": cod_item_nota})
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@api_bp.route('/desvincular_despesa_viagem', methods=['POST'])
+@login_required
+def desvincular_despesa_viagem():
+    data = request.get_json()
+    apartamento_id_alvo = get_target_apartment_id()
+    numero = data.get('numero') # ALTERADO AQUI
+    cod_item_nota = data.get('cod_item_nota')
+
+    if not all([apartamento_id_alvo, numero, cod_item_nota]):
+        return jsonify({"status": "error", "message": "Dados incompletos para desvincular."}), 400
+
+    try:
+        with engine.connect() as conn:
+            with conn.begin():
+                query = text("""
+                    DELETE FROM despesas_viagem_associadas 
+                    WHERE apartamento_id = :apt_id AND "coditemnota" = :cod_item_nota AND numero = :numero
+                """)
+                conn.execute(query, {
+                    "apt_id": apartamento_id_alvo, 
+                    "cod_item_nota": cod_item_nota,
+                    "numero": numero
+                })
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print(f"ERRO CRÍTICO ao desvincular despesa: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500

@@ -23,17 +23,19 @@
     </nav>
 
     <main class="container mt-4">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
+   {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            {# Define uma variável para a classe da aleta com uma lógica if/elif/else mais clara #}
+            {% set alert_class = 'success' if category == 'success' else 'danger' if category == 'error' else 'info' %}
+            
+            <div class="alert alert-{{ alert_class }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
         {% block content %}{% endblock %}
     </main>
 
@@ -44,7 +46,7 @@
     {% block scripts %}{% endblock %}
 
     <script>
-    {% if current_user.is_authenticated and current_user.email != config.SUPER_ADMIN_EMAIL %}
+       {% if current_user.is_authenticated and current_user.email != config.SUPER_ADMIN_EMAIL %}
     document.addEventListener('DOMContentLoaded', function() {
         let lastHeartbeatTime = 0;
         const heartbeatInterval = 30000; // 30 segundos

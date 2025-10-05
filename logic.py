@@ -69,17 +69,17 @@ def _import_all_data(apartamento_id: int):
                 print(f"-> AVISO: Arquivo '{file_info['path']}' não encontrado, importação ignorada.")
     print("--- IMPORTAÇÃO DE DADOS (DO REPOSITÓRIO) CONCLUÍDA. ---")
 
-def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter):
+def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
     print(f">>> [LOGIC] Chamando get_faturamento_details_dashboard_data para o apartamento ID: {apartamento_id}")
-    return dm.get_faturamento_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    return dm.get_faturamento_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
 
-def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter):
+def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
     print(f">>> [LOGIC] Chamando get_despesas_details_dashboard_data para o apartamento ID: {apartamento_id}")
-    return dm.get_despesas_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    return dm.get_despesas_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
 
-def get_expense_audit_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter):
+def get_expense_audit_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
     print(f">>> [LOGIC] Chamando get_expense_audit_data para o apartamento ID: {apartamento_id}")
-    return dm.get_expense_audit_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+    return dm.get_expense_audit_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
 
 def ler_configuracoes_robo(apartamento_id: int):
     print(f">>> [LOGIC] Chamando ler_configuracoes_robo para o apartamento ID: {apartamento_id}")
@@ -161,9 +161,12 @@ def get_unique_negocios(apartamento_id: int):
         return sorted([negocio for negocio in df_despesas['descNegocio'].dropna().unique() if negocio])
     return []
 
-def get_relatorio_viagem_data(apartamento_id: int, num_conhec: int):
-    """Função de ponte para buscar os dados do relatório de viagem."""
-    print(f">>> [LOGIC] Chamando get_relatorio_viagem_data para o CT-e: {num_conhec}")
-    return dm.get_relatorio_viagem_data(apartamento_id, num_conhec)
+
+def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int): # ALTERADO AQUI
+    """
+    Função de ponte para buscar os dados do relatório de viagem.
+    """
+    print(f">>> [LOGIC] Chamando get_relatorio_viagem_data para o CT-e: {numero} com janela de {dias_janela} dias")
+    return dm.get_relatorio_viagem_data(apartamento_id, numero, dias_janela=dias_janela) # ALTERADO AQUI
 
         
