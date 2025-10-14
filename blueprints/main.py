@@ -626,10 +626,10 @@ def upload_logo():
         file.save(temp_filepath)
 
         try:
-           input_image = Image.open(temp_filepath)
-            # Usa o modelo 'u2netp' (small) que consome muito menos memória
+            input_image = Image.open(temp_filepath)
+                # Usa o modelo 'u2netp' (small) que consome muito menos memória
             output_image = remove(input_image, model_name='u2netp')
-            
+                
             final_logo_filename = f"{logo_filename_base}.png"
             final_filepath = os.path.join(upload_folder, final_logo_filename)
             output_image.save(final_filepath, format="PNG")
