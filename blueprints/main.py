@@ -651,3 +651,8 @@ def upload_logo():
 
     # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários após o sucesso
     return redirect(url_for('main.gerenciar_usuarios'))
+
+@main_bp.route('/healthz')
+def health_check():
+    """Rota simples para a verificação de saúde da Render."""
+    return "OK", 200

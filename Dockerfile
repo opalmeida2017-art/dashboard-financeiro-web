@@ -43,7 +43,7 @@ COPY . .
 # Copia o script de arranque para dentro do contentor
 COPY startup.sh .
 # Torna o script de arranque executável
-RUN chmod +x ./startup.sh
+RUN python -c "from rembg.bg import u2netp_home; from pooch import retrieve; retrieve(url='https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx', known_hash='md5:1a84f3f06b72d2f7fdd264883f360c1d', path=u2netp_home())"
 
-# Define o script de arranque como o ponto de entrada do contentor
+RUN chmod +x ./startup.sh
 CMD ["./startup.sh"]
