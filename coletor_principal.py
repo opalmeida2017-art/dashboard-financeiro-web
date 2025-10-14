@@ -33,12 +33,12 @@ def executar_todas_as_coletas(apartamento_id: int, start_date_str: str = None, e
         shutil.rmtree(pasta_downloads)
 
     robos_para_executar = [
-        #executar_coleta_viagens,
-        #executar_coleta_despesas,
+        executar_coleta_viagens,
+        executar_coleta_despesas,
         executar_coleta_fat_viagens,
-        #executar_coleta_contas_pagar,
-        #executar_coleta_contas_receber,
-        #executar_coleta_acerto_motorista
+        executar_coleta_contas_pagar,
+        executar_coleta_contas_receber,
+        executar_coleta_acerto_motorista
     ]
 
     for funcao_robo in robos_para_executar:
