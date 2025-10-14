@@ -45,7 +45,7 @@ def executar_coleta_fat_viagens(apartamento_id: int, start_date_str: str = None,
         driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_dataFimInputDate').send_keys(DATA_FINAL)
         
         Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoData')).select_by_value('1')
-        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_faturamento')).select_by_value('0')
+        Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_faturamento')).select_by_value('2')
         driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoCte2').clear()
         driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_tipoCte2').send_keys('T')
         Select(driver.find_element(By.ID, 'formrelFilViagensFatCliente:RelFilViagensFatCliente_cteStatus')).select_by_value('0')

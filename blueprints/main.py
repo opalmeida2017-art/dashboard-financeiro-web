@@ -1,6 +1,7 @@
 # blueprints/main.py (Corrigido)
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
-from flask_login import login_required, current_user
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, Response, jsonify
+from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.utils import secure_filename
 import os
 import getpass
 import redis
@@ -9,15 +10,41 @@ import logic
 import coletor_principal
 import config
 import database as db
+import uuid
 from limpar_dados import limpar_dados_importados
 from datetime import datetime
 from .helpers import get_target_apartment_id, is_admin_in_context, super_admin_required, parse_filters
 from extensions import bcrypt
 from db_connection import engine
-from .helpers import get_target_apartment_id, is_admin_in_context, super_admin_required, parse_filters
 from db_connection import engine
+from datetime import datetime
+import time
+from weasyprint import HTML, CSS
+import os
+import secrets 
+from PIL import Image
+from rembg import remove
+from flask import current_app
+
+# Configurações para upload de imagem
+UPLOAD_FOLDER = 'static/uploads' # Pasta onde as imagens serão guardadas
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} # Extensões permitidas
 
 main_bp = Blueprint('main', __name__)
+
+# Certifique-se de que a pasta de uploads existe
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+# Função auxiliar para verificar extensões de arquivo
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@main_bp.context_processor
+def inject_cache_buster():
+    return dict(cache_buster=int(time.time()))
 
 REDIS_URL = os.environ.get('REDIS_URL')
 redis_conn = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
@@ -25,14 +52,18 @@ redis_conn = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
 @main_bp.route('/')
 @login_required
 def index():
-    # Esta função agora usa 'current_app' implicitamente através de 'current_user'
     if current_user.email == 'op.almeida@hotmail.com' and not session.get('force_customer_view'):
         return redirect(url_for('main.admin_dashboard'))
-
+    
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
         flash("Não foi possível identificar a empresa. Por favor, faça login novamente.", "error")
         return redirect(url_for('auth.logout'))
+
+    logo_filename = logic.get_apartment_logo(apartamento_id_alvo)
+    logo_url = None
+    if logo_filename:
+        logo_url = url_for('static', filename=f'uploads/{apartamento_id_alvo}/{logo_filename}')
 
     filters = parse_filters(request.args)
     summary_data = logic.get_dashboard_summary(
@@ -49,17 +80,18 @@ def index():
     tipos_negocio = logic.get_unique_negocios(apartamento_id=apartamento_id_alvo)
     placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
     
-    return render_template('index.html', 
-                           summary=summary_data,
-                           placas=placas,
-                           filiais=filiais,
-                           tipos_negocio=tipos_negocio,
-                           selected_placa=filters['placa'],
-                           selected_filial=filters['filial'],
-                           selected_start_date=filters['start_date_str'],
-                           selected_end_date=filters['end_date_str'],
-                           selected_tipo_negocio=filters['tipo_negocio'],
-                           placa_filtrada=placa_filtrada)
+    return render_template('index.html', # Mude aqui para o nome correto do seu template principal
+                            summary=summary_data,
+                            placas=placas,
+                            filiais=filiais,
+                            tipos_negocio=tipos_negocio,
+                            selected_placa=filters['placa'],
+                            selected_filial=filters['filial'],
+                            selected_start_date=filters['start_date_str'],
+                            selected_end_date=filters['end_date_str'],
+                            selected_tipo_negocio=filters['tipo_negocio'],
+                            placa_filtrada=placa_filtrada,
+                            logo_url=logo_url)
     
 @main_bp.route('/faturamento_detalhes')
 @login_required
@@ -254,18 +286,21 @@ def configuracao():
             configs_salvas['DATA_FINAL_ROBO_YMD'] = datetime.strptime(configs_salvas['DATA_FINAL_ROBO'], '%d/%m/%Y').strftime('%Y-%m-%d')
     except (ValueError, TypeError):
         pass
-    
     return render_template('configuracao.html', configs=configs_salvas)
-@main_bp.route('/gerenciar-usuarios')
+
+@main_bp.route('/gerenciar_usuarios')
 @login_required
 def gerenciar_usuarios():
-    if not is_admin_in_context():
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('main.index'))
-    
     apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        flash('Acesso negado. Selecione um apartamento para gerir.', 'error')
+        return redirect(url_for('main.select_apartment')) 
+
     users = logic.get_users_for_apartment(apartamento_id_alvo)
-    return render_template('gerenciar_usuarios.html', users=users)
+    
+    current_apartment_logo = logic.get_apartment_logo(apartamento_id_alvo)
+
+    return render_template('gerenciar_usuarios.html', users=users, current_apartment_logo=current_apartment_logo)
 
 @main_bp.route('/gerenciar-usuarios/adicionar', methods=['POST'])
 @login_required
@@ -471,3 +506,147 @@ def criar_admin_command():
         print(f"\nSUCESSO: {message}")
     else:
         print(f"\nERRO: {message}")
+        
+
+
+# Adicione esta função para formatar datas no template
+@main_bp.app_template_filter('format_date')
+def format_date_filter(s):
+    if not s:
+        return ''
+    try:
+        # Assumindo que a data vem como 'YYYY-MM-DDTHH:MM:SS'
+        dt = datetime.fromisoformat(s.split('T')[0])
+        return dt.strftime('%d/%m/%Y')
+    except:
+        return s
+
+@main_bp.route('/render_report/viagem', methods=['POST'])
+@login_required
+def render_viagem_report():
+    report_data = request.json.get('data')
+    # Usamos o novo template para renderizar o relatório
+    return render_template('reports/report_viagem.html', data=report_data)
+
+@main_bp.route('/report/print/<int:numero>')
+@login_required
+def print_viagem_report(numero):
+    apartamento_id_alvo =  get_target_apartment_id()
+    if not apartamento_id_alvo:
+        flash("Apartamento não selecionado.", "danger")
+        return redirect(url_for('main.index'))
+
+    dias_janela = request.args.get('dias_janela', type=int, default=0)
+    data = logic.get_relatorio_viagem_data(apartamento_id_alvo, numero, dias_janela)
+
+    if not data:
+        flash("Dados do relatório de viagem não encontrados.", "danger")
+        return redirect(url_for('main.index'))
+
+    logo_filename = logic.get_apartment_logo(apartamento_id_alvo)
+    
+    print(f"DEBUG: print_viagem_report - Logo filename obtido: {logo_filename}")
+    
+    logo_url = None
+    if logo_filename:
+        logo_url = url_for('static', filename=f'uploads/{logo_filename}', _external=True)
+
+    
+    print(f"DEBUG: print_viagem_report - Logo URL gerada: {logo_url}")
+    print(f"DEBUG: print_viagem_report - Apartamento ID: {apartamento_id_alvo}")
+
+
+    html_string = render_template('reports/report_viagem.html', 
+                                  data=data, 
+                                  logo_url=logo_url, 
+                                  apartamento_id=apartamento_id_alvo)
+    
+    # Caminho para o seu CSS de impressão
+    css_path = os.path.join(current_app.root_path, 'static', 'print.css')
+    
+    # Criar um objeto HTML a partir da string e base_url
+    # A base_url é crucial para o WeasyPrint encontrar recursos como imagens e CSS
+    html_doc = HTML(string=html_string, base_url=request.base_url)
+
+    # Carregar o CSS
+    css = CSS(filename=css_path)
+
+    # Gerar o PDF
+    pdf_file = html_doc.write_pdf(stylesheets=[css])
+
+    response = Response(pdf_file, mimetype='application/pdf')
+    response.headers['Content-Disposition'] = f'inline; filename=relatorio_viagem_{numero}.pdf'
+    return response
+    
+@main_bp.route('/upload_logo', methods=['POST'])
+@login_required
+def upload_logo():
+    # A importação da biblioteca pesada é feita aqui para não atrasar o início da aplicação
+    from rembg import remove
+
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        flash("Apartamento não selecionado para upload de logo.", "danger")
+        return redirect(url_for('main.index'))
+
+    # O 'name' do seu <input type="file"> no HTML deve ser "file"
+    if 'file' not in request.files:
+        flash("Nenhum arquivo de logo enviado.", "danger")
+        # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários
+        return redirect(url_for('main.gerenciar_usuarios'))
+
+    file = request.files['file']
+    if file.filename == '':
+        flash("Nenhum arquivo de logo selecionado.", "danger")
+        # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários
+        return redirect(url_for('main.gerenciar_usuarios'))
+
+    if file and allowed_file(file.filename):
+        
+        # LÓGICA PARA APAGAR O LOGO ANTIGO
+        old_logo_filename = logic.get_apartment_logo(apartamento_id_alvo)
+        if old_logo_filename:
+            old_logo_path = os.path.join(current_app.static_folder, 'uploads', old_logo_filename)
+            if os.path.exists(old_logo_path):
+                try:
+                    os.remove(old_logo_path)
+                    print(f"DEBUG: Logo antigo removido com sucesso: {old_logo_path}")
+                except OSError as e:
+                    print(f"AVISO: Não foi possível remover o logo antigo {old_logo_path}: {e}")
+
+        # LÓGICA PARA PROCESSAR E SALVAR O NOVO LOGO
+        ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else 'png'
+        logo_filename_base = f"logo_apto_{apartamento_id_alvo}_{uuid.uuid4().hex}"
+        logo_filename_temp = f"{logo_filename_base}.{ext}"
+        
+        upload_folder = os.path.join(current_app.static_folder, 'uploads', str(apartamento_id_alvo))
+        os.makedirs(upload_folder, exist_ok=True)
+        temp_filepath = os.path.join(upload_folder, logo_filename_temp)
+        
+        file.save(temp_filepath)
+
+        try:
+            input_image = Image.open(temp_filepath)
+            output_image = remove(input_image)
+            
+            final_logo_filename = f"{logo_filename_base}.png"
+            final_filepath = os.path.join(upload_folder, final_logo_filename)
+            output_image.save(final_filepath, format="PNG")
+            
+            os.remove(temp_filepath)
+            
+            logo_path_to_db = os.path.join(str(apartamento_id_alvo), final_logo_filename).replace('\\', '/')
+            logic.update_apartment_logo(apartamento_id_alvo, logo_path_to_db)
+            
+            flash("Logo atualizado com sucesso!", "success")
+        except Exception as e:
+            flash(f"Erro ao processar o logo: {e}", "danger")
+            if os.path.exists(temp_filepath):
+                os.remove(temp_filepath)
+            # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários em caso de erro
+            return redirect(url_for('main.gerenciar_usuarios'))
+    else:
+        flash('Tipo de arquivo não permitido.', 'error')
+
+    # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários após o sucesso
+    return redirect(url_for('main.gerenciar_usuarios'))

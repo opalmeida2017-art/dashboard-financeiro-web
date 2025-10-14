@@ -61,21 +61,21 @@
             </select>
         </div>
         <div class="filter-item">
-            <label for="filial-multiselect-btn">Filial:</label>
-            <div class="multiselect" id="filial-multiselect">
-                <button type="button" class="multiselect-btn" id="filial-multiselect-btn">Selecionar Filiais</button>
-                <div class="multiselect-dropdown" id="filial-dropdown">
-                    {% for filial in filiais %}
-                        {% if filial != "Todos" %}
-                        <div class="multiselect-item">
-                            <input type="checkbox" name="filial" value="{{ filial }}" id="filial-{{ loop.index }}" {% if filial in selected_filial %}checked{% endif %}>
-                            <label for="filial-{{ loop.index }}">{{ filial }}</label>
-                        </div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
+        <label for="filial-multiselect-btn">Filial:</label>
+        <div class="multiselect" id="filial-multiselect">
+            <button type="button" class="multiselect-btn" id="filial-multiselect-btn">Selecionar Filiais</button>
+            <div class="multiselect-dropdown" id="filial-dropdown">
+                {% for filial in filiais %}
+                    {% if filial != "Todos" %}
+                    <div class="multiselect-item">
+                        <input type="checkbox" name="filial" value="{{ filial }}" id="filial-{{ loop.index }}" {% if filial in selected_filial %}checked{% endif %}>
+                        <label for="filial-{{ loop.index }}">{{ filial }}</label>
+                    </div>
+                    {% endif %}
+                {% endfor %}
             </div>
         </div>
+    </div>
         <div class="filter-item">
             <button type="submit">Aplicar Filtros</button>
         </div>
@@ -137,102 +137,7 @@
     </div>
 </div>
 
-<div id="choiceModal" class="modal">
-    <div class="modal-content">
-        <span class="close-button">&times;</span>
-        <div class="choice-modal-body">
-            <h2>O que você deseja fazer?</h2>
-            <div class="choice-modal-buttons">
-                <button id="btnVerGrafico" class="btn-primary">📊 Ver Gráfico Detalhado</button>
-                <button id="btnAuditar">🔍 Auditar</button>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div id="conhecimentosModal" class="modal">
-    <div class="modal-content">
-        <span class="close-button">&times;</span>
-        <h2>Conhecimentos do Faturamento</h2>
-        <p>Clique em um CT-e para ver o relatório detalhado da viagem.</p>
-        <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 15px; flex-wrap: wrap;">
-        <div class="filter-item">
-            <label for="filtro-conhecimento"><b>Buscar CT-e:</b></label>
-            <input type="text" id="filtro-conhecimento" placeholder="Digite o número..." style="width: 150px; padding: 5px;">
-        </div>
-        <div class="filter-item">
-            <label for="dias-busca-sugestao"><b>Janela (dias):</b></label>
-            <input type="number" id="dias-busca-sugestao" name="dias-busca-sugestao" value="10" style="width: 80px; text-align: center; padding: 5px;">
-        </div>
-    </div>
-        <div id="conhecimentos-lista" class="conhecimentos-grid"></div>
-    </div>
-</div>
-
-<div id="relatorioViagemModal" class="modal">
-    <div class="modal-content" style="max-width: 1140px;">
-        <span class="close-button">&times;</span>
-        <div id="relatorio-body"></div>
-    </div>
-</div>
-
-<div id="despesasAuditModal" class="modal">
-    <div class="modal-content" style="max-width: 900px;">
-        <span class="close-button">&times;</span>
-        <h2>Auditoria Detalhada de Despesas</h2>
-        <div id="despesas-audit-body" class="despesas-audit-modal-body">
-            <div class="audit-section">
-                <h5>Custos de Viagem</h5>
-                <div id="audit-list-custos" class="audit-list"></div>
-            </div>
-            <div class="audit-section">
-                <h5>Despesas Gerais</h5>
-                <div id="audit-list-despesas" class="audit-list"></div>
-            </div>
-            <div class="audit-section">
-                <h5>Despesas Tipo D</h5>
-                <div id="audit-list-tipo-d" class="audit-list"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="manageGroupsModal" class="modal">
-    <div class="modal-content">
-        <span class="close-button">&times;</span>
-        <h2>Gerenciar Grupos de Despesa</h2>
-        <p>Classifique cada grupo para que os cálculos de custo e despesa sejam feitos corretamente.</p>
-        <form method="POST" action="{{ url_for('main.gerenciar_grupos_salvar') }}">
-            <div id="manageGroupsTableContainer"></div>
-            <button type="submit" class="btn-salvar">Salvar Alterações</button>
-        </form>
-    </div>
-</div>
-
-<div id="uploadModal" class="modal">
-    <div class="modal-content">
-        <span class="close-button">&times;</span>
-        <div id="uploadFormContainer">
-            <h2>Upload de Novas Planilhas</h2>
-            <p>Selecione uma ou mais planilhas do sistema SAT para importar os dados.</p>
-            <form id="uploadForm" method="POST" action="{{ url_for('main.upload_file') }}" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label for="files">1. Escolha os arquivos no seu computador:</label>
-                    <input type="file" name="files[]" id="files" multiple required>
-                </div>
-                <button type="submit" class="btn-salvar">Enviar e Importar</button>
-            </form>
-        </div>
-        <div id="progressContainer" style="display: none;">
-            <h4>Processando planilhas... Por favor, aguarde.</h4>
-            <div class="progress-road">
-                <div class="progress-bar">
-                    <span class="truck-emoji">🚚</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% else %}
 <p style="text-align: center;">Não há dados para exibir. Tente importar os dados ou ajustar os filtros.</p>
 {% endif %}
@@ -307,61 +212,61 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
     
- const manageModal = document.getElementById('manageGroupsModal');
-const manageBtn = document.getElementById('openModalBtn');
-if (manageBtn) {
-    // Adiciona um único listener de clique ao contêiner da tabela
-    document.getElementById('manageGroupsTableContainer').addEventListener('click', function(e) {
-        if (e.target.type === 'radio' && e.target.wasChecked) {
-            e.target.checked = false;
-            e.target.wasChecked = false;
-        } else if (e.target.type === 'radio') {
-            document.querySelectorAll(`input[name="${e.target.name}"]`).forEach(radio => {
-                radio.wasChecked = false;
-            });
-            e.target.wasChecked = true;
-        }
-    });
-
-        manageBtn.onclick = function() {
-        const tableContainer = document.getElementById('manageGroupsTableContainer');
-        tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
-        manageModal.style.display = 'block';
-        fetch("{{ url_for('main.gerenciar_grupos_dados') }}")
-            .then(response => response.json())
-            .then(flags => {
-                let tableHTML = `<table class="table table-hover"><thead><tr><th>Nome do Grupo de Despesa</th><th>Classificação</th></tr></thead><tbody>`;
-                for (const group in flags) {
-                    const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
-                    const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
-                    const isTipoDChecked = flags[group].incluir_em_tipo_d ? 'checked' : '';
-                    const hasTipoD = flags[group].has_tipo_d;
-                    const hasTipoV = flags[group].has_tipo_v;
-                    let classificationRadios = '';
-                    if (hasTipoV || hasTipoD) {
-                        classificationRadios = `
-                            <label class="form-check-label"><input class="form-check-input" type="radio" name="${group}_class" value="custo_viagem" ${isCustoChecked}> Custo de Viagem</label><br>
-                            <label class="form-check-label"><input class="form-check-input" type="radio" name="${group}_class" value="despesa" ${isDespesaChecked}> Despesa Geral</label>
-                        `;
-                    } else {
-                        classificationRadios = '<small class="text-muted">Não aplicável</small>';
-                    }
-                    let tipoDCheckboxHTML = '';
-                    if (hasTipoD) {
-                        tipoDCheckboxHTML = `<br><label class="form-check-label" style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Despesa Tipo D</label>`;
-                    }
-                    tableHTML += `<tr><td>${group}</td><td>${classificationRadios}${tipoDCheckboxHTML}</td></tr>`;
-                }
-                tableHTML += '</tbody></table>';
-                tableContainer.innerHTML = tableHTML;
-
-                // Marca os botões que já vêm checados para a lógica funcionar corretamente
-                tableContainer.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
-                    radio.wasChecked = true;
+    const manageModal = document.getElementById('manageGroupsModal');
+    const manageBtn = document.getElementById('openModalBtn');
+    if (manageBtn) {
+        // Adiciona um único listener de clique ao contêiner da tabela
+        document.getElementById('manageGroupsTableContainer').addEventListener('click', function(e) {
+            if (e.target.type === 'radio' && e.target.wasChecked) {
+                e.target.checked = false;
+                e.target.wasChecked = false;
+            } else if (e.target.type === 'radio') {
+                document.querySelectorAll(`input[name="${e.target.name}"]`).forEach(radio => {
+                    radio.wasChecked = false;
                 });
-            });
-    };
-}
+                e.target.wasChecked = true;
+            }
+        });
+
+            manageBtn.onclick = function() {
+            const tableContainer = document.getElementById('manageGroupsTableContainer');
+            tableContainer.innerHTML = '<p>Sincronizando e carregando grupos...</p>';
+            manageModal.style.display = 'block';
+            fetch("{{ url_for('main.gerenciar_grupos_dados') }}")
+                .then(response => response.json())
+                .then(flags => {
+                    let tableHTML = `<table class="table table-hover"><thead><tr><th>Nome do Grupo de Despesa</th><th>Classificação</th></tr></thead><tbody>`;
+                    for (const group in flags) {
+                        const isCustoChecked = flags[group].is_custo_viagem === 'S' ? 'checked' : '';
+                        const isDespesaChecked = flags[group].is_despesa === 'S' ? 'checked' : '';
+                        const isTipoDChecked = flags[group].incluir_em_tipo_d ? 'checked' : '';
+                        const hasTipoD = flags[group].has_tipo_d;
+                        const hasTipoV = flags[group].has_tipo_v;
+                        let classificationRadios = '';
+                        if (hasTipoV || hasTipoD) {
+                            classificationRadios = `
+                                <label class="form-check-label"><input class="form-check-input" type="radio" name="${group}_class" value="custo_viagem" ${isCustoChecked}> Custo de Viagem</label><br>
+                                <label class="form-check-label"><input class="form-check-input" type="radio" name="${group}_class" value="despesa" ${isDespesaChecked}> Despesa Geral</label>
+                            `;
+                        } else {
+                            classificationRadios = '<small class="text-muted">Não aplicável</small>';
+                        }
+                        let tipoDCheckboxHTML = '';
+                        if (hasTipoD) {
+                            tipoDCheckboxHTML = `<br><label class="form-check-label" style="color: #8E44AD; font-weight: bold;"><input type="checkbox" name="${group}_tipo_d" ${isTipoDChecked}> Contabilizar em Despesa Tipo D</label>`;
+                        }
+                        tableHTML += `<tr><td>${group}</td><td>${classificationRadios}${tipoDCheckboxHTML}</td></tr>`;
+                    }
+                    tableHTML += '</tbody></table>';
+                    tableContainer.innerHTML = tableHTML;
+
+                    // Marca os botões que já vêm checados para a lógica funcionar corretamente
+                    tableContainer.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+                        radio.wasChecked = true;
+                    });
+                });
+        };
+    }
 
     const uploadModal = document.getElementById('uploadModal');
     const uploadBtn = document.getElementById('openUploadModalBtn');
@@ -544,49 +449,53 @@ if (manageBtn) {
                     </table>`;
         }
 
-        function createSugestoesTableHtml(sugestoes, numero) {
-            if (!sugestoes || sugestoes.length === 0) {
-                return '<h4>Nenhuma despesa sugerida encontrada.</h4>';
-            }
-            let totalSugestoes = 0;
-            const headers = `
-                <thead class="table-light">
-                    <tr>
-                        <th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th>
-                        <th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th>
-                        <th style="text-align: right;">Valor</th><th>Ação</th>
-                    </tr>
-                </thead>`;
-            let rowsHtml = sugestoes.map(item => {
-                totalSugestoes += parseFloat(item.Valor) || 0;
-                return `<tr>
-                    <td>${item.descGrupoD || ''}</td><td>${item.codNota || ''}</td>
-                    <td>${item.dataControle || ''}</td><td>${item.serie || ''}</td>
-                    <td>${item.nomeForn || ''}</td><td>${item.codItemNota || ''}</td>
-                    <td>${item.descItemD || ''}</td><td style="text-align: right;">${formatCurrency(item.Valor)}</td>
-                    <td><button class="btn btn-success btn-sm btn-adicionar-despesa" data-numero="${numero}" data-coditemnota="${item.codItemNota}">Adicionar</button></td>
-                </tr>`;
-            }).join('');
-            const footer = `
-                <tfoot>
-                    <tr style="font-weight: bold;">
-                        <td colspan="8" style="text-align: right;">TOTAL DAS SUGESTÕES</td>
-                        <td style="text-align: right;">${formatCurrency(totalSugestoes)}</td>
-                        <td></td>
-                    </tr>
-                </tfoot>`;
-            return `<h4 class="mt-4">Despesas Sugeridas (Não Vinculadas)</h4>
-                    <p><small>Despesas da mesma placa na janela de dias selecionada que ainda não foram associadas a nenhum CT-e.</small></p>
-                    <table class="table table-bordered table-sm">
-                        ${headers}
-                        <tbody>${rowsHtml}</tbody>
-                        ${footer}
-                    </table>`;
-        }
-        
+       function createSugestoesTableHtml(sugestoes, numero) {
+    if (!sugestoes || sugestoes.length === 0) {
+        return '<div class="no-print"><h4>Nenhuma despesa sugerida encontrada.</h4></div>';
+    }
+    let totalSugestoes = 0;
+    const headers = `
+        <thead class="table-light">
+            <tr>
+                <th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th>
+                <th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th>
+                <th style="text-align: right;">Valor</th><th>Ação</th>
+            </tr>
+        </thead>`;
+    let rowsHtml = sugestoes.map(item => {
+        totalSugestoes += parseFloat(item.Valor) || 0;
+        return `<tr>
+            <td>${item.descGrupoD || ''}</td><td>${item.codNota || ''}</td>
+            <td>${item.dataControle || ''}</td><td>${item.serie || ''}</td>
+            <td>${item.nomeForn || ''}</td><td>${item.codItemNota || ''}</td>
+            <td>${item.descItemD || ''}</td><td style="text-align: right;">${formatCurrency(item.Valor)}</td>
+            <td><button class="btn btn-success btn-sm btn-adicionar-despesa" data-numero="${numero}" data-coditemnota="${item.codItemNota}">Adicionar</button></td>
+        </tr>`;
+    }).join('');
+    const footer = `
+        <tfoot>
+            <tr style="font-weight: bold;">
+                <td colspan="8" style="text-align: right;">TOTAL DAS SUGESTÕES</td>
+                <td style="text-align: right;">${formatCurrency(totalSugestoes)}</td>
+                <td></td>
+            </tr>
+        </tfoot>`;
+
+    // A CORREÇÃO ESTÁ AQUI: a div 'no-print' envolve todo o conteúdo.
+    return `<div class="no-print">
+                <h4 class="mt-4">Despesas Sugeridas (Não Vinculadas)</h4>
+                <p><small>Despesas da mesma placa na janela de dias selecionada que ainda não foram associadas a nenhum CT-e.</small></p>
+                <table class="table table-bordered table-sm">
+                    ${headers}
+                    <tbody>${rowsHtml}</tbody>
+                    ${footer}
+                </table>
+            </div>`;
+}
         function fetchAndRenderReport(numero) {
             const relatorioBody = document.getElementById('relatorio-body');
             relatorioBody.innerHTML = '<p class="text-center">Buscando dados da viagem...</p>';
+            relatorioModal.querySelector('#btnPrintReport').dataset.numero = numero;
             relatorioModal.style.display = 'block';
 
             const diasBusca = document.getElementById('dias-busca-sugestao').value || 10;
@@ -605,15 +514,15 @@ if (manageBtn) {
                     const dataViagemFmt = data.data_viagem ? new Date(data.data_viagem).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : 'N/A';
                     const receitasHtml = `<table class="table table-bordered table-sm mt-3">
                         <tr class="table-secondary"><th colspan="2">Receitas</th></tr>
-                        <tr><td>Frete (Valor Bruto)</td><td class="text-end">${formatCurrency(data.frete_bruto)}</td></tr>
-                        <tr><td>Pedágio</td><td class="text-end">${formatCurrency(data.valor_pedagio)}</td></tr>
-                        <tr>
-                            <td colspan="2" style="font-size: 0.75em; color: red; text-align: center; border: none; padding-top: 0;">
-                                * O valor do pedágio só é somado ao total se a flag 'pedagioEmbutidoFrete' for 'N'.
-                            </td>
-                        </tr>
-                        <tr class="table-success" style="font-weight: bold;"><td>TOTAL</td><td class="text-end">${formatCurrency(data.total_receitas)}</td></tr>
-                    </table>`;
+                    <tr><td>Frete (Valor Bruto)</td><td class="text-end">${formatCurrency(data.frete_bruto)}</td></tr>
+                    <tr><td>Pedágio</td><td class="text-end">${formatCurrency(data.valor_pedagio)}</td></tr>
+                    <tr>
+                        <td colspan="2" style="font-size: 0.75em; color: red; text-align: center; border: none; padding-top: 0;">
+                            * O valor do pedágio só é somado ao total se a flag 'pedagioEmbutidoFrete' for 'N'.
+                        </td>
+                    </tr>
+                    <tr class="table-success" style="font-weight: bold;"><td>TOTAL</td><td class="text-end">${formatCurrency(data.total_receitas)}</td></tr>
+                </table>`;
                     const custosHtml = createItemsTableHtml('Outros Custos da Viagem', data.custos_detalhados, data.total_outros_custos, 'table-warning', numero);
                     const despesasHtml = createItemsTableHtml('Despesas da Viagem', data.despesas_detalhadas, data.total_despesas, 'table-danger', numero);
                     const sugestoesHtml = createSugestoesTableHtml(data.despesas_sugeridas, numero);
@@ -638,7 +547,7 @@ if (manageBtn) {
                     relatorioBody.innerHTML = `
                         <div class="text-center mb-3"><h2>Relatório de Viagem</h2></div>
                         
-                        <table class="table table-bordered table-sm">
+                                                <table class="table table-bordered table-sm">
                             <tr>
                                 <th style="width: 25%;">Viagem (CT-e)</th><td style="width: 25%;">${data.viagem_display}</td>
                                 <th style="width: 25%;">Data Viagem</th><td style="width: 25%;">${dataViagemFmt}</td>
@@ -673,7 +582,7 @@ if (manageBtn) {
                         ${despesasHtml}
                         ${resultadoHtml}
                         ${sugestoesHtml}`;
-                                    })
+                    })
                 .catch(error => {
                     relatorioBody.innerHTML = `<p class="text-center text-danger">Ocorreu um erro ao buscar os dados: ${error}</p>`;
                 });
@@ -684,6 +593,18 @@ if (manageBtn) {
             if (cteItem && cteItem.dataset.numero) {
                 fetchAndRenderReport(cteItem.dataset.numero);
             }
+        const btnPrint = relatorioModal.querySelector('#btnPrintReport');
+        if (btnPrint) {
+            btnPrint.addEventListener('click', function() {
+                const numeroViagem = this.dataset.numero; // Pega o número guardado
+                if (numeroViagem) {
+                    const printUrl = `/report/print/${numeroViagem}`;
+                    window.open(printUrl, '_blank'); // Abre o PDF num novo separador
+                } else {
+                    alert('Erro: Não foi possível identificar o número da viagem para impressão.');
+                }
+            });
+        }    
         });
 
         relatorioModal.addEventListener('click', function(event) {
@@ -726,23 +647,23 @@ if (manageBtn) {
     }
 
     const filtroConhecimentoInput = document.getElementById('filtro-conhecimento');
-if (filtroConhecimentoInput) {
-    filtroConhecimentoInput.addEventListener('input', function() {
-        const searchTerm = this.value.toLowerCase().trim();
-        const conhecimentosGrid = document.getElementById('conhecimentos-lista');
-        const todosOsItens = conhecimentosGrid.querySelectorAll('.conhecimento-item');
+    if (filtroConhecimentoInput) {
+        filtroConhecimentoInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase().trim();
+            const conhecimentosGrid = document.getElementById('conhecimentos-lista');
+            const todosOsItens = conhecimentosGrid.querySelectorAll('.conhecimento-item');
 
-        todosOsItens.forEach(function(item) {
-            const itemText = item.textContent.toLowerCase();
-            if (itemText.includes(searchTerm)) {
-                item.style.display = '';
-            } else {
-                item.style.display = 'none';
-            }
+            todosOsItens.forEach(function(item) {
+                const itemText = item.textContent.toLowerCase();
+                if (itemText.includes(searchTerm)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
         });
-    });
-}
+    }
+    
 });
-
 </script>
 {% endblock %}

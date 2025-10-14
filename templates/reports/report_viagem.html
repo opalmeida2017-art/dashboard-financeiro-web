@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Imprimir Relatório de Viagem {{ data.viagem_display }}</title>
+    <style>
+        @page {
+            margin: 1cm;
+            size: A4;
+        }
+        body {
+            font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+            font-size: 9pt;
+            color: #333;
+        }
+        .report-print-container h2 {
+            font-size: 16pt; text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;
+        }
+        .print-section {
+            page-break-inside: avoid;
+        }
+        .section-title, h4 {
+            font-size: 11pt; font-weight: bold; padding: 5px 8px; margin-top: 15px; margin-bottom: 5px; background-color: #e9ecef; border: 1px solid #dee2e6;
+        }
+        table {
+            width: 100%; border-collapse: collapse; margin-bottom: 15px;
+        }
+        table:not(.table-header-clean) th,
+        table:not(.table-header-clean) td {
+            border: 1px solid #ccc; padding: 5px 8px; text-align: left;
+        }
+        thead {
+            background-color: #f2f2f2;
+        }
+        .text-end { text-align: right; }
+        .no-print { display: none; }
+        
+        .table-header-clean, .table-header-clean tr, .table-header-clean th, .table-header-clean td {
+            border: none;
+        }
+        .table-header-clean th, .table-header-clean td {
+            padding: 6px 8px; border-bottom: 1px solid #dee2e6;
+        }
+        .table-header-clean th {
+            background-color: #e9ecef;
+        }
+
+        h4, .section-title, thead, .table-warning, .table-danger, .table-success, .text-success, .text-danger, .table-header-clean th {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-warning { background-color: #fff3cd; }
+        .table-danger { background-color: #f8d7da; }
+        .table-success { background-color: #d4edda; }
+        .text-success { color: #155724; }
+        .text-danger { color: #721c24; }
+    </style>
+</head>
+<body onload="window.print();">
+
+        <div class="report-print-container">
+                <div class="report-header">
+            {% if logo_url %}
+                <img src="{{ logo_url }}" alt="Logo da Empresa" class="logo">
+            {% endif %}
+            <h2>Relatório de Viagem</h2>
+        </div>
+        <div class="print-section">
+            <table class="table-header-clean">
+                <tr><th style="width: 25%;">Viagem (CT-e)</th><td style="width: 25%;">{{ data.viagem_display }}</td><th style="width: 25%;">Data Viagem</th><td style="width: 25%;">{{ data.data_viagem | format_date }}</td></tr>
+                <tr><th>Veículo</th><td>{{ data.placa_veiculo or 'N/A' }}</td><th>Motorista</th><td>{{ data.motorista or 'N/A' }}</td></tr>
+                <tr><th>Numero Nota</th><td>{{ data.numero_nota }}</td><th>Filial</th><td>{{ data.filial }}</td></tr>
+                <tr><th>Unidade de Embarque</th><td colspan="3">{{ data.unidade_embarque }}</td></tr>
+            </table>
+        </div>
+
+        <div class="print-section">
+            <table class="table-header-clean">
+                <tr><th colspan="2">Dados da Viagem</th></tr>
+                <tr><th style="width: 25%;">Cliente</th><td>{{ data.cliente or 'N/A' }}</td></tr>
+                <tr><th>Origem &rarr; Destino</th><td>{{ data.origem or 'N/A' }} &rarr; {{ data.destino or 'N/A' }}</td></tr>
+                <tr><th>Peso Saída / Chegada</th><td>{{ (data.peso_saida or 0) | round(2) }} / {{ (data.peso_chegada or 0) | round(2) }} Kg</td></tr>
+                <tr><th>Valor Seguro</th><td>{{ data.valor_seguro | currency }}</td></tr>
+                <tr><th>KM Inicial</th><td>{{ (data.km_inicial or 0) | round(2) }}</td></tr>
+                <tr><th>KM Final</th><td>{{ (data.km_final or 0) | round(2) }}</td></tr>
+                <tr><th>KM Rodado</th><td>{{ (data.km_rodado or 0) | round(2) }} Km</td></tr>
+                <tr><th>Porcentagem Comissão</th><td>{{ (data.comissao_perc or 0) | round(2) }}% (Base: {{ data.valor_base_comissao | currency }})</td></tr>
+            </table>
+        </div>
+
+        <div class="print-section">
+            <table class="table-header-clean">
+                <tr><th colspan="2">Receitas</th></tr>
+                <tr><td>Frete (Valor Bruto)</td><td class="text-end">{{ data.frete_bruto | currency }}</td></tr>
+                <tr><td>Pedágio</td><td class="text-end">{{ data.valor_pedagio | currency }}</td></tr>
+                <tr class="table-success" style="font-weight: bold;"><td>TOTAL</td><td class="text-end">{{ data.total_receitas | currency }}</td></tr>
+            </table>
+        </div>
+
+        <div class="print-section">
+            <h4 class="mt-4">Outros Custos da Viagem</h4>
+            <table>
+                <thead><tr><th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th><th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th><th class="text-end">Valor</th></tr></thead>
+                <tbody>
+                    {% for item in data.custos_detalhados %}
+                        {% if item.descGrupoD not in ['COMISSÃO DE MOTORISTA', 'VALOR QUEBRA'] %}
+                        <tr>
+                            <td>{{ item.descGrupoD or '' }}</td><td>{{ item.codNota or '' }}</td><td>{{ item.dataControle or '' }}</td><td>{{ item.serie or '' }}</td><td>{{ item.nomeForn or '' }}</td><td>{{ item.codItemNota or '' }}</td><td>{{ item.descItemD or '' }}</td><td class="text-end">{{ item.valor_calculado | currency }}</td>
+                        </tr>
+                        {% endif %}
+                    {% else %}
+                    <tr><td colspan="8" class="text-center">Nenhum custo encontrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot><tr class="table-warning" style="font-weight: bold;"><td colspan="7" class="text-end">TOTAL (OUTROS CUSTOS)</td><td class="text-end">{{ data.total_outros_custos | currency }}</td></tr></tfoot>
+            </table>
+        </div>
+
+        <div class="print-section">
+            <h4 class="mt-4">Despesas da Viagem</h4>
+            <table>
+                <thead><tr><th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th><th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th><th class="text-end">Valor</th></tr></thead>
+                <tbody>
+                    {% for item in data.despesas_detalhadas %}
+                     <tr><td>{{ item.descGrupoD or '' }}</td><td>{{ item.codNota or '' }}</td><td>{{ item.dataControle or '' }}</td><td>{{ item.serie or '' }}</td><td>{{ item.nomeForn or '' }}</td><td>{{ item.codItemNota or '' }}</td><td>{{ item.descItemD or '' }}</td><td class="text-end">{{ item.valor_calculado | currency }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center">Nenhuma despesa encontrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot><tr class="table-danger" style="font-weight: bold;"><td colspan="7" class="text-end">TOTAL DESPESAS</td><td class="text-end">{{ data.total_despesas | currency }}</td></tr></tfoot>
+            </table>
+        </div>
+
+        <div class="print-section">
+            <h4 class="mt-4">Resultado da Viagem</h4>
+            <table>
+                <tr><td>Frete Bruto Recebido</td><td class="text-end">{{ data.frete_bruto | currency }}</td></tr>
+                <tr><td>(-) Valor Quebra</td><td class="text-end text-danger">{{ data.valor_quebra | currency }}</td></tr>
+                <tr><td>(-) Comissão Motorista</td><td class="text-end text-danger">{{ data.comissao_motorista | currency }}</td></tr>
+                <tr><td>(-) Total Outros Custos</td><td class="text-end text-danger">{{ data.total_outros_custos | currency }}</td></tr>
+                <tr><td>(-) Total Despesas da Viagem</td><td class="text-end text-danger">{{ data.total_despesas | currency }}</td></tr>
+                <tr><td>(-) Outros Descontos</td><td class="text-end text-danger">{{ data.outros_descontos | currency }}</td></tr>
+                <tr style="font-weight: bold;"><td>LUCRO/PREJUÍZO</td><td class="text-end {{ 'text-success' if data.lucro_prejuizo_valor >= 0 else 'text-danger' }}">{{ data.lucro_prejuizo_valor | currency }}</td></tr>
+                <tr style="font-weight: bold;"><td>MARGEM (%)</td><td class="text-end {{ 'text-success' if data.margem_valor >= 0 else 'text-danger' }}">{{ data.margem_valor | percentage }}</td></tr>
+            </table>
+        </div>
+    </div>
+
+</body>
+</html>

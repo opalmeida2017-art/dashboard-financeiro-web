@@ -10,6 +10,10 @@ import config
 import numpy as np
 import re
 import logic
+import database as db_module # Importa o módulo database.py
+import psycopg2
+import psycopg2.extras
+
 
 # Substitua esta função em data_manager.py
 
@@ -662,7 +666,7 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
 
     if 'cidorigemformat' in col_map_viagens_cli and 'ciddestinoformat' in col_map_viagens_cli:
         df_viagens_cliente['rota'] = df_viagens_cliente[col_map_viagens_cli['cidorigemformat']] + ' -> ' + df_viagens_cliente[col_map_viagens_cli['ciddestinoformat']]
-        top_rotas = df_viagens_cliente['rota'].value_counts().nlargest(10).sort_values(ascending=True).reset_index()
+        top_rotas = df_viagens_cliente['rota'].value_counts().nlargest(10).sort_values(ascending=False).reset_index()
         top_rotas.columns = ['rota', 'contagem']
         dashboard_data['top_rotas'] = top_rotas.to_dict(orient='records')
         

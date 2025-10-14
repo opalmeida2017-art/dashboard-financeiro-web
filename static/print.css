@@ -1,0 +1,119 @@
+@page {
+    margin: 1.5cm;
+    size: A4;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    font-size: 9pt;
+    background: #fff !important;
+}
+
+.no-print, .modal-header-actions {
+    display: none !important;
+}
+
+.page-breaker {
+    page-break-before: always;
+}
+
+.print-section {
+    page-break-inside: avoid;
+}
+
+.report-print-container h2 {
+    font-size: 16pt;
+    text-align: center;
+    border-bottom: none !important; /* Adicionado para garantir a remoção */
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.report-print-container h4,
+.report-print-container .section-title {
+    font-size: 11pt;
+    font-weight: bold;
+    padding: 5px;
+    margin-top: 15px;
+    margin-bottom: 5px;
+    background-color: #e9ecef !important;
+    border: 1px solid #dee2e6 !important;
+}
+
+.report-print-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+
+.report-print-container th, 
+.report-print-container td {
+    border: 1px solid #ccc !important;
+    padding: 5px 8px;
+}
+
+.report-print-container thead {
+    background-color: #f2f2f2 !important;
+}
+
+.table-warning {
+    background-color: #fff3cd !important;
+}
+
+.table-danger {
+    background-color: #f8d7da !important;
+}
+
+.text-success {
+    color: #155724 !important;
+}
+
+.text-danger {
+    color: #721c24 !important;
+}
+
+h4, .section-title, thead, .table-warning, .table-danger, .text-success, .text-danger {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+.text-end { text-align: right !important; }
+.text-center { text-align: center !important; }
+
+/* Estilos para o cabeçalho do relatório e logo (VERSÃO CORRIGIDA E ALINHADA) */
+.report-header {
+    position: relative; /* Essencial para o posicionamento do título */
+    display: flex;
+    align-items: center; /* Alinha o logo verticalmente */
+    height: 90px;        /* Altura do cabeçalho */
+    margin-bottom: 20px;
+}
+
+.report-header .logo {
+    /* O logo fica no fluxo normal, à esquerda */
+    max-width: 500px;
+    max-height: 200px;
+    object-fit: contain;
+}
+
+.report-header h2 {
+    /* O título é posicionado de forma absoluta para garantir o centro perfeito */
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%; /* Ocupa a largura total para centralizar o texto */
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    border-bottom: none !important; 
+}
+
+/* Garante que a regra genérica também não tenha a borda */
+.report-print-container h2 {
+    font-size: 16pt;
+    text-align: center;
+    border-bottom: none !important;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}

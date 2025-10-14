@@ -1,18 +1,14 @@
-// Dentro de static/js/main.js
-
+// static/js/main.js (VERSÃO CORRIGIDA)
 document.addEventListener('DOMContentLoaded', function () {
     const ctx = document.getElementById('myChart');
     if (!ctx) return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    // ===== ESTA É A LINHA DA CORREÇÃO PRINCIPAL =====
     const apiUrl = `/api/data?${urlParams.toString()}`;
-    // =================================================
 
     fetch(apiUrl)
        .then(response => {
             if (!response.ok) {
-                // Se der 404 ou outro erro, o problema fica claro no console
                 throw new Error(`Erro na API: ${response.statusText}`);
             }
             return response.json();
@@ -24,7 +20,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            // Lógica que usa as chaves 'label' e 'value' já corrigidas no app.py
             const labels = data.map(row => row.label);
             const values = data.map(row => row.value);
 
@@ -59,4 +54,5 @@ document.addEventListener('DOMContentLoaded', function () {
        .catch(error => {
             console.error('Erro ao buscar dados para o gráfico:', error);
         });
+        
 });

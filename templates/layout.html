@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard Transporte</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=cache_buster) }}"></head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark no-print">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">Dashboard Transporte</a>
             <div class="d-flex align-items-center">
@@ -22,11 +21,10 @@
         </div>
     </nav>
 
-    <main class="container mt-4">
+    <main class="container mt-4 no-print">
    {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
         {% for category, message in messages %}
-            {# Define uma variável para a classe da aleta com uma lógica if/elif/else mais clara #}
             {% set alert_class = 'success' if category == 'success' else 'danger' if category == 'error' else 'info' %}
             
             <div class="alert alert-{{ alert_class }} alert-dismissible fade show" role="alert">
@@ -39,35 +37,134 @@
         {% block content %}{% endblock %}
     </main>
 
+    <div id="choiceModal" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div class="choice-modal-body">
+                <h2>O que você deseja fazer?</h2>
+                <div class="choice-modal-buttons">
+                    <button id="btnVerGrafico" class="btn-primary">📊 Ver Gráfico Detalhado</button>
+                    <button id="btnAuditar">🔍 Auditar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="conhecimentosModal" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Conhecimentos do Faturamento</h2>
+            <p>Clique em um CT-e para ver o relatório detalhado da viagem.</p>
+            <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 15px; flex-wrap: wrap;">
+            <div class="filter-item">
+                <label for="filtro-conhecimento"><b>Buscar CT-e:</b></label>
+                <input type="text" id="filtro-conhecimento" placeholder="Digite o número..." style="width: 150px; padding: 5px;">
+            </div>
+            <div class="filter-item">
+                <label for="dias-busca-sugestao"><b>Janela (dias):</b></label>
+                <input type="number" id="dias-busca-sugestao" name="dias-busca-sugestao" value="10" style="width: 80px; text-align: center; padding: 5px;">
+            </div>
+        </div>
+            <div id="conhecimentos-lista" class="conhecimentos-grid"></div>
+        </div>
+    </div>
+
+    <div id="relatorioViagemModal" class="modal">
+        <div class="modal-content" style="max-width: 1140px;">
+            <div class="modal-header-actions no-print" style="position: absolute; top: 15px; right: 15px; z-index: 10;">
+                <button id="btnPrintReport" class="btn btn-primary btn-sm">Imprimir</button>
+                <span class="close-button" style="position: static; float: none; font-size: 24px; margin-left: 10px;">&times;</span>
+            </div>
+            <div id="relatorio-body"></div>
+        </div>
+    </div>
+
+    <div id="despesasAuditModal" class="modal no-print">
+        <div class="modal-content" style="max-width: 900px;">
+            <span class="close-button">&times;</span>
+            <h2>Auditoria Detalhada de Despesas</h2>
+            <div id="despesas-audit-body" class="despesas-audit-modal-body">
+                <div class="audit-section">
+                    <h5>Custos de Viagem</h5>
+                    <div id="audit-list-custos" class="audit-list"></div>
+                </div>
+                <div class="audit-section">
+                    <h5>Despesas Gerais</h5>
+                    <div id="audit-list-despesas" class="audit-list"></div>
+                </div>
+                <div class="audit-section">
+                    <h5>Despesas Tipo D</h5>
+                    <div id="audit-list-tipo-d" class="audit-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="manageGroupsModal" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Gerenciar Grupos de Despesa</h2>
+            <p>Classifique cada grupo para que os cálculos de custo e despesa sejam feitos corretamente.</p>
+            <form method="POST" action="{{ url_for('main.gerenciar_grupos_salvar') }}">
+                <div id="manageGroupsTableContainer"></div>
+                <button type="submit" class="btn-salvar">Salvar Alterações</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="uploadModal" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="uploadFormContainer">
+                <h2>Upload de Novas Planilhas</h2>
+                <p>Selecione uma ou mais planilhas do sistema SAT para importar os dados.</p>
+                <form id="uploadForm" method="POST" action="{{ url_for('main.upload_file') }}" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="files">1. Escolha os arquivos no seu computador:</label>
+                        <input type="file" name="files[]" id="files" multiple required>
+                    </div>
+                    <button type="submit" class="btn-salvar">Enviar e Importar</button>
+                </form>
+            </div>
+            <div id="progressContainer" style="display: none;">
+                <h4>Processando planilhas... Por favor, aguarde.</h4>
+                <div class="progress-road">
+                    <div class="progress-bar">
+                        <span class="truck-emoji">🚚</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
     {% block scripts %}{% endblock %}
 
-    <script>
+    <script class="no-print">
        {% if current_user.is_authenticated and current_user.email != config.SUPER_ADMIN_EMAIL %}
-    document.addEventListener('DOMContentLoaded', function() {
-        let lastHeartbeatTime = 0;
-        const heartbeatInterval = 30000; // 30 segundos
+        document.addEventListener('DOMContentLoaded', function() {
+            let lastHeartbeatTime = 0;
+            const heartbeatInterval = 30000;
 
-        function sendHeartbeat() {
-            const now = Date.now();
-            if (now - lastHeartbeatTime > heartbeatInterval) {
-                console.log('Enviando heartbeat de atividade do cliente...');
-                fetch('/api/heartbeat', { method: 'POST' })
-                    .catch(error => console.error('Falha no heartbeat:', error));
-                lastHeartbeatTime = now;
+            function sendHeartbeat() {
+                const now = Date.now();
+                if (now - lastHeartbeatTime > heartbeatInterval) {
+                    fetch('/api/heartbeat', { method: 'POST' })
+                        .catch(error => console.error('Falha no heartbeat:', error));
+                    lastHeartbeatTime = now;
+                }
             }
-        }
 
-        window.addEventListener('mousemove', sendHeartbeat);
-        window.addEventListener('keydown', sendHeartbeat);
-        window.addEventListener('click', sendHeartbeat);
-        window.addEventListener('scroll', sendHeartbeat);
-        sendHeartbeat();
-    });
-    {% endif %}
+            window.addEventListener('mousemove', sendHeartbeat);
+            window.addEventListener('keydown', sendHeartbeat);
+            window.addEventListener('click', sendHeartbeat);
+            window.addEventListener('scroll', sendHeartbeat);
+            sendHeartbeat();
+        });
+       {% endif %}
     </script>
 </body>
 </html>

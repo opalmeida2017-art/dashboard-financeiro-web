@@ -1,10 +1,18 @@
 # Forçando a atualização para o deploy
-import data_manager as dm
 import database as db
-import os
-import config
+import data_manager as dm
 import psycopg2
 from sqlalchemy import text
+import database as db_module
+import pandas as pd
+import numpy as np
+import datetime
+import json
+import calendar
+from dateutil.relativedelta import relativedelta
+from collections import defaultdict
+import os
+import psycopg2
 
 
 def get_dashboard_summary(apartamento_id: int, start_date=None, end_date=None, placa_filter="Todos", filial_filter=None, tipo_negocio_filter="Todos"):
@@ -111,7 +119,23 @@ def delete_user_from_apartment(user_id: int, apartamento_id: int):
     return dm.delete_user_from_apartment(user_id, apartamento_id)
 
 def get_user_by_id(user_id: int, apartamento_id: int):
-    return dm.get_user_by_id(user_id, apartamento_id)
+    conn = None
+    user = None
+    try:
+        conn = db.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, nome, email, role FROM usuarios WHERE id = %s AND apartamento_id = %s", (user_id, apartamento_id))
+        user = cursor.fetchone()
+        cursor.close()
+    except psycopg2.Error as e:
+        print(f"Erro ao obter dados do usuário: {e}")
+    finally:
+        if conn:
+            conn.close()
+    
+    if user:
+        return {"id": user[0], "nome": user[1], "email": user[2], "role": user[3]}
+    return None
 
 def create_apartment_and_admin(nome_empresa: str, admin_nome: str, admin_email: str, password_hash: str):
     return dm.create_apartment_and_admin(nome_empresa, admin_nome, admin_email, password_hash)
@@ -168,5 +192,42 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
     """
     print(f">>> [LOGIC] Chamando get_relatorio_viagem_data para o CT-e: {numero} com janela de {dias_janela} dias")
     return dm.get_relatorio_viagem_data(apartamento_id, numero, dias_janela=dias_janela) # ALTERADO AQUI
+
+def update_apartment_logo(apartment_id, logo_filename):
+    conn = None
+    try:
+        conn = db.get_db_connection()
+        cursor = conn.cursor()
+        # Corrigido: Usar "apartamentos" em minúsculas e no plural
+        cursor.execute("UPDATE apartamentos SET logo_filename = %s WHERE id = %s", (logo_filename, apartment_id))
+        conn.commit()
+        cursor.close()
+    except psycopg2.Error as e:
+        print(f"Erro ao atualizar logo do apartamento: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+def get_apartment_logo(apartment_id):
+    conn = None
+    logo_filename = None
+    try:
+        conn = db.get_db_connection()
+        cursor = conn.cursor()
+        # Corrigido: Usar "apartamentos" em minúsculas e no plural
+        cursor.execute("SELECT logo_filename FROM apartamentos WHERE id = %s", (apartment_id,))
+        result = cursor.fetchone()
+        if result:
+            logo_filename = result[0]
+        cursor.close()
+    except psycopg2.Error as e:
+        print(f"Erro ao obter logo do apartamento: {e}")
+    finally:
+        if conn:
+            conn.close()
+    return logo_filename
+
 
         
