@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     # Dependências da WeasyPrint
     libpango-1.0-0 \
     libcairo2 \
-    libgdk-pixbuf2.0-0 \
+     libgdk-pixbuf-xlib-2.0-0 \ 
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Adiciona o repositório oficial do Google Chrome
