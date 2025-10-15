@@ -581,8 +581,7 @@ def print_viagem_report(numero):
 @main_bp.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
-    # A importação da biblioteca pesada é feita aqui para não atrasar o início da aplicação
-    from rembg import remove
+  
 
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
@@ -627,9 +626,8 @@ def upload_logo():
 
         try:
             input_image = Image.open(temp_filepath)
-                # Usa o modelo 'u2netp' (small) que consome muito menos memória
-            output_image = remove(input_image, model_name='u2netp')
-                
+            output_image = remove(input_image)
+            
             final_logo_filename = f"{logo_filename_base}.png"
             final_filepath = os.path.join(upload_folder, final_logo_filename)
             output_image.save(final_filepath, format="PNG")
@@ -651,8 +649,3 @@ def upload_logo():
 
     # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários após o sucesso
     return redirect(url_for('main.gerenciar_usuarios'))
-
-@main_bp.route('/healthz')
-def health_check():
-    """Rota simples para a verificação de saúde da Render."""
-    return "OK", 200

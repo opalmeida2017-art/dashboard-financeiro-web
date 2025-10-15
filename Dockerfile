@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     # Dependências da WeasyPrint
     libpango-1.0-0 \
     libcairo2 \
-     libgdk-pixbuf-xlib-2.0-0 \ 
+    libgdk-pixbuf2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Adiciona o repositório oficial do Google Chrome
@@ -43,7 +43,7 @@ COPY . .
 # Copia o script de arranque para dentro do contentor
 COPY startup.sh .
 # Torna o script de arranque executável
-RUN python -c "from rembg.sessions import U2netSession; U2netSession.download_models()"
-
 RUN chmod +x ./startup.sh
+
+# Define o script de arranque como o ponto de entrada do contentor
 CMD ["./startup.sh"]
