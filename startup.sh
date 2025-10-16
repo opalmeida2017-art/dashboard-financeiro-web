@@ -10,7 +10,7 @@ python -m alembic stamp head
 echo "A iniciar o servidor Gunicorn com worker gevent..."
 exec gunicorn app:app \
     --bind 0.0.0.0:$PORT \
-    --workers 1 \
+    --workers 2 \
     --worker-class gevent \
     --timeout 120 \
     --log-level=debug \

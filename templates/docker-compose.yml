@@ -1,0 +1,21 @@
+# A linha 'version' é opcional nas versões mais recentes, mas não causa problema.
+version: '3.8'
+
+services:
+  # Este é o serviço da sua aplicação web principal (Flask/Gunicorn)
+  web:
+    build: .
+    command: ./startup.sh
+    ports:
+      - "5000:10000" # Mapeia a porta 10000 do container para a 5000 do servidor
+    environment:
+      - PORT=10000 # Informa ao Gunicorn em qual porta iniciar
+    env_file:
+      - ./.env # Carrega as variáveis de ambiente do arquivo .env
+
+  # Este é o serviço do seu robô coletor de dados
+  worker:
+    build: .
+    command: python worker.py
+    env_file:
+      - ./.env # Também carrega as variáveis de ambiente
