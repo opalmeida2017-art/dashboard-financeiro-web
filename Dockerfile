@@ -1,59 +1,50 @@
-# Arquivo: Dockerfile
+# Dockerfile
 
-# --- STAGE 1: Build & Instalação de Sistema (Robôs/PDF) ---
-# Usamos a base python:3.11-slim, conforme o requisito do runtime.txt
-FROM python:3.11-slim as builder
+# 1. Imagem Base: Começamos com uma imagem Python 3.11-slim, que é leve e moderna.
+FROM python:3.11-slim
 
-WORKDIR /app
+# 2. Variáveis de Ambiente: Evita que instaladores peçam inputs interativos e garante que os logs do Python apareçam imediatamente.
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 
-# Instala as dependências de sistema para WeasyPrint e Chrome/Chromium
-# As libs de WeasyPrint (libcairo2, libpango-1.0-0, etc.) são necessárias para a geração de PDF.
+# 3. Instalação de Dependências do Sistema + Google Chrome + ChromeDriver + WeasyPrint
+# Este é o passo crucial para que o Selenium e a geração de PDFs funcionem.
 RUN apt-get update && apt-get install -y \
-    wget gnupg unzip \
-    libxml2-dev libxslt-dev libjpeg-dev zlib1g-dev \
-    libcairo2 libpango-1.0-0 libgdk-pixbuf2.0-0 libpangocairo-1.0-0 \
-    libgomp1 libsqlite3-0 \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    wget \
+    gnupg \
+    unzip \
+    # Dependências do WeasyPrint (do seu Aptfile)
+    libpango-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf-xlib-2.0-0 \
+    --no-install-recommends \
+    # Adiciona o repositório oficial do Google Chrome
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    # Instala o Chrome
+    && apt-get install -y google-chrome-stable \
+    # Baixa e instala a versão do chromedriver correspondente à versão estável do Chrome
+    && CHROME_DRIVER_VERSION=$(wget -qO- https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE) \
+    && wget -q --continue -P /tmp https://storage.googleapis.com/chrome-for-testing-public/${CHROME_DRIVER_VERSION}/linux64/chromedriver-linux64.zip \
+    && unzip /tmp/chromedriver-linux64.zip -d /usr/local/bin/ \
+    # Limpeza para manter a imagem do contêiner o mais pequena possível
+    && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Instala o Google Chrome Stable, necessário para o Selenium
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list && \
-    apt-get update && apt-get install -y \
-    google-chrome-stable \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
-    
-# Instala o ChromeDriver compatível
-RUN CHROME_VERSION=$(google-chrome-stable --version | awk '{print $3}' | cut -d'.' -f1) && \
-    CHROMEDRIVER_VERSION=$(wget -qO- "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}" | tr -d '\n') && \
-    wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip" -O /tmp/chromedriver.zip && \
-    unzip /tmp/chromedriver.zip -d /usr/local/bin/ && \
-    rm /tmp/chromedriver.zip && \
-    chmod +x /usr/local/bin/chromedriver
-
-# Configuração de ambiente Python
-ENV PYTHONUNBUFFERED 1
-
-# Copia e instala as dependências Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# --- STAGE 2: Imagem Final de Execução ---
-FROM builder as final
-
+# 4. Define o diretório de trabalho dentro do contêiner.
 WORKDIR /app
 
-# Cria a pasta de downloads que os robôs esperam.
-RUN mkdir -p /app/downloads
+# 5. Copia o ficheiro de dependências e instala todos os pacotes Python.
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copia todo o código-fonte (para que o hot-reload e o worker funcionem)
-COPY . /app
+# 6. Copia todo o código do seu projeto para dentro do contêiner.
+COPY . .
 
-# Define a variável de ambiente para que o Selenium encontre o driver
-ENV PATH="/usr/local/bin:${PATH}"
+# 7. Expõe a porta que o Gunicorn (o nosso servidor web de produção) irá usar.
+EXPOSE 8000
 
-# Porta da aplicação Flask/API
-EXPOSE 8000 
-
-ENTRYPOINT ["/bin/bash", "-c"]
+# 8. Comando para iniciar a aplicação. O comando de migração do Alembic será executado separadamente.
+# O Gunicorn é um servidor WSGI robusto para produção.
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "app:app"]

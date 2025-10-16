@@ -1,48 +1,48 @@
+# docker-compose.yml
 version: '3.8'
 
 services:
-  # NOVO SERVIÇO: PostgreSQL
   db:
-    image: postgres:15-alpine # Imagem oficial do PostgreSQL
-    restart: always
+    image: postgres:15-alpine
+    container_name: meu_projeto_db
     environment:
-      # Variáveis de ambiente que devem estar no seu arquivo .env
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      # Cria um volume persistente para os dados do DB
-      - postgres_data:/var/lib/postgresql/data/ 
-    # Mapear a porta do DB é opcional, mas útil para debug externo
-    # ports:
-    #   - "5432:5432"
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
 
-  # Serviço da sua aplicação web principal (Gunicorn)
+  redis:
+    image: redis:alpine
+    container_name: meu_projeto_redis
+
   web:
     build: .
-    command: ./startup.sh
+    container_name: meu_projeto_web
+    command: gunicorn --bind 0.0.0.0:8000 --workers 4 app:app
+    volumes:
+      - .:/app
     ports:
-      - "5000:10000"
-    environment:
-      - PORT=10000
+      - "8000:8000"
     env_file:
-      - ./.env
-    # Adicionar dependência para garantir que o DB suba primeiro
-    depends_on: 
-      - db 
-
-  # Serviço do seu robô coletor de dados (RQ Worker)
-  worker:
-    build: .
-    command: python worker.py
-    env_file:
-      - ./.env
-    # Adicionar dependência
+      - .env
     depends_on:
       - db
-      # O worker geralmente depende da web/redis também, dependendo da sua setup
-      # - web 
+      - redis
 
-# Definição do volume persistente para o PostgreSQL
+  worker:
+    build: .
+    container_name: meu_projeto_worker
+    command: python -m rq worker -u ${REDIS_URL} default
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+
 volumes:
   postgres_data:
