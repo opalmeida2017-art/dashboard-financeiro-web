@@ -1,21 +1,48 @@
-# A linha 'version' é opcional nas versões mais recentes, mas não causa problema.
 version: '3.8'
 
 services:
-  # Este é o serviço da sua aplicação web principal (Flask/Gunicorn)
+  # NOVO SERVIÇO: PostgreSQL
+  db:
+    image: postgres:15-alpine # Imagem oficial do PostgreSQL
+    restart: always
+    environment:
+      # Variáveis de ambiente que devem estar no seu arquivo .env
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Cria um volume persistente para os dados do DB
+      - postgres_data:/var/lib/postgresql/data/ 
+    # Mapear a porta do DB é opcional, mas útil para debug externo
+    # ports:
+    #   - "5432:5432"
+
+  # Serviço da sua aplicação web principal (Gunicorn)
   web:
     build: .
     command: ./startup.sh
     ports:
-      - "5000:10000" # Mapeia a porta 10000 do container para a 5000 do servidor
+      - "5000:10000"
     environment:
-      - PORT=10000 # Informa ao Gunicorn em qual porta iniciar
+      - PORT=10000
     env_file:
-      - ./.env # Carrega as variáveis de ambiente do arquivo .env
+      - ./.env
+    # Adicionar dependência para garantir que o DB suba primeiro
+    depends_on: 
+      - db 
 
-  # Este é o serviço do seu robô coletor de dados
+  # Serviço do seu robô coletor de dados (RQ Worker)
   worker:
     build: .
     command: python worker.py
     env_file:
-      - ./.env # Também carrega as variáveis de ambiente
+      - ./.env
+    # Adicionar dependência
+    depends_on:
+      - db
+      # O worker geralmente depende da web/redis também, dependendo da sua setup
+      # - web 
+
+# Definição do volume persistente para o PostgreSQL
+volumes:
+  postgres_data:
