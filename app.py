@@ -7,7 +7,6 @@ from flask import Flask
 
 # Import extensions from the new file
 from extensions import bcrypt, login_manager
-from db_connection import engine
 
 # --- FACTORY DE CRIAÇÃO DA APLICAÇÃO ---
 def create_app():
