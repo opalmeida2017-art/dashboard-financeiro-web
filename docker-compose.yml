@@ -36,16 +36,15 @@ services:
     container_name: meu_projeto_web
     restart: on-failure
     environment:
-      # Variáveis de ambiente completas devem estar no .env (não mostradas aqui)
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://:FQKsme84587@redis:6379
-      SECRET_KEY: FQKsme84587
+      SECRET_KEY: e8a3f2b1d4c7a0b9e8f1d3a4b6c8d0e1f3a2b4c5d6e7f8a9
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    # CORREÇÃO FINAL: Sintaxe de string simples e Worker Padrão (sync)
-    command: gunicorn app:app -b 0.0.0.0:8000 --workers 2
+    # CORREÇÃO FINAL: Comando Gunicorn mais simples (sem workers count)
+    command: gunicorn app:app -b 0.0.0.0:8000
     depends_on:
       redis:
         condition: service_started
@@ -60,7 +59,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://:FQKsme84587@redis:6379
-      SECRET_KEY: FQKsme84587
+      SECRET_KEY: e8a3f2b1d4c7a0b9e8f1d3a4b6c8d0e1f3a2b4c5d6e7f8a9
     volumes:
       - .:/app
     command: python3 -m rq worker -u redis://redis:6379/0 default
