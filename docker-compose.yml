@@ -35,19 +35,20 @@ services:
     build: .
     container_name: meu_projeto_web
     restart: on-failure
-    # CORREÇÃO CRÍTICA: Força o Docker a ler as variáveis do .env e injetá-las
+    # Correção: Força a leitura do .env (ajustado no passo anterior)
     env_file:
       - ./.env 
     environment:
-      # As URLs são necessárias aqui, mas agora elas usam as variáveis lidas do .env
+      # Variáveis usadas na aplicação. Usaremos a senha correta FQKsme84587 (do DB e Redis)
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-      SECRET_KEY: ${SECRET_KEY}
+      REDIS_URL: redis://:${POSTGRES_PASSWORD}@redis:6379
+      SECRET_KEY: ${POSTGRES_PASSWORD} # Usando a senha forte para Secret Key
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    command: gunicorn app:app -b 0.0.0.0:8000 --workers 2
+    # CORREÇÃO FINAL: Sintaxe de lista para o Gunicorn (Mais robusta para resolver o erro)
+    command: ["gunicorn", "app:app", "-b", "0.0.0.0:8000"]
     depends_on:
       redis:
         condition: service_started
@@ -59,17 +60,16 @@ services:
     build: .
     container_name: meu_projeto_worker
     restart: on-failure
-    # CORREÇÃO CRÍTICA: Força o Docker a ler as variáveis do .env
     env_file:
       - ./.env
     environment:
-      # As URLs são necessárias aqui, mas agora elas usam as variáveis lidas do .env
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-      SECRET_KEY: ${SECRET_KEY}
+      REDIS_URL: redis://:${POSTGRES_PASSWORD}@redis:6379
+      SECRET_KEY: ${POSTGRES_PASSWORD}
     volumes:
       - .:/app
-    command: python3 -m rq worker -u redis://redis:6379/0 default
+    # Sintaxe de lista para o Worker (mais segura)
+    command: ["python3", "-m", "rq", "worker", "-u", "redis://redis:6379/0", "default"]
     depends_on:
       app:
         condition: service_started
