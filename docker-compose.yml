@@ -1,27 +1,26 @@
 version: '3.8'
 
 services:
-  # 1. Serviço de Banco de Dados (PostgreSQL) - NÃO PRECISA DE REDIS_URL
+  # 1. Serviço de Banco de Dados (PostgreSQL)
   db:
     image: postgres:15-alpine
     container_name: meu_projeto_db
     restart: always
     environment:
-      # Credenciais necessárias para o PostgreSQL se inicializar:
-      POSTGRES_USER: webadmin
-      POSTGRES_PASSWORD: BKOzsh61151   
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U webadmin -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # 2. Serviço de Cache/Fila (Redis) - NÃO PRECISA DE DATABASE_URL
+  # 2. Serviço de Cache/Fila (Redis)
   redis:
     image: redis:alpine
     container_name: meu_projeto_redis
@@ -29,46 +28,42 @@ services:
     ports:
       - "6379:6379"
 
-  # 3. Serviço da Aplicação Flask/API (WEB) - PRECISA DE AMBOS
+  # O SERVIÇO 'migrate' FOI REMOVIDO
+
+  # 3. Serviço da Aplicação Flask/API
   app:
     build: .
     container_name: meu_projeto_web
     restart: on-failure
     environment:
-      # CONFIGURAÇÃO DE AMBIENTE REQUERIDA (HOSTS INTERNOS)
-      DATABASE_URL: postgresql://webadmin:BKOzsh61151@db:5432/postgres
+      # Variáveis de ambiente completas devem estar no .env (não mostradas aqui)
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://:FQKsme84587@redis:6379
       SECRET_KEY: FQKsme84587
-      # OUTRAS VARIÁVEIS DE AMBIENTE NECESSÁRIAS
-      # FLASK_ENV: production
-      # SUPER_ADMIN_EMAIL: op.almeida@hotmail.com
-      
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    command: ["gunicorn", "app:app", "-b", "0.0.0.0:8000", "--workers", "2"] 
+    # CORREÇÃO FINAL: Sintaxe de string simples e Worker Padrão (sync)
+    command: gunicorn app:app -b 0.0.0.0:8000 --workers 2
     depends_on:
       redis:
         condition: service_started
       db:
         condition: service_healthy
 
-  # 4. Serviço RQ Worker (Robôs) - PRECISA DE AMBOS
+  # 4. Serviço RQ Worker (Robôs)
   worker:
     build: .
     container_name: meu_projeto_worker
     restart: on-failure
     environment:
-      # CONFIGURAÇÃO DE AMBIENTE REQUERIDA (HOSTS INTERNOS)
-      DATABASE_URL: postgresql://webadmin:BKOzsh61151@db:5432/postgres
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://:FQKsme84587@redis:6379
       SECRET_KEY: FQKsme84587
-      # OUTRAS VARIÁVEIS DE AMBIENTE NECESSÁRIAS
-      
     volumes:
       - .:/app
-    command: ["python3", "-m", "rq", "worker", "default", "-u", "redis://redis:6379/0"] 
+    command: python3 -m rq worker -u redis://redis:6379/0 default
     depends_on:
       app:
         condition: service_started
