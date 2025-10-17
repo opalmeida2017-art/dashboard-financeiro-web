@@ -1,7 +1,7 @@
 # app.py (Final Definitive Version)
 from dotenv import load_dotenv
 load_dotenv()
-
+from db_connection import engine
 import os
 from flask import Flask
 
