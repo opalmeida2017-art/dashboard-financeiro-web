@@ -2,17 +2,18 @@
 # Este script prepara e inicia a aplicação Flask em produção.
 set -e
 
-# Aplica as migrações do Alembic (cria e altera tabelas)
-echo "A aplicar as migrações do Alembic com 'alembic upgrade head'..."
-python -m alembic upgrade head
+echo "--- Iniciando startup.sh ---"
 
-# --- CORREÇÃO: Inicia o Gunicorn com o worker 'gevent' para estabilidade ---
-echo "A iniciar o servidor Gunicorn com worker gevent..."
+# Tenta aplicar as migrações do Alembic, mas não falha o script se der erro
+echo "Tentando aplicar as migrações do Alembic (upgrade head)..."
+python -m alembic upgrade head || echo "AVISO: Falha no 'alembic upgrade head', mas continuando..."
+
+# --- Inicia o Gunicorn ---
+echo "Iniciando o servidor Gunicorn..."
+# Usamos exec para que o Gunicorn substitua o processo do script
 exec gunicorn app:app \
-    --bind 0.0.0.0:$PORT \
-    --workers 2 \
-    --worker-class gevent \
-    --timeout 120 \
-    --log-level=debug \
+    --bind 0.0.0.0:8080 \
+    --workers 4 \
+    --log-level=info \
     --access-logfile=- \
     --error-logfile=-
