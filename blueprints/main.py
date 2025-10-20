@@ -1,6 +1,5 @@
-# blueprints/main.py (Corrigido)
+import render_template, request, jsonify, Blueprint, current_app, flash, redirect, url_for
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, Response, jsonify
-from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 import os
 import getpass
