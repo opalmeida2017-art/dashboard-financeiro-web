@@ -1,67 +1,39 @@
-# Arquivo: Dockerfile (VERSÃO CORRIGIDA FINAL)
+# syntax=docker/dockerfile:1
+# 1. Usa a imagem base oficial do Python
+FROM python:3.11-slim-bookworm
 
-# --- STAGE 1: Build & Instalação de Sistema (Robôs/PDF) ---
-# Usamos a base python:3.11-slim
-FROM python:3.11-slim as builder
-
-WORKDIR /app
-
-# Instala as dependências de sistema para WeasyPrint e Chrome/Chromium
-RUN apt-get update && apt-get install -y \
-    wget gnupg unzip \
-    libxml2-dev libxslt-dev libjpeg-dev zlib1g-dev \
-    libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
-    libgomp1 libsqlite3-0 \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
-
-# Instalação do Google Chrome (Método Moderno GPG)
-RUN mkdir -p /etc/apt/keyrings && \
-    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor | tee /etc/apt/keyrings/google-chrome.gpg > /dev/null && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list && \
-    chmod a+r /etc/apt/keyrings/google-chrome.gpg
-
-# Instala o Chrome Stable
-RUN apt-get update && apt-get install -y \
-    google-chrome-stable \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
-
-# Instalação do ChromeDriver (Movimentação do Binário)
-RUN CHROME_DRIVER_VERSION=$(wget -qO- https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE) && \
-    wget -q --continue -P /tmp https://storage.googleapis.com/chrome-for-testing-public/${CHROME_DRIVER_VERSION}/linux64/chromedriver-linux64.zip && \
-    unzip /tmp/chromedriver-linux64.zip -d /usr/local/bin/ && \
-    mv /usr/local/bin/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
-    chmod +x /usr/local/bin/chromedriver && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /usr/local/bin/chromedriver-linux64
-
-# Configuração de ambiente Python
+# 2. Define variáveis de ambiente
+ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Copia e instala as dependências Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# --- STAGE 2: Imagem Final de Execução ---
-FROM builder as final
-
+# 3. Define o diretório de trabalho
 WORKDIR /app
 
-# Cria a pasta de downloads
-RUN mkdir -p /app/downloads
+# 4. Atualiza o pip
+RUN pip install --upgrade pip
 
-# Copia todo o código-fonte
+# 5. Instala dependências do sistema
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# 6. Copia e instala as dependências do Python
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 7. Copia o resto do código da aplicação
 COPY . /app
 
-# Dá permissão de execução ao script de arranque
-RUN chmod +x ./startup.sh
+# 8. Expõe a porta que o Gunicorn vai usar
+EXPOSE 5000
 
-# Define a variável de ambiente para que o Selenium encontre o driver
-ENV PATH="/usr/local/bin:${PATH}"
+# --- CORREÇÃO APLICADA ---
 
-# Porta da aplicação Flask/API
-EXPOSE 8000
+# 9. COMENTA O ENTRYPOINT ANTIGO E INCORRETO
+# ENTRYPOINT ["/app/entrypoint.sh"]
 
-# REMOVED: ENTRYPOINT ["/bin/bash", "-c"]
-# ADDED: Default CMD to run the startup script
-CMD ["./startup.sh"]
+# 10. Garante que o script de startup correto (usado pelo Render) seja executável
+RUN chmod +x /app/startup.sh
+
+# 11. Define o script de startup CORRETO como o ponto de entrada
+ENTRYPOINT ["/app/startup.sh"]
