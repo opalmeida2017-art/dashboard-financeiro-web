@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
-# 1. [CORREÇÃO] Usa uma tag de imagem MAIS ESPECÍFICA para forçar um novo download
-# Isso evita usar o cache corrompido do SaveinCloud.
-FROM python:3.11.9-slim-bookworm
+# 1. [NOVA CORREÇÃO] Mudar para "Bullseye" para forçar um download 100% limpo
+# Isso evita o cache corrompido do "Bookworm" no SaveinCloud.
+FROM python:3.11-slim-bullseye
 
 # 2. Define variáveis de ambiente
 ENV PYTHONDONTWRITEBYTECODE 1
