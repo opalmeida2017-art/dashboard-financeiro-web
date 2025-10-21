@@ -25,7 +25,7 @@ echo "[startup.sh] Iniciando Gunicorn na PORTA 80 (para o NGINX)..."
 # 'exec' substitui este script pelo processo do gunicorn (correto para Docker)
 exec gunicorn app:app \
     --bind 0.0.0.0:80 \
-    --workers 4 \
+    --workers 1 \
     --log-level=debug \
     --access-logfile=- \
     --error-logfile=-
