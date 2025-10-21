@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
-# 1. Usa a imagem base oficial do Python
-FROM python:3.11-slim-bookworm
+
+# 1. [CORREÇÃO] Usa uma tag de imagem MAIS ESPECÍFICA para forçar um novo download
+# Isso evita usar o cache corrompido do SaveinCloud.
+FROM python:3.11.9-slim-bookworm
 
 # 2. Define variáveis de ambiente
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -27,7 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 8. Copia o resto do código da aplicação
 COPY . /app
 
-# 9. [CORREÇÃO] Expõe a porta 80, que o Gunicorn agora usa
+# 9. Expõe a porta 80, que o Gunicorn agora usa
 EXPOSE 80
 
 # 10. Garante que o script de startup correto seja executável
