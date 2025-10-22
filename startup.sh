@@ -11,9 +11,14 @@ echo "[startup.sh] --- INICIANDO SCRIPT DE ARRANQUE (MODO DEBUG) ---"
 # Ativa o ambiente virtual específico encontrado para este ambiente.
 # Isso adiciona os executáveis instalados (como Gunicorn) ao PATH.
 echo "[startup.sh] Ativando ambiente virtual..."
-source /opt/jelastic-python311/lib/python3.11/venv/scripts/common/activate
-echo "[startup.sh] Ambiente virtual ativado."
+source /opt/jelastic-python311/lib/python3.11/venv/scripts/common/activate || echo "[startup.sh] AVISO: Falha ao executar 'source activate'. Continuando mesmo assim..."
+echo "[startup.sh] Ambiente virtual ativado (ou tentativa feita)."
 # -------------------------
+
+# --- LINHAS DE DEBUG ADICIONADAS ---
+echo "[startup.sh] DEBUG: PATH atual é: $PATH"
+echo "[startup.sh] DEBUG: Localizando gunicorn com 'which': $(which gunicorn || echo 'gunicorn NÃO encontrado pelo which')"
+# ---------------------------------
 
 # 2. APLICA AS MIGRAÇÕES (como no seu script original)
 echo "[startup.sh] Tentando aplicar migrações Alembic..."
