@@ -8,10 +8,10 @@ set -ex
 echo "[startup.sh] --- INICIANDO SCRIPT DE ARRANQUE (MODO DEBUG) ---"
 
 # --- CORREÇÃO IMPORTANTE ---
-# Ativa o ambiente virtual padrão do SaveInCloud/Jelastic para Python.
+# Ativa o ambiente virtual específico encontrado para este ambiente.
 # Isso adiciona os executáveis instalados (como Gunicorn) ao PATH.
 echo "[startup.sh] Ativando ambiente virtual..."
-source /home/jelastic/env/bin/activate
+source /opt/jelastic-python311/lib/python3.11/venv/scripts/common/activate
 echo "[startup.sh] Ambiente virtual ativado."
 # -------------------------
 
@@ -44,3 +44,4 @@ exec gunicorn app:app \
 # Esta linha nunca será executada se o 'exec' funcionar
 echo "[startup.sh] ERRO CRÍTICO: O Gunicorn falhou ao iniciar após o comando exec!"
 exit 1
+
