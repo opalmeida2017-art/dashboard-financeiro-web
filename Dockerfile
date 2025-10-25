@@ -1,39 +1,33 @@
 # syntax=docker/dockerfile:1
 
-# 1. [SOLUÇÃO FINAL] Mudar para a imagem "full" (sem -slim).
-# As imagens "slim" no cache do SaveinCloud estão corrompidas.
-FROM python:3.11-bullseye
+# Usa imagem base (full é mais seguro contra problemas de cache/libs faltando)
+FROM python:3.11-bullseye # Ou a versão python que preferir, ex: 3.11
 
-# 2. Define variáveis de ambiente
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# 3. Define o diretório de trabalho
 WORKDIR /app
 
-# 4. Atualiza o pip
 RUN pip install --upgrade pip
 
-# 5. Instala dependências do sistema
+# Instala dependências do sistema (gcc/libpq-dev para psycopg2)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# 6. [CACHE BUSTER] Força o Docker a não usar o cache para os passos seguintes
+# Cache buster (opcional, mas útil para forçar reinstalação)
 ARG CACHE_BUSTER=1
 
-# 7. Copia e instala as dependências do Python
 COPY requirements.txt /app/
+# Instala dependências Python (sem cache para garantir versões corretas)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 8. Copia o resto do código da aplicação
-COPY . /app
+COPY . /app/
 
-# 9. Expõe a porta 80, que o Gunicorn agora usa
-EXPOSE 80
+# --- CORREÇÃO: Expõe a porta que Gunicorn usará ---
+EXPOSE 8000
 
-# 10. Garante que o script de startup correto seja executável
 RUN chmod +x /app/startup.sh
 
-# 11. Define o script de startup CORRETO como o ponto de entrada
+# Define o script de startup como ponto de entrada
 ENTRYPOINT ["/app/startup.sh"]

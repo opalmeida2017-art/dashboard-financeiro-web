@@ -1,50 +1,48 @@
 services:
-  # Serviço da Base de Dados PostgreSQL (sem alterações)
   - type: pserv
     name: financeiro-db
     env: postgres
-    plan: free
+    plan: free # Verifique se o plano free atende aos requisitos de dados/conexões
 
-  # Serviço do Redis para a fila de tarefas
   - type: pserv
-    name: financeiro-redis # Nome do serviço Redis
+    name: financeiro-redis
     env: redis
-    plan: free # Plano gratuito é suficiente para filas
+    plan: free # Verifique se o plano free atende aos requisitos
 
-  # Serviço da Aplicação Web Python/Flask (alterações mínimas)
   - type: web
     name: python-dashboard
-    env: docker
-    plan: free
-    database:
-      name: financeiro-db
-      property: connectionString
+    env: docker # Usa o Dockerfile
+    plan: free # Ou 'starter'/'standard' se precisar de mais recursos
+    # buildFilter: # Opcional: para ignorar arquivos/pastas no build
+    #   paths:
+    #     - src/**
+    #   ignoredPaths:
+    #     - src/**/*.md
+    healthCheckPath: / # Rota básica para Render verificar se o app está vivo
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: financeiro-db
-          property: internalConnectionString
-      - key: REDIS_URL # Adiciona a conexão com o Redis
+          property: internalConnectionString # Usa a conexão interna mais rápida
+      - key: REDIS_URL
         fromService:
           type: pserv
           name: financeiro-redis
           property: connectionString
-      - key: FLASK_ENV
-        value: production
-      - key: PYTHON_VERSION
+      - key: PYTHON_VERSION # Informativo, Dockerfile controla a versão
         value: 3.11
+      - key: FLASK_ENV
+        value: production # Importante para desativar modo debug
+      - key: SECRET_KEY
+        generateValue: true # Render gera uma chave secreta segura automaticamente
+      # Adicione outras variáveis necessárias (ex: SUPER_ADMIN_EMAIL)
+      # - key: SUPER_ADMIN_EMAIL
+      #   value: seu_email@exemplo.com
 
-  # --- IMPLEMENTAÇÃO ---
-  # Adiciona o serviço do Worker de Background
-  - type: worker # <-- O tipo de serviço correto para tarefas em segundo plano
-    name: python-dashboard-worker # Um nome diferente para o worker
-    env: docker
-    # Garante que o worker use o mesmo ambiente e código do serviço web
-    # mas com um comando de inicialização diferente.
-    plan: free
-    database:
-      name: financeiro-db
-      property: connectionString
+  - type: worker
+    name: python-dashboard-worker
+    env: docker # Usa o mesmo Dockerfile
+    plan: free # Ou pago, dependendo da carga do worker
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -57,5 +55,17 @@ services:
           property: connectionString
       - key: PYTHON_VERSION
         value: 3.11
-    # O comando que será executado para este serviço específico
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        sync: false # Não precisa sincronizar do web, pega do ambiente
+        generateValue: true # Ou use 'value: SUA_CHAVE' se quiser a mesma do web
+      # Adicione outras variáveis
+    # Comando para iniciar o worker (confirme se worker.py faz isso)
     startCommand: "python worker.py"
+    # Opcional: Auto scaling para workers
+    # numInstances: 1
+    # scaling:
+    #   minInstances: 1
+    #   maxInstances: 3
+    #   targetCPUPercent: 70

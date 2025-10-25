@@ -1,61 +1,60 @@
 version: '3.8'
 
 services:
-  # 1. Serviço de Banco de Dados (PostgreSQL)
+  # 1. Serviço de Banco de Dados (PostgreSQL) - OK
   db:
     image: postgres:15-alpine
     container_name: meu_projeto_db
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_USER: ${POSTGRES_USER} # Lidos do .env local
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
-      - "5432:5432"
+      - "5432:5432" # Expõe para conectar via DBeaver/pgAdmin localmente
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # 2. Serviço de Cache/Fila (Redis)
+  # 2. Serviço de Cache/Fila (Redis) - OK
   redis:
     image: redis:alpine
     container_name: meu_projeto_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "6379:6379" # Expõe para conectar via cliente Redis localmente
 
-  # O SERVIÇO 'migrate' FOI REMOVIDO
-
-  # 3. Serviço da Aplicação Flask/API
+  # 3. Serviço da Aplicação Flask/API - OK (Ajuste na senha do Redis URL)
   app:
     build: .
     container_name: meu_projeto_web
     restart: on-failure
-    # Correção: Força a leitura do .env (ajustado no passo anterior)
     env_file:
-      - ./.env 
+      - ./.env # Garante que lê as variáveis locais (POSTGRES_USER, etc.)
     environment:
-      # Variáveis usadas na aplicação. Usaremos a senha correta FQKsme84587 (do DB e Redis)
+      # URLs para DENTRO da rede Docker
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # --- CORREÇÃO: Usa a mesma senha forte do Postgres ---
       REDIS_URL: redis://:${POSTGRES_PASSWORD}@redis:6379
-      SECRET_KEY: ${POSTGRES_PASSWORD} # Usando a senha forte para Secret Key
+      SECRET_KEY: ${POSTGRES_PASSWORD}
+      FLASK_ENV: development # Para modo debug no container, se desejado
     volumes:
-      - .:/app
+      - .:/app # Monta o código local para live reload (dev)
     ports:
-      - "8000:8000"
-    # CORREÇÃO FINAL: Sintaxe de lista para o Gunicorn (Mais robusta para resolver o erro)
-    command: ["gunicorn", "app:app", "-b", "0.0.0.0:8000"]
+      - "8000:8000" # Mapeia porta interna 8000 para externa 8000
+    # O comando aqui sobrescreve o ENTRYPOINT do Dockerfile para este serviço
+    command: ["gunicorn", "app:app", "-b", "0.0.0.0:8000", "--reload"] # Adicionado --reload para dev
     depends_on:
       redis:
         condition: service_started
       db:
         condition: service_healthy
 
-  # 4. Serviço RQ Worker (Robôs)
+  # 4. Serviço RQ Worker (Robôs) - OK (Ajuste na senha do Redis URL)
   worker:
     build: .
     container_name: meu_projeto_worker
@@ -64,14 +63,17 @@ services:
       - ./.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # --- CORREÇÃO: Usa a mesma senha forte do Postgres ---
       REDIS_URL: redis://:${POSTGRES_PASSWORD}@redis:6379
       SECRET_KEY: ${POSTGRES_PASSWORD}
+      FLASK_ENV: development
     volumes:
       - .:/app
-    # Sintaxe de lista para o Worker (mais segura)
-    command: ["python3", "-m", "rq", "worker", "-u", "redis://redis:6379/0", "default"]
+    # Comando para iniciar o worker RQ
+    # --- CORREÇÃO: Ajusta URL do Redis para worker ---
+    command: ["python", "-m", "rq", "worker", "-u", "redis://:${POSTGRES_PASSWORD}@redis:6379/0", "default"]
     depends_on:
-      app:
+      app: # Geralmente worker depende do Redis e DB, não do app
         condition: service_started
       redis:
         condition: service_started

@@ -1,5 +1,5 @@
-import render_template, request, jsonify, Blueprint, current_app, flash, redirect, url_for
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, Response, jsonify
+from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import os
 import getpass
@@ -15,30 +15,30 @@ from datetime import datetime
 from .helpers import get_target_apartment_id, is_admin_in_context, super_admin_required, parse_filters
 from extensions import bcrypt
 from db_connection import engine
-from db_connection import engine
-from datetime import datetime
 import time
 from weasyprint import HTML, CSS
-import os
 import secrets 
 from PIL import Image
 from rembg import remove
-from flask import current_app
 
-# Configurações para upload de imagem
-UPLOAD_FOLDER = 'static/uploads' # Pasta onde as imagens serão guardadas
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'} # Extensões permitidas
+# --- CORREÇÃO: REMOVIDO ---
+# As linhas UPLOAD_FOLDER e ALLOWED_EXTENSIONS foram removidas.
+# Elas são configuradas no app.py (dentro de create_app)
+# e lidas via current_app.config
+# ---------------------------
 
 main_bp = Blueprint('main', __name__)
 
-# Certifique-se de que a pasta de uploads existe
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# --- CORREÇÃO: REMOVIDO ---
+# A criação da pasta (os.makedirs) também foi movida para o app.py
+# ---------------------------
 
-# Função auxiliar para verificar extensões de arquivo
+# --- CORREÇÃO: Função atualizada para ler do app.config ---
+# Esta função é chamada DE DENTRO de uma rota, onde o current_app é seguro.
 def allowed_file(filename):
     return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+           filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+# --- FIM DAS CORREÇÕES ---
 
 
 @main_bp.context_processor
@@ -62,7 +62,8 @@ def index():
     logo_filename = logic.get_apartment_logo(apartamento_id_alvo)
     logo_url = None
     if logo_filename:
-        logo_url = url_for('static', filename=f'uploads/{apartamento_id_alvo}/{logo_filename}')
+        # O logo_filename já deve conter o caminho relativo (ex: '1/logo.png')
+        logo_url = url_for('static', filename=f'uploads/{logo_filename}')
 
     filters = parse_filters(request.args)
     summary_data = logic.get_dashboard_summary(
@@ -80,25 +81,22 @@ def index():
     placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
     
     return render_template('index.html', # Mude aqui para o nome correto do seu template principal
-                            summary=summary_data,
-                            placas=placas,
-                            filiais=filiais,
-                            tipos_negocio=tipos_negocio,
-                            selected_placa=filters['placa'],
-                            selected_filial=filters['filial'],
-                            selected_start_date=filters['start_date_str'],
-                            selected_end_date=filters['end_date_str'],
-                            selected_tipo_negocio=filters['tipo_negocio'],
-                            placa_filtrada=placa_filtrada,
-                            logo_url=logo_url)
+                           summary=summary_data,
+                           placas=placas,
+                           filiais=filiais,
+                           tipos_negocio=tipos_negocio,
+                           selected_placa=filters['placa'],
+                           selected_filial=filters['filial'],
+                           selected_start_date=filters['start_date_str'],
+                           selected_end_date=filters['end_date_str'],
+                           selected_tipo_negocio=filters['tipo_negocio'],
+                           placa_filtrada=placa_filtrada,
+                           logo_url=logo_url)
     
 @main_bp.route('/faturamento_detalhes')
 @login_required
 def faturamento_detalhes():
-    # --- CORREÇÃO ---
-    # Usa a função 'parse_filters' importada do helpers.py
     filters = parse_filters(request.args)
-    # --- FIM DA CORREÇÃO ---
     return render_template('faturamento_detalhes.html', 
                            selected_start_date=filters['start_date_str'],
                            selected_end_date=filters['end_date_str'],
@@ -108,8 +106,6 @@ def faturamento_detalhes():
 @main_bp.route('/despesas_detalhes')
 @login_required
 def despesas_detalhes():
-    # --- CORREÇÃO ---
-    # Usa a função 'parse_filters' e passa os filtros para o template
     filters = parse_filters(request.args)
     return render_template('despesas_detalhes.html',
                            selected_start_date=filters['start_date_str'],
@@ -179,11 +175,7 @@ def gerenciar_grupos_salvar():
     update_data = {}
     
     for group in all_groups:
-        # --- INÍCIO DA CORREÇÃO ---
-        # Lê o valor do campo de rádio correto (ex: 'COMBUSTIVEL_class')
         classification = request.form.get(f"{group}_class", 'nenhum')
-        # --- FIM DA CORREÇÃO ---
-        
         incluir_tipo_d = f"{group}_tipo_d" in request.form
         update_data[group] = {'classification': classification, 'incluir_tipo_d': incluir_tipo_d}
         
@@ -231,7 +223,6 @@ def configuracao():
         return redirect(url_for('auth.logout'))
 
     if request.method == 'POST':
-        # --- INÍCIO DA VALIDAÇÃO DE DATAS NO BACKEND ---
         start_date_str = request.form.get('DATA_INICIAL_ROBO')
         end_date_str = request.form.get('DATA_FINAL_ROBO')
 
@@ -240,24 +231,18 @@ def configuracao():
                 start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
                 end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
 
-                # Regra 1: Data final não pode ser menor que a inicial
                 if end_date < start_date:
                     flash('Erro: A data final não pode ser anterior à data inicial.', 'error')
-                    # Recarrega a página de configuração sem salvar
                     return redirect(url_for('main.configuracao'))
                 
-                # Regra 2: Intervalo não pode ser maior que 60 dias
                 if (end_date - start_date).days > 60:
                     flash('Erro: O intervalo entre a data inicial e a final não pode ser maior que 60 dias.', 'error')
-                    # Recarrega a página de configuração sem salvar
                     return redirect(url_for('main.configuracao'))
 
             except ValueError:
                 flash('Formato de data inválido.', 'error')
                 return redirect(url_for('main.configuracao'))
-        # --- FIM DA VALIDAÇÃO DE DATAS NO BACKEND ---
 
-        # Se a validação passar, o código de salvamento continua normalmente
         configs_to_save = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
             'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
@@ -276,7 +261,6 @@ def configuracao():
         flash('Configurações salvas com sucesso!', 'success')
         return redirect(url_for('main.configuracao'))
     
-    # Lógica para GET (exibir a página) permanece a mesma
     configs_salvas = logic.ler_configuracoes_robo(apartamento_id_alvo)
     try:
         if configs_salvas.get('DATA_INICIAL_ROBO'):
@@ -387,31 +371,23 @@ def apagar_usuario(user_id):
         flash(message, 'error')
     return redirect(url_for('main.gerenciar_usuarios'))
 
-@main_bp.route('/super-admin', methods=['GET', 'POST']) # <-- Adicionado 'POST'
+@main_bp.route('/super-admin', methods=['GET', 'POST'])
 @login_required
 @super_admin_required
 def admin_dashboard():
-    # --- INÍCIO DA CORREÇÃO (LÓGICA PARA SALVAR) ---
     if request.method == 'POST':
-        # Itera sobre todos os dados enviados pelo formulário
         for key, value in request.form.items():
-            # Verifica se é um campo de intervalo (ex: 'interval_2')
             if key.startswith('interval_'):
                 try:
-                    # Extrai o ID do apartamento do nome do campo
                     apartamento_id = int(key.split('_')[1])
-                    # Cria um dicionário com a chave e valor a serem salvos
                     config_para_salvar = {'live_monitoring_interval_minutes': value}
-                    # Chama a função de lógica para salvar a configuração
                     logic.salvar_configuracoes_robo(apartamento_id, config_para_salvar)
                 except (ValueError, IndexError):
                     flash(f'Erro ao processar o intervalo para o campo {key}.', 'error')
         
         flash('Intervalos atualizados com sucesso!', 'success')
         return redirect(url_for('main.admin_dashboard'))
-    # --- FIM DA CORREÇÃO ---
 
-    # A lógica para exibir a página (GET) permanece a mesma
     session.pop('force_customer_view', None)
     session.pop('viewing_apartment_id', None)
     apartamentos = logic.get_apartments_with_usage_stats()
@@ -548,6 +524,7 @@ def print_viagem_report(numero):
     
     logo_url = None
     if logo_filename:
+        # Corrigido: usa o caminho relativo correto para o logo
         logo_url = url_for('static', filename=f'uploads/{logo_filename}', _external=True)
 
     
@@ -580,23 +557,20 @@ def print_viagem_report(numero):
 @main_bp.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
-  
+ 
 
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
         flash("Apartamento não selecionado para upload de logo.", "danger")
         return redirect(url_for('main.index'))
 
-    # O 'name' do seu <input type="file"> no HTML deve ser "file"
     if 'file' not in request.files:
         flash("Nenhum arquivo de logo enviado.", "danger")
-        # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários
         return redirect(url_for('main.gerenciar_usuarios'))
 
     file = request.files['file']
     if file.filename == '':
         flash("Nenhum arquivo de logo selecionado.", "danger")
-        # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários
         return redirect(url_for('main.gerenciar_usuarios'))
 
     if file and allowed_file(file.filename):
@@ -617,9 +591,12 @@ def upload_logo():
         logo_filename_base = f"logo_apto_{apartamento_id_alvo}_{uuid.uuid4().hex}"
         logo_filename_temp = f"{logo_filename_base}.{ext}"
         
-        upload_folder = os.path.join(current_app.static_folder, 'uploads', str(apartamento_id_alvo))
-        os.makedirs(upload_folder, exist_ok=True)
-        temp_filepath = os.path.join(upload_folder, logo_filename_temp)
+        # O 'upload_folder' deve vir do app.config
+        upload_folder_base = current_app.config['UPLOAD_FOLDER']
+        upload_folder_apto = os.path.join(upload_folder_base, str(apartamento_id_alvo))
+        
+        os.makedirs(upload_folder_apto, exist_ok=True)
+        temp_filepath = os.path.join(upload_folder_apto, logo_filename_temp)
         
         file.save(temp_filepath)
 
@@ -628,7 +605,7 @@ def upload_logo():
             output_image = remove(input_image)
             
             final_logo_filename = f"{logo_filename_base}.png"
-            final_filepath = os.path.join(upload_folder, final_logo_filename)
+            final_filepath = os.path.join(upload_folder_apto, final_logo_filename)
             output_image.save(final_filepath, format="PNG")
             
             os.remove(temp_filepath)
@@ -641,10 +618,8 @@ def upload_logo():
             flash(f"Erro ao processar o logo: {e}", "danger")
             if os.path.exists(temp_filepath):
                 os.remove(temp_filepath)
-            # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários em caso de erro
             return redirect(url_for('main.gerenciar_usuarios'))
     else:
         flash('Tipo de arquivo não permitido.', 'error')
 
-    # ALTERADO: Redireciona de volta para a página de gerenciamento de usuários após o sucesso
     return redirect(url_for('main.gerenciar_usuarios'))

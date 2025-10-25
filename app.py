@@ -1,4 +1,4 @@
-# app.py (Final Definitive Version)
+# app.py (Final Definitive Version - Corrigido)
 from dotenv import load_dotenv
 load_dotenv()
 import os
@@ -12,7 +12,19 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'uma-chave-secreta-muito-dificil-de-adivinhar')
     app.config['SUPER_ADMIN_EMAIL'] = 'op.almeida@hotmail.com'
+
+    # --- CORREÇÃO: Mover configurações de upload para a factory ---
+    # 1. Definir o caminho base de uploads usando o 'app.root_path' real
+    upload_folder_path = os.path.join(app.root_path, 'static', 'uploads')
     
+    # 2. Criar o diretório base se ele não existir
+    os.makedirs(upload_folder_path, exist_ok=True)
+    
+    # 3. Salvar na configuração do Flask para ser usado em qualquer lugar
+    app.config['UPLOAD_FOLDER'] = upload_folder_path
+    app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
+    # --- FIM DA CORREÇÃO ---
+
     # Initialize extensions with the application
     bcrypt.init_app(app)
     login_manager.init_app(app)
@@ -22,6 +34,7 @@ def create_app():
     login_manager.login_message_category = "info"
 
     # Import and register Blueprints INSIDE the factory
+    # (Isto agora funciona, pois 'main.py' não quebra mais na importação)
     from blueprints.main import main_bp
     from blueprints.auth import auth_bp
     from blueprints.api import api_bp

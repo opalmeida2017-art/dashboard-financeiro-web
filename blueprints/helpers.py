@@ -1,5 +1,6 @@
 # blueprints/helpers.py
-from flask import flash, redirect, url_for, request, current_app
+from flask import current_app, session
+from flask import flash, redirect, url_for, request
 from flask_login import current_user
 from functools import wraps
 from datetime import datetime

@@ -1,5 +1,4 @@
-# blueprints/auth.py (Final Corrected Version)
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
 from flask_login import login_user, logout_user, current_user, login_required
 from sqlalchemy import text
 import logic
