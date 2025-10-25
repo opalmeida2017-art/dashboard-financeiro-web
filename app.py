@@ -1,4 +1,4 @@
-# app.py (Final Definitive Version - Corrigido)
+#Teste de versao Final Definitive Version - Corrigido)
 from dotenv import load_dotenv
 load_dotenv()
 import os
