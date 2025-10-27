@@ -299,7 +299,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     .then(data => {
                         alert(data.mensagem);
                         if (data.status === 'sucesso') {
-                            window.location.href = "{{url_for('main.configuracao')}}";
                         }
                     })
                     .catch(error => {
