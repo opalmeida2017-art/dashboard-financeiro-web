@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # Usa imagem base (full é mais seguro contra problemas de cache/libs faltando)
-FROM python:3.11-bullseye # Ou a versão python que preferir, ex: 3.11
+# Ou a versão python que preferir, ex: 3.11
+
+FROM python:3.11 
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
