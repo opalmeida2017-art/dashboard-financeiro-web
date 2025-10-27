@@ -290,16 +290,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const btnColeta = document.getElementById('btn-iniciar-coleta');
     if (btnColeta) {
-        btnColeta.addEventListener('click', function() {
+        btnColeta.addEventListener('click', function(event) { // 1. Adicione 'event' aqui
+            event.preventDefault(); // 2. ADICIONE ESTA LINHA para parar qualquer ação padrão
+
             if (confirm('Isso iniciará a busca automática por novos relatórios. Deseja continuar?')) {
                 btnColeta.disabled = true;
                 btnColeta.textContent = 'Atualizando...';
                 fetch("{{ url_for('main.iniciar_coleta_endpoint') }}", { method: 'POST' })
                     .then(response => response.json())
                     .then(data => {
-                        alert(data.mensagem);
-                        if (data.status === 'sucesso') {
-                        }
+                        alert(data.mensagem); // Mostra a mensagem de sucesso/erro
+                        // 3. REMOVA OU COMENTE A LINHA ABAIXO:
+                        // if (data.status === 'sucesso') {
+                        //     window.location.href = "{{url_for('main.configuracao')}}";
+                        // }
                     })
                     .catch(error => {
                         console.error('Erro ao iniciar a coleta:', error);
