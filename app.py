@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 from flask import Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Import extensions from the new file
 from extensions import bcrypt, login_manager
@@ -10,6 +11,7 @@ from extensions import bcrypt, login_manager
 # --- FACTORY DE CRIAÇÃO DA APLICAÇÃO ---
 def create_app():
     app = Flask(__name__)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'uma-chave-secreta-muito-dificil-de-adivinhar')
     app.config['SUPER_ADMIN_EMAIL'] = 'op.almeida@hotmail.com'
 

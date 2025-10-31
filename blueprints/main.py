@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, Response, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import os
