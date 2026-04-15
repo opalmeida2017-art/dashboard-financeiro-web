@@ -56,7 +56,7 @@ def apply_filters_to_df(df: pd.DataFrame, start_date: datetime, end_date: dateti
     df_filtrado = df.copy()
     col_map = _get_case_insensitive_column_map(df_filtrado.columns)
     
-    # Filtragem por Data (lógica existente mantida)
+    # Filtragem por Data
     possible_date_cols = ['datacontrole', 'dataviagemmotorista', 'datavenc']
     date_column_for_filter_lower = next((col for col in possible_date_cols if col in col_map), None)
     if date_column_for_filter_lower:
@@ -70,35 +70,39 @@ def apply_filters_to_df(df: pd.DataFrame, start_date: datetime, end_date: dateti
             if end_date:
                 df_filtrado = df_filtrado[df_filtrado[original_date_col_name].dt.date <= end_date.date()]
 
-    # Filtragem por Placa (lógica existente mantida)
+    # Filtragem por Placa (CORRIGIDA CIRURGICAMENTE PARA LISTA MULTISELECT)
     if placa_filter and placa_filter != "Todos":
         placa_cols_lower = [c.lower() for c in config.FILTER_COLUMN_MAPS.get("placa", [])]
         placa_col_found_lower = next((col for col in placa_cols_lower if col in col_map), None)
         if placa_col_found_lower:
             original_placa_col = col_map[placa_col_found_lower]
-            placa_filter_limpa = placa_filter.strip().upper()
-            df_filtrado = df_filtrado[df_filtrado[original_placa_col].astype(str).str.strip().str.upper() == placa_filter_limpa]
+            # --- INÍCIO DA CORREÇÃO ---
+            if isinstance(placa_filter, list):
+                placas_limpas = [str(p).strip().upper() for p in placa_filter if p != 'Todos']
+                if placas_limpas:
+                    df_filtrado = df_filtrado[df_filtrado[original_placa_col].astype(str).str.strip().str.upper().isin(placas_limpas)]
+            else:
+                placa_filter_limpa = str(placa_filter).strip().upper()
+                df_filtrado = df_filtrado[df_filtrado[original_placa_col].astype(str).str.strip().str.upper() == placa_filter_limpa]
+            # --- FIM DA CORREÇÃO ---
 
-    # CORREÇÃO: Lógica de Filtragem de Filial Inteligente
-    if filial_filter:
+    # Filtragem por Filial (Apenas ignora se vier a palavra "Todos")
+    if filial_filter and "Todos" not in filial_filter:
         filial_cols_possiveis = config.FILTER_COLUMN_MAPS.get("filial", [])
         coluna_para_usar = None
         
-        # Procura a melhor coluna de filial: uma que exista e que contenha dados
         for col_lower in [c.lower() for c in filial_cols_possiveis]:
             if col_lower in col_map:
                 col_original = col_map[col_lower]
                 if not df_filtrado[col_original].dropna().empty:
                     coluna_para_usar = col_original
-                    break # Usa a primeira coluna que encontrar que não esteja vazia
+                    break 
         
         if coluna_para_usar:
             filial_filter_upper = [f.upper() for f in filial_filter]
-            # Limpa os espaços e compara em maiúsculas
             df_filtrado = df_filtrado[df_filtrado[coluna_para_usar].astype(str).str.strip().str.upper().isin(filial_filter_upper)]
             
     return df_filtrado
-
 
 def _fix_invalid_dates(df: pd.DataFrame, table_name: str) -> pd.DataFrame:
     """
@@ -379,7 +383,15 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     summary['custo_total_viagem'] = df_custos['valor_calculado'].sum() if not df_custos.empty else 0
     summary['total_despesas_gerais'] = df_despesas_gerais['valor_calculado'].sum() if not df_despesas_gerais.empty else 0
     
-    df_despesas_sem_placa = apply_filters_to_df(df_despesas_raw, start_date, end_date, "Todos", filial_filter)
+    # --- CORREÇÃO TIPO D: Ignorar placa no início, mas respeitar Tipo de Negócio ---
+    col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
+    df_despesas_pre = df_despesas_raw.copy()
+    if tipo_negocio_filter and tipo_negocio_filter != "Todos" and 'descnegocio' in col_map_desp_raw:
+        df_despesas_pre = df_despesas_pre[df_despesas_pre[col_map_desp_raw['descnegocio']] == tipo_negocio_filter]
+        
+    df_despesas_sem_placa = apply_filters_to_df(df_despesas_pre, start_date, end_date, "Todos", filial_filter)
+    
+    # Processa as flags para filtrar pelo 'incluir_em_tipo_d' conforme a regra do banco
     col_map_despesas_geral = _get_case_insensitive_column_map(df_despesas_sem_placa.columns)
     df_tipo_d_bruto = pd.DataFrame()
     if 'ved' in col_map_despesas_geral:
@@ -388,21 +400,38 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     soma_bruta_tipo_d = 0
     if not df_tipo_d_bruto.empty:
         df_tipo_d_com_flags = pd.merge(df_tipo_d_bruto, df_flags, left_on=col_map_despesas_geral.get('descgrupod'), right_on='group_name', how='left')
+        
+        # Garante a conversão dos booleanos para não falhar no filtro
+        df_tipo_d_com_flags['incluir_em_tipo_d'] = df_tipo_d_com_flags['incluir_em_tipo_d'].fillna(False).astype(bool)
         df_tipo_d_final_para_soma = df_tipo_d_com_flags[df_tipo_d_com_flags['incluir_em_tipo_d'] == True].copy()
+        
         if not df_tipo_d_final_para_soma.empty:
             if all(c in col_map_despesas_geral for c in ['serie', 'liquido', 'vlcontabil']):
                  df_tipo_d_final_para_soma.loc[:, 'valor_calculado'] = np.where(df_tipo_d_final_para_soma[col_map_despesas_geral.get('serie')] == 'RQ', df_tipo_d_final_para_soma[col_map_despesas_geral.get('liquido')], df_tipo_d_final_para_soma[col_map_despesas_geral.get('vlcontabil')])
                  soma_bruta_tipo_d = df_tipo_d_final_para_soma['valor_calculado'].sum()
 
     valor_final_tipo_d = soma_bruta_tipo_d
-    if placa_filter and placa_filter != 'Todos':
+    
+    # --- NOVO RATEIO SEGURO PARA A LISTA MULTISELECT DOS KPIs ---
+    placas_selecionadas = placa_filter if isinstance(placa_filter, list) else [placa_filter]
+    placas_selecionadas = [str(p).strip().upper() for p in placas_selecionadas if str(p).strip().upper() != 'TODOS']
+
+    # Se houver placas específicas selecionadas
+    if placas_selecionadas: 
         placas_com_tipos = get_unique_plates_with_types(apartamento_id)
         lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
-        if placa_filter in lista_placas_proprias:
+        placas_selec_proprias = [p for p in placas_selecionadas if p in lista_placas_proprias]
+        
+        if placas_selec_proprias:
             contagem_veiculos_proprios = len(lista_placas_proprias)
-            valor_final_tipo_d = (soma_bruta_tipo_d / contagem_veiculos_proprios) if contagem_veiculos_proprios > 0 else 0
+            if contagem_veiculos_proprios > 0:
+                fator = len(placas_selec_proprias) / contagem_veiculos_proprios
+                valor_final_tipo_d = soma_bruta_tipo_d * fator
+            else:
+                valor_final_tipo_d = 0
         else:
             valor_final_tipo_d = 0
+            
     summary['total_despesas_tipo_d'] = valor_final_tipo_d
 
     if not df_contas_pagar_raw.empty:
@@ -425,24 +454,18 @@ def get_dashboard_summary(apartamento_id: int, start_date: datetime = None, end_
     
     return summary
 
-# Substitua esta função em data_manager.py
-
 def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter) -> pd.DataFrame:
-    """
-    Calcula os dados para o gráfico mensal/diário.
-    VERSÃO COMPLETA E CORRIGIDA.
-    """
     periodo_format = 'M'
     if start_date and end_date and (end_date - start_date).days <= 62:
         periodo_format = 'D'
 
-    # Busca todos os dados necessários já filtrados, incluindo o de acerto
     filtered_data = _obter_dados_filtrados_mestre(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
     df_viagens_cliente = filtered_data["df_viagens_cliente"]
     df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
     df_fat_filtrado = filtered_data["df_fat_filtrado"]
     df_flags = filtered_data["df_flags"]
     df_acerto_motorista_raw = filtered_data["df_acerto_motorista_raw"]
+    df_despesas_raw = filtered_data["df_despesas_raw"]
     
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
@@ -457,31 +480,62 @@ def get_monthly_summary(apartamento_id: int, start_date, end_date, placa_filter,
         faturamento = df_faturamento_para_grafico.groupby('Periodo')[col_map_fat['freteempresa']].sum()
     faturamento.name = 'Faturamento'
 
-    # Passa o DataFrame 'df_acerto_motorista_raw' na chamada da função
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw)
     df_custos = expense_data['custos']
     df_despesas_gerais = expense_data['despesas']
+
+    # --- CORREÇÃO TIPO D: Ignorar placa no início para buscar custo fixo geral ---
+    col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
+    df_despesas_pre = df_despesas_raw.copy()
+    if tipo_negocio_filter and tipo_negocio_filter != "Todos" and 'descnegocio' in col_map_desp_raw:
+        df_despesas_pre = df_despesas_pre[df_despesas_pre[col_map_desp_raw['descnegocio']] == tipo_negocio_filter]
+        
+    df_despesas_sem_placa = apply_filters_to_df(df_despesas_pre, start_date, end_date, "Todos", filial_filter)
+    expense_data_sem_placa = _get_final_expense_dataframes(pd.DataFrame(), df_despesas_sem_placa, df_flags, pd.DataFrame())
+    df_tipo_d = expense_data_sem_placa['tipo_d']
+    
+    if placa_filter and placa_filter != 'Todos' and not df_tipo_d.empty:
+        placas_com_tipos = get_unique_plates_with_types(apartamento_id)
+        lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
+        
+        # --- CORREÇÃO: Trata a lista de placas do multiselect ---
+        placas_selecionadas = placa_filter if isinstance(placa_filter, list) else [placa_filter]
+        placas_selecionadas = [p.strip().upper() for p in placas_selecionadas]
+        placas_selec_proprias = [p for p in placas_selecionadas if p in lista_placas_proprias]
+        
+        if placas_selec_proprias:
+            contagem_veiculos_proprios = len(lista_placas_proprias)
+            if contagem_veiculos_proprios > 0:
+                fator = len(placas_selec_proprias) / contagem_veiculos_proprios
+                df_tipo_d['valor_calculado'] = df_tipo_d['valor_calculado'] * fator
+            else:
+                df_tipo_d['valor_calculado'] = 0
+        else:
+            df_tipo_d['valor_calculado'] = 0
     
     custos_agrupados = pd.Series(dtype=float)
     if not df_custos.empty:
         mapa_colunas_custo = _get_case_insensitive_column_map(df_custos.columns)
         if 'datacontrole' in mapa_colunas_custo and 'valor_calculado' in mapa_colunas_custo:
-            nome_coluna_data = mapa_colunas_custo['datacontrole']
-            df_custos.loc[:, nome_coluna_data] = pd.to_datetime(df_custos[nome_coluna_data], errors='coerce')
-            df_custos.dropna(subset=[nome_coluna_data], inplace=True)
+            df_custos.loc[:, mapa_colunas_custo['datacontrole']] = pd.to_datetime(df_custos[mapa_colunas_custo['datacontrole']], errors='coerce')
+            df_custos.dropna(subset=[mapa_colunas_custo['datacontrole']], inplace=True)
             if not df_custos.empty:
-                custos_agrupados = df_custos.groupby(df_custos[nome_coluna_data].dt.to_period(periodo_format))[mapa_colunas_custo['valor_calculado']].sum()
+                custos_agrupados = df_custos.groupby(df_custos[mapa_colunas_custo['datacontrole']].dt.to_period(periodo_format))[mapa_colunas_custo['valor_calculado']].sum()
     custos_agrupados.name = 'Custo'
     
+    dfs_desp = []
+    if not df_despesas_gerais.empty: dfs_desp.append(df_despesas_gerais)
+    if not df_tipo_d.empty: dfs_desp.append(df_tipo_d)
+    
     despesas_agrupadas = pd.Series(dtype=float)
-    if not df_despesas_gerais.empty:
-        mapa_colunas_despesa = _get_case_insensitive_column_map(df_despesas_gerais.columns)
+    if dfs_desp:
+        df_despesas_total = pd.concat(dfs_desp, ignore_index=True)
+        mapa_colunas_despesa = _get_case_insensitive_column_map(df_despesas_total.columns)
         if 'datacontrole' in mapa_colunas_despesa and 'valor_calculado' in mapa_colunas_despesa:
-            nome_coluna_data = mapa_colunas_despesa['datacontrole']
-            df_despesas_gerais.loc[:, nome_coluna_data] = pd.to_datetime(df_despesas_gerais[nome_coluna_data], errors='coerce')
-            df_despesas_gerais.dropna(subset=[nome_coluna_data], inplace=True)
-            if not df_despesas_gerais.empty:
-                despesas_agrupadas = df_despesas_gerais.groupby(df_despesas_gerais[nome_coluna_data].dt.to_period(periodo_format))[mapa_colunas_despesa['valor_calculado']].sum()
+            df_despesas_total.loc[:, mapa_colunas_despesa['datacontrole']] = pd.to_datetime(df_despesas_total[mapa_colunas_despesa['datacontrole']], errors='coerce')
+            df_despesas_total.dropna(subset=[mapa_colunas_despesa['datacontrole']], inplace=True)
+            if not df_despesas_total.empty:
+                despesas_agrupadas = df_despesas_total.groupby(df_despesas_total[mapa_colunas_despesa['datacontrole']].dt.to_period(periodo_format))[mapa_colunas_despesa['valor_calculado']].sum()
     despesas_agrupadas.name = 'DespesasGerais'
         
     monthly_df = pd.concat([faturamento, custos_agrupados, despesas_agrupadas], axis=1).fillna(0)
@@ -611,9 +665,6 @@ def get_unique_filiais(apartamento_id: int) -> list[str]:
 
 
 def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
-    """
-    Prepara e calcula todos os dados para a página de Análise Detalhada de Faturamento.
-    """
     dashboard_data = {}
     
     filtered_data = _obter_dados_filtrados_mestre(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
@@ -622,6 +673,7 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
     df_fat_filtrado = filtered_data["df_fat_filtrado"]
     df_flags = filtered_data["df_flags"]
     df_acerto_motorista_raw = filtered_data["df_acerto_motorista_raw"]
+    df_despesas_raw = filtered_data["df_despesas_raw"]
 
     if df_viagens_cliente.empty:
         return {}
@@ -629,7 +681,6 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
 
-    # Gráfico de Evolução
     periodo = 'D' if start_date and end_date and (end_date - start_date).days <= 62 else 'M'
     
     fat_evolucao = pd.Series(dtype=float)
@@ -642,20 +693,55 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
 
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw)
     df_custos = expense_data['custos']
-    custo_evolucao = pd.Series(dtype=float)
-    if not df_custos.empty:
-        mapa_colunas_custo = _get_case_insensitive_column_map(df_custos.columns)
-        if 'datacontrole' in mapa_colunas_custo and 'valor_calculado' in mapa_colunas_custo:
-            df_custos['Periodo'] = pd.to_datetime(df_custos[mapa_colunas_custo['datacontrole']]).dt.to_period(periodo)
-            custo_evolucao = df_custos.groupby('Periodo')[mapa_colunas_custo['valor_calculado']].sum()
+    df_despesas_gerais = expense_data['despesas']
+    
+    # --- CORREÇÃO TIPO D: Ignorar placa no início para buscar custo fixo geral ---
+    col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
+    df_despesas_pre = df_despesas_raw.copy()
+    if tipo_negocio_filter and tipo_negocio_filter != "Todos" and 'descnegocio' in col_map_desp_raw:
+        df_despesas_pre = df_despesas_pre[df_despesas_pre[col_map_desp_raw['descnegocio']] == tipo_negocio_filter]
+        
+    df_despesas_sem_placa = apply_filters_to_df(df_despesas_pre, start_date, end_date, "Todos", filial_filter)
+    expense_data_sem_placa = _get_final_expense_dataframes(pd.DataFrame(), df_despesas_sem_placa, df_flags, pd.DataFrame())
+    df_tipo_d = expense_data_sem_placa['tipo_d']
+    
+    if placa_filter and placa_filter != 'Todos' and not df_tipo_d.empty:
+        placas_com_tipos = get_unique_plates_with_types(apartamento_id)
+        lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
+        if placa_filter in lista_placas_proprias:
+            contagem_veiculos_proprios = len(lista_placas_proprias)
+            if contagem_veiculos_proprios > 0:
+                df_tipo_d['valor_calculado'] = df_tipo_d['valor_calculado'] / contagem_veiculos_proprios
+            else:
+                df_tipo_d['valor_calculado'] = 0
+        else:
+            df_tipo_d['valor_calculado'] = 0
 
-    evolucao_df = pd.DataFrame({'Faturamento': fat_evolucao, 'Custo': custo_evolucao}).fillna(0).reset_index()
-    if not evolucao_df.empty:
+    # Combina todos os custos (Viagem + Gerais + Tipo D rateado)
+    dfs_to_concat = []
+    if not df_custos.empty: dfs_to_concat.append(df_custos)
+    if not df_despesas_gerais.empty: dfs_to_concat.append(df_despesas_gerais)
+    if not df_tipo_d.empty: dfs_to_concat.append(df_tipo_d)
+    
+    custo_evolucao = pd.Series(dtype=float)
+    if dfs_to_concat:
+        df_todos_custos = pd.concat(dfs_to_concat, ignore_index=True)
+        mapa_colunas_todos = _get_case_insensitive_column_map(df_todos_custos.columns)
+        if 'datacontrole' in mapa_colunas_todos and 'valor_calculado' in mapa_colunas_todos:
+            df_todos_custos['Periodo'] = pd.to_datetime(df_todos_custos[mapa_colunas_todos['datacontrole']]).dt.to_period(periodo)
+            custo_evolucao = df_todos_custos.groupby('Periodo')[mapa_colunas_todos['valor_calculado']].sum()
+
+    evolucao_df = pd.DataFrame({'Faturamento': fat_evolucao, 'Custo': custo_evolucao}).fillna(0)
+    evolucao_df.index.name = 'Periodo'
+    evolucao_df = evolucao_df.reset_index()
+    if 'index' in evolucao_df.columns:
+        evolucao_df.rename(columns={'index': 'Periodo'}, inplace=True)
+
+    if not evolucao_df.empty and 'Periodo' in evolucao_df.columns:
         evolucao_df = evolucao_df.sort_values(by='Periodo')
         evolucao_df['Periodo'] = evolucao_df['Periodo'].astype(str)
         dashboard_data['evolucao_faturamento_custo'] = evolucao_df.to_dict('records')
 
-    # Outros gráficos
     if not df_fat_filtrado.empty and 'nomecliente' in col_map_fat and 'freteempresa' in col_map_fat:
         top_clientes = df_fat_filtrado.groupby(col_map_fat['nomecliente'])[col_map_fat['freteempresa']].sum().nlargest(10).sort_values(ascending=False).reset_index()
         dashboard_data['top_clientes'] = top_clientes.to_dict(orient='records')
@@ -680,9 +766,7 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
         dashboard_data['viagens_por_veiculo'] = viagens_veiculo.to_dict(orient='records')
         
     if 'nomemotorista' in col_map_viagens_cli and 'freteempresa' in col_map_viagens_cli:
-        # --- INÍCIO DA CORREÇÃO ---
         fat_motorista = df_viagens_cliente.groupby(col_map_viagens_cli['nomemotorista'])[col_map_viagens_cli['freteempresa']].sum().nlargest(10).sort_values(ascending=False).reset_index()
-        # --- FIM DA CORREÇÃO ---
         fat_motorista.rename(columns={col_map_viagens_cli['nomemotorista']: 'nomeMotorista', col_map_viagens_cli['freteempresa']: 'faturamento'}, inplace=True)
         dashboard_data['faturamento_motorista'] = fat_motorista.to_dict(orient='records')
 
@@ -953,58 +1037,76 @@ def get_unique_plates_with_types(apartamento_id: int) -> list:
     """
     Busca todas as placas únicas e as classifica em 'Próprio', 'Terceiro', 
     'Agregado', ou 'Apoio', retornando uma lista de dicionários.
+    VERSÃO BLINDADA: Nunca falha se faltarem colunas ou se a placa for lida como número.
     """
     placas_classificadas = {}
 
-    # 1. Classifica veículos de 'relFilViagensCliente' (Próprio, Terceiro, Agregado)
+    # 1. Busca veículos na tabela de Viagens
     df_viagens = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
     if not df_viagens.empty:
         col_map_viagens = _get_case_insensitive_column_map(df_viagens.columns)
-        if all(c in col_map_viagens for c in ['placaveiculo', 'tipofrete']):
+        
+        # Só precisamos que a coluna de placa exista. O tipoFrete passa a ser opcional!
+        if 'placaveiculo' in col_map_viagens:
+            has_tipo_frete = 'tipofrete' in col_map_viagens
+            
             for index, row in df_viagens.iterrows():
                 placa = row[col_map_viagens['placaveiculo']]
-                tipo_frete = row[col_map_viagens['tipofrete']]
-                if placa and pd.notna(placa):
-                    placa_limpa = placa.strip()
-                    if tipo_frete == 'P':
-                        placas_classificadas[placa_limpa] = 'Próprio'
-                    elif tipo_frete == 'T':
-                        placas_classificadas[placa_limpa] = 'Terceiro'
-                    elif tipo_frete == 'A':
-                        placas_classificadas[placa_limpa] = 'Agregado'
+                
+                # FORÇA A CONVERSÃO PARA STRING (Evita crash se o Excel ler a placa como número)
+                if pd.notna(placa) and str(placa).strip():
+                    placa_limpa = str(placa).strip().upper()
+                    
+                    if has_tipo_frete:
+                        tipo_frete = row[col_map_viagens['tipofrete']]
+                        tipo_frete_str = str(tipo_frete).strip().upper() if pd.notna(tipo_frete) else ""
+                        
+                        if tipo_frete_str == 'P':
+                            placas_classificadas[placa_limpa] = 'Próprio'
+                        elif tipo_frete_str == 'T':
+                            placas_classificadas[placa_limpa] = 'Terceiro'
+                        elif tipo_frete_str == 'A':
+                            placas_classificadas[placa_limpa] = 'Agregado'
+                        else:
+                            if placa_limpa not in placas_classificadas:
+                                placas_classificadas[placa_limpa] = 'Outros'
+                    else:
+                        if placa_limpa not in placas_classificadas:
+                            placas_classificadas[placa_limpa] = 'Indefinido'
 
-    # 2. Classifica veículos de 'relFilDespesasGerais' (Apoio)
+    # 2. Busca veículos na tabela de Despesas Gerais
     df_despesas = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
     if not df_despesas.empty:
         col_map_despesas = _get_case_insensitive_column_map(df_despesas.columns)
-        if all(c in col_map_despesas for c in ['placaveiculo', 'veiculoproprio']):
-            df_apoio = df_despesas[df_despesas[col_map_despesas['veiculoproprio']] == 'F']
-            for placa in df_apoio[col_map_despesas['placaveiculo']].dropna().unique():
-                placa_limpa = placa.strip()
-                # Só adiciona se já não tiver uma classificação mais forte (ex: Próprio)
-                if placa_limpa not in placas_classificadas:
-                    placas_classificadas[placa_limpa] = 'Apoio'
+        
+        if 'placaveiculo' in col_map_despesas:
+            # Se tiver a coluna 'veiculoproprio', filtramos por 'F' (Frota/Apoio). Se não, pegamos todas.
+            if 'veiculoproprio' in col_map_despesas:
+                df_apoio = df_despesas[df_despesas[col_map_despesas['veiculoproprio']].astype(str).str.strip().str.upper() == 'F']
+                placas_despesa = df_apoio[col_map_despesas['placaveiculo']].dropna().unique()
+            else:
+                placas_despesa = df_despesas[col_map_despesas['placaveiculo']].dropna().unique()
+
+            for placa in placas_despesa:
+                if pd.notna(placa) and str(placa).strip():
+                    placa_limpa = str(placa).strip().upper()
+                    # Só adiciona se já não tiver uma classificação prioritária (ex: Próprio) vinda das viagens
+                    if placa_limpa not in placas_classificadas:
+                        placas_classificadas[placa_limpa] = 'Apoio/Despesa'
 
     # 3. Formata a saída para o frontend
     lista_final = [{'placa': placa, 'tipo': tipo} for placa, tipo in placas_classificadas.items()]
 
-    # Ordena por tipo e depois por placa
+    # Ordena por tipo e depois alfabeticamente pela placa
     lista_final.sort(key=lambda x: (x['tipo'], x['placa']))
 
     return lista_final
 
-
-
 # SUBSTITUA ESTA FUNÇÃO EM data_manager.py
 
 def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
-    """
-    Prepara e calcula todos os dados para a página de Análise Detalhada de Despesas.
-    VERSÃO COMPLETA E CORRIGIDA.
-    """
     dashboard_data = {}
     
-    # 1. Usa a função mestre para buscar TODOS os dados necessários já filtrados
     filtered_data = _obter_dados_filtrados_mestre(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
     df_viagens_cliente = filtered_data["df_viagens_cliente"]
     df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
@@ -1012,15 +1114,22 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
     df_acerto_motorista_raw = filtered_data["df_acerto_motorista_raw"]
     df_despesas_raw = filtered_data["df_despesas_raw"]
 
-    # 2. Chama a função auxiliar para obter os DataFrames de custos e despesas classificados
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw)
     df_custos = expense_data['custos']
     df_despesas_gerais = expense_data['despesas']
-    df_tipo_d = expense_data['tipo_d']
     
-    col_map = _get_case_insensitive_column_map(df_despesas_filtrado) if not df_despesas_filtrado.empty else {}
+    # --- CORREÇÃO TIPO D: Ignorar placa no início para buscar custo fixo geral ---
+    col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
+    df_despesas_pre = df_despesas_raw.copy()
+    if tipo_negocio_filter and tipo_negocio_filter != "Todos" and 'descnegocio' in col_map_desp_raw:
+        df_despesas_pre = df_despesas_pre[df_despesas_pre[col_map_desp_raw['descnegocio']] == tipo_negocio_filter]
+        
+    df_despesas_sem_placa = apply_filters_to_df(df_despesas_pre, start_date, end_date, "Todos", filial_filter)
+    expense_data_sem_placa = _get_final_expense_dataframes(pd.DataFrame(), df_despesas_sem_placa, df_flags, pd.DataFrame())
+    df_tipo_d = expense_data_sem_placa['tipo_d']
+    
+    col_map = _get_case_insensitive_column_map(df_despesas_filtrado) if not df_despesas_filtrado.empty else _get_case_insensitive_column_map(df_despesas_sem_placa)
 
-    # 3. Gráfico de Composição: Junta os 3 DataFrames
     df_composicao_total = pd.concat([
         df_custos.assign(categoria='Custo de Viagem'),
         df_despesas_gerais.assign(categoria='Despesa Geral'),
@@ -1031,8 +1140,37 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
         df_grouped = df_composicao_total.groupby([col_map['nomefil'], 'categoria'])['valor_calculado'].sum().unstack(fill_value=0)
         
         if placa_filter and placa_filter != 'Todos':
-            # ... (Lógica de rateio para placa filtrada)
-            pass
+            if 'Despesa Tipo D' in df_grouped.columns:
+                print(f"\n[DEBUG RATEIO] 1. Iniciando cálculo. Filtro de Placa recebido: {placa_filter}")
+                
+                placas_com_tipos = get_unique_plates_with_types(apartamento_id)
+                lista_placas_proprias = [item['placa'] for item in placas_com_tipos if item['tipo'] == 'Próprio']
+                print(f"[DEBUG RATEIO] 2. Total de Placas próprias da empresa: {len(lista_placas_proprias)}")
+
+                # Transforma o filtro em lista caso ainda não seja, e limpa os espaços
+                placas_selecionadas = placa_filter if isinstance(placa_filter, list) else [placa_filter]
+                placas_selecionadas = [p.strip().upper() for p in placas_selecionadas]
+                
+                # Cruza as placas selecionadas com a lista de frota própria
+                placas_selec_proprias = [p for p in placas_selecionadas if p in lista_placas_proprias]
+                print(f"[DEBUG RATEIO] 3. Placas filtradas que pertencem à frota própria: {placas_selec_proprias}")
+
+                if placas_selec_proprias:
+                    contagem_veiculos_proprios = len(lista_placas_proprias)
+                    if contagem_veiculos_proprios > 0:
+                        # Se selecionou 2 placas próprias, ele assume 2 cotas do rateio
+                        multiplicador = len(placas_selec_proprias)
+                        fator = multiplicador / contagem_veiculos_proprios
+                        print(f"[DEBUG RATEIO] 4. Matemática: Multiplicando o Tipo D por {multiplicador} e dividindo por {contagem_veiculos_proprios} (Fator: {fator})")
+                        
+                        df_grouped['Despesa Tipo D'] = df_grouped['Despesa Tipo D'] * fator
+                        print(f"[DEBUG RATEIO] 5. Rateio aplicado com sucesso!")
+                    else:
+                        print(f"[DEBUG RATEIO] 4. ERRO: Quantidade de frota própria é zero.")
+                        df_grouped['Despesa Tipo D'] = 0
+                else:
+                    print(f"[DEBUG RATEIO] 4. Nenhuma das placas filtradas é frota própria. O Custo Fixo (Tipo D) será zerado.")
+                    df_grouped['Despesa Tipo D'] = 0
 
         if not df_grouped.empty:
             colors = {'Custo de Viagem': 'rgba(230, 126, 34, 0.7)', 'Despesa Geral': 'rgba(231, 76, 60, 0.7)', 'Despesa Tipo D': 'rgba(142, 68, 173, 0.7)'}
@@ -1042,7 +1180,6 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
                     datasets.append({'label': categoria, 'data': df_grouped[categoria].tolist(), 'backgroundColor': colors.get(categoria)})
             dashboard_data['despesas_por_filial_e_grupo'] = {'labels': df_grouped.index.tolist(), 'datasets': datasets}
 
-    # 4. Outros gráficos
     if 'descgrupod' in col_map and not df_despesas_gerais.empty:
         grupo_df = df_despesas_gerais.groupby(col_map['descgrupod'])['valor_calculado'].sum().nlargest(10).reset_index()
         grupo_df.rename(columns={col_map['descgrupod']: 'descSuperGrupoD', 'valor_calculado': 'vlcontabil'}, inplace=True)

@@ -33,7 +33,7 @@ def super_admin_required(f):
 
 def parse_filters(args):
     filters = {
-        'placa': args.get('placa', 'Todos'),
+        'placa': args.getlist('placa') if args.getlist('placa') else ['Todos'],
         'filial': args.getlist('filial'),
         'start_date_str': args.get('start_date', ''),
         'end_date_str': args.get('end_date', ''),
