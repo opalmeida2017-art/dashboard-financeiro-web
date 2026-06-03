@@ -9,5 +9,13 @@ venv/
 __pycache__/
 *.pyc
 
+# Dumps, downloads e logs locais
+*.dump
+downloads/
+restore_log.txt
+dump_list.txt
+dump_toc.txt
+*_analise.txt
+
 # Outros
 .DS_Store

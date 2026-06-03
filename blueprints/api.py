@@ -1,20 +1,23 @@
 # blueprints/api.py
 from flask import Blueprint, jsonify, request, Response,current_app
-from flask_login import login_required
+from extensions import login_required
 from sqlalchemy import text
 import json
 import time
 from datetime import datetime, timedelta
 import logic
+import data_manager as dm
 
 from extensions import bcrypt
 from db_connection import engine
-from .helpers import get_target_apartment_id, is_admin_in_context, super_admin_required, parse_filters
+from .helpers import get_target_apartment_id, is_admin_in_context, parse_filters, normalize_placa_filter
+from tenant import get_transportadora_id
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 def _parse_filters():
+    placas = request.args.getlist('placa')
     filters = {
-        'placa': request.args.get('placa', 'Todos'),
+        'placa': placas[0] if len(placas) == 1 else (placas if placas else 'Todos'),
         'filial': request.args.getlist('filial'),
         'start_date_str': request.args.get('start_date', ''),
         'end_date_str': request.args.get('end_date', ''),
@@ -33,13 +36,17 @@ def _parse_filters():
 def api_monthly_summary():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
-        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+        return jsonify({"error": "Transportadora não identificada"}), 400
 
     filters = _parse_filters()
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters['start_date_obj'], filters['end_date_obj']
+    )
     monthly_data = logic.get_monthly_summary(
         apartamento_id=apartamento_id_alvo,
-        start_date=filters['start_date_obj'],
-        end_date=filters['end_date_obj'],
+        start_date=start_eff,
+        end_date=end_eff,
         placa_filter=filters['placa'],
         filial_filter=filters['filial'],
         tipo_negocio_filter=filters['tipo_negocio']
@@ -51,7 +58,7 @@ def api_monthly_summary():
 def api_get_robot_logs():
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
-        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+        return jsonify({"error": "Transportadora não identificada"}), 400
     try:
         with engine.connect() as conn:
             query = text("SELECT timestamp, mensagem FROM tb_logs_robo WHERE apartamento_id = :apt_id ORDER BY timestamp DESC LIMIT 100")
@@ -66,7 +73,7 @@ def api_get_robot_logs():
 def api_clear_robot_logs():
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
-        return jsonify({"status": "error", "message": "Contexto do apartamento não encontrado"}), 400
+        return jsonify({"status": "error", "message": "Transportadora não identificada"}), 400
     try:
         with engine.connect() as conn:
             query = text("DELETE FROM tb_logs_robo WHERE apartamento_id = :apt_id")
@@ -81,7 +88,7 @@ def api_clear_robot_logs():
 def api_faturamento_dashboard_data():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
-        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+        return jsonify({"error": "Transportadora não identificada"}), 400
     
     # A função _parse_filters() já busca o 'tipo_negocio', então está correta.
     filters = _parse_filters()
@@ -102,24 +109,51 @@ def api_faturamento_dashboard_data():
 def api_despesas_dashboard_data():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
-        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+        return jsonify({"error": "Transportadora não identificada"}), 400
     filters = _parse_filters()
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters["start_date_obj"], filters["end_date_obj"]
+    )
     dashboard_data = logic.get_despesas_details_dashboard_data(
         apartamento_id=apartamento_id_alvo,
-        start_date=filters['start_date_obj'],
-        end_date=filters['end_date_obj'],
+        start_date=start_eff,
+        end_date=end_eff,
         placa_filter=filters['placa'],
         filial_filter=filters['filial'],
         tipo_negocio_filter=filters['tipo_negocio']
     )
     return jsonify(dashboard_data)
 
+@api_bp.route('/fluxo_viagem')
+@login_required
+def api_fluxo_viagem():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Transportadora não identificada"}), 400
+    filters = _parse_filters()
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters["start_date_obj"], filters["end_date_obj"]
+    )
+    historico = request.args.get("historico") == "1"
+    placa = normalize_placa_filter(request.args.get("placa") or filters.get("placa"))
+    if historico and placa and placa != "Todos":
+        rows = logic.get_fluxo_viagem_historico(
+            apartamento_id_alvo, start_eff, end_eff, placa, filters["filial"]
+        )
+    else:
+        rows = logic.get_fluxo_veiculos_resumo(
+            apartamento_id_alvo, start_eff, end_eff, filters["filial"]
+        )
+    return jsonify(rows)
+
 @api_bp.route('/despesas_audit_data')
 @login_required
 def api_despesas_audit_data():
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
-        return jsonify({"error": "Contexto do apartamento não encontrado"}), 400
+        return jsonify({"error": "Transportadora não identificada"}), 400
     filters = _parse_filters()
     audit_data = logic.get_expense_audit_data(
         apartamento_id=apartamento_id_alvo,
@@ -176,18 +210,13 @@ def api_heartbeat():
 
 @api_bp.route('/status_stream')
 @login_required
-@super_admin_required
 def status_stream():
     def event_generator():
         while True:
             try:
-                with engine.connect() as conn:
-                    two_minutes_ago = datetime.now() - timedelta(minutes=2)
-                    query = text("SELECT apartamento_id FROM tb_user_activity WHERE last_seen_timestamp >= :time_limit")
-                    result = conn.execute(query, {"time_limit": two_minutes_ago})
-                    active_ids = [row[0] for row in result]
-                
-                data_json = json.dumps({"active_apartments": active_ids})
+                tid = get_transportadora_id()
+                active_ids = [tid]
+                data_json = json.dumps({"active_transportadoras": active_ids})
                 yield f"data: {data_json}\n\n"
                 
                 time.sleep(5)

@@ -1,0 +1,191 @@
+{% extends "layout.html" %}
+
+{% block title %}Painel — BIWEB Transporte{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+    <header class="dash-header">
+        <div>
+            <h1>Painel de gestão</h1>
+            <p class="subtitle">Receita, custos e resultado das viagens — visão executiva para transportadoras.</p>
+        </div>
+        {% if selected_start_date and selected_end_date %}
+        <div class="dash-period-badge">
+            Período: <strong>{{ selected_start_date }}</strong> até <strong>{{ selected_end_date }}</strong>
+        </div>
+        {% endif %}
+    </header>
+
+    <section class="dash-filters">
+        <form method="GET" action="/">
+            <div class="filter-field">
+                <label for="start_date">Início</label>
+                <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
+            </div>
+            <div class="filter-field">
+                <label for="end_date">Fim</label>
+                <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+            </div>
+            <div class="filter-field">
+                <label for="placa">Placa</label>
+                <select name="placa" id="placa">
+                    <option value="Todos" {% if 'Todos' == selected_placa %}selected{% endif %}>Todas</option>
+                    {% for item in placas %}
+                    <option value="{{ item.placa }}" class="placa-{{ item.tipo | lower }}" {% if item.placa == selected_placa %}selected{% endif %}>
+                        {{ item.placa }} ({{ item.tipo }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="tipo_negocio">Negócio</label>
+                <select name="tipo_negocio" id="tipo_negocio">
+                    <option value="Todos" {% if 'Todos' == selected_tipo_negocio %}selected{% endif %}>Todos</option>
+                    {% for tipo in tipos_negocio %}
+                    <option value="{{ tipo }}" {% if tipo == selected_tipo_negocio %}selected{% endif %}>{{ tipo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="filial-multiselect-btn">Filial</label>
+                <div class="multiselect" id="filial-multiselect">
+                    <button type="button" class="multiselect-btn" id="filial-multiselect-btn">Filiais</button>
+                    <div class="multiselect-dropdown" id="filial-dropdown">
+                        {% for filial in filiais %}
+                        {% if filial != "Todos" %}
+                        <div class="multiselect-item">
+                            <input type="checkbox" name="filial" value="{{ filial }}" id="filial-{{ loop.index }}" {% if filial in selected_filial %}checked{% endif %}>
+                            <label for="filial-{{ loop.index }}">{{ filial }}</label>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <button type="submit" class="btn-apply">Aplicar</button>
+            <div class="dash-toolbar">
+                {% if is_admin_in_context() %}
+                <button type="button" id="btn-iniciar-coleta" class="tb-btn tb-btn-primary">↻ Atualizar banco SATI</button>
+                {% endif %}
+                <button type="button" id="openModalBtn" class="tb-btn">Grupos</button>
+                <a href="{{ url_for('main.configuracao') }}" class="tb-btn">Robô</a>
+                {% if is_admin_in_context() %}
+                <a href="{{ url_for('main.gerenciar_usuarios') }}" class="tb-btn">Usuários</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+
+    {% if summary %}
+    {% set custo_operacional = summary.custo_total_viagem + summary.total_despesas_gerais + summary.total_despesas_tipo_d %}
+    {% set num_ctes = summary.faturamento_conhecimentos | length if summary.faturamento_conhecimentos else 0 %}
+
+    <section class="kpi-hero">
+        <div class="kpi-card kpi-receita clickable card card-com-link-hover" data-type="faturamento">
+            <a href="#" class="kpi-link link-detalhes-container">Detalhar</a>
+            <div class="kpi-label">Receita de frete</div>
+            <div class="kpi-value" style="color: var(--accent);">{{ summary.faturamento_total_viagens | currency }}</div>
+            <div class="kpi-hint">{{ num_ctes }} viagem(ns) no período</div>
+        </div>
+        <div class="kpi-card kpi-custo clickable card card-com-link-hover" data-type="despesas">
+            <a href="#" class="kpi-link link-detalhes-container">Detalhar</a>
+            <div class="kpi-label">Custos operacionais</div>
+            <div class="kpi-value" style="color: var(--warning);">{{ custo_operacional | currency }}</div>
+            <div class="kpi-hint">Viagem + gerais + tipo D</div>
+        </div>
+        <div class="kpi-card kpi-resultado">
+            <div class="kpi-label">Resultado líquido</div>
+            <div class="kpi-value" style="color: {% if summary.saldo_geral >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+                {{ summary.saldo_geral | currency }}
+            </div>
+            <div class="kpi-hint">Receita − custos</div>
+        </div>
+        <div class="kpi-card kpi-margem">
+            <div class="kpi-label">Margem sobre frete</div>
+            <div class="kpi-value" style="color: {% if summary.margem_frete >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+                {{ summary.margem_frete | percentage }}
+            </div>
+            <div class="kpi-hint">Lucro / receita</div>
+        </div>
+    </section>
+
+    <section class="kpi-secondary">
+        <div class="kpi-mini">
+            <span>Custo de viagem</span>
+            <strong style="color: var(--warning);">{{ summary.custo_total_viagem | currency }}</strong>
+        </div>
+        <div class="kpi-mini">
+            <span>Despesas gerais</span>
+            <strong style="color: var(--danger);">{{ summary.total_despesas_gerais | currency }}</strong>
+        </div>
+        <div class="kpi-mini">
+            <span>{% if placa_filtrada %}Tipo D (rateado){% else %}Despesas tipo D{% endif %}</span>
+            <strong style="color: var(--purple);">{{ summary.total_despesas_tipo_d | currency }}</strong>
+        </div>
+    </section>
+
+    <div class="dash-main-grid">
+        <section class="dash-chart-card chart-pro" id="secao-grafico">
+            <div class="chart-pro-head">
+                <div>
+                    <h2>Receita vs. despesas</h2>
+                    <p class="chart-desc">Comparativo do período filtrado — mesma base dos KPIs.</p>
+                </div>
+                <div class="chart-legend-pills">
+                    <span class="chart-pill receita">Receita</span>
+                    <span class="chart-pill custo">Custo viagem</span>
+                    <span class="chart-pill geral">Despesa geral</span>
+                    <span class="chart-pill tipod">Tipo D</span>
+                </div>
+            </div>
+            <div class="chart-wrap chart-wrap-lg">
+                <canvas id="faturamentoDespesasChart"></canvas>
+            </div>
+        </section>
+
+        <aside class="dash-side-panel">
+            <div class="side-card">
+                <h3>Análises</h3>
+                <a class="side-link" href="{{ url_for('main.faturamento_detalhes') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon blue">📈</span>
+                    <span>Faturamento detalhado</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon red">📉</span>
+                    <span>Despesas detalhadas</span>
+                </a>
+            </div>
+            <div class="side-card">
+                <h3>Financeiro</h3>
+                <div class="kpi-mini" style="margin-bottom:0.5rem;box-shadow:none;">
+                    <span>A pagar</span>
+                    <strong style="color:var(--danger);">{{ summary.saldo_contas_a_pagar_pendentes | currency }}</strong>
+                </div>
+                <div class="kpi-mini" style="box-shadow:none;">
+                    <span>A receber</span>
+                    <strong style="color:var(--accent);">{{ summary.saldo_contas_a_receber_pendentes | currency }}</strong>
+                </div>
+            </div>
+            <div class="side-card">
+                <h3>Viagens</h3>
+                <a class="side-link" href="{{ url_for('main.fluxo_viagem') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon purple">🛣️</span>
+                    <span>Fluxo de viagem</span>
+                </a>
+                <button type="button" class="side-link card card-com-link-hover" data-type="faturamento" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                    <span class="icon green">🚚</span>
+                    <span>Ver CT-es e relatórios</span>
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    {% else %}
+    <div class="dash-empty">
+        <p>Não há dados para o período selecionado.</p>
+        <p class="small">Ajuste os filtros ou atualize os dados do SATI.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+

@@ -1,5 +1,5 @@
 # database.py
-from sqlalchemy import create_engine, text,inspect
+from sqlalchemy import text, inspect
 from sqlalchemy.exc import SQLAlchemyError
 import re
 import shutil
@@ -10,14 +10,7 @@ import glob
 from datetime import datetime
 import psycopg2.extras 
 import numpy as np
-from dotenv import load_dotenv
-load_dotenv()
-
-# Inicializa a conexão do banco de dados de forma consistente
-db_url = os.getenv('DATABASE_URL')
-if not db_url:
-    raise ValueError("DATABASE_URL não definida. Verifique seu arquivo .env")
-engine = create_engine(db_url)
+from db_connection import engine
 
 def logar_progresso(apartamento_id, mensagem):
     """
@@ -338,6 +331,13 @@ def processar_downloads_na_pasta(apartamento_id: int):
 
 def table_exists(table_name: str) -> bool:
     try:
+        from sati_source import is_sati_data_table
+
+        if table_name in __import__("sati_queries", fromlist=["SATI_QUERY_KEYS"]).SATI_QUERY_KEYS:
+            from sati_source import use_sati_source
+
+            if use_sati_source():
+                return True
         with engine.connect() as conn:
             query = text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = :table_name)")
             result = conn.execute(query, {'table_name': table_name}).scalar()

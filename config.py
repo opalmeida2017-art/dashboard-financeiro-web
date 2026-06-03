@@ -1,5 +1,15 @@
 # config.py (Versão Final e Corrigida)
 
+import os
+
+# Fonte SATI: leitura direta do schema c3332 (banco sat1_sati_is restaurado do dump)
+USE_SATI_SOURCE = os.getenv("USE_SATI_SOURCE", "").lower() in ("1", "true", "yes", "on")
+SATI_SCHEMA = os.getenv("SATI_SCHEMA", "c3332")
+# Filial opcional no SATI (ex.: 1). Vazio = todas as filiais do dump.
+SATI_COD_FILIAL = os.getenv("SATI_COD_FILIAL", "").strip() or None
+# Banco SATI separado (quando apartamentos ficam em dashboard_db na 5432)
+SATI_DATABASE_URL = os.getenv("SATI_DATABASE_URL", "").strip() or None
+
 TABLE_COLUMN_MAPS = {
     'relFilViagensFatCliente': {
         'date_formats': {

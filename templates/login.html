@@ -150,12 +150,7 @@
 <body>
     <div class="login-container">
         
-        {% if nome_empresa %}
-            <h2>Acesso - {{ nome_empresa }}</h2>
-        {% else %}
-            <h2>Login</h2>
-        {% endif %}
-        
+        <h2>{{ nome_empresa or 'BIWEB Transporte' }}</h2>
         <p>Por favor, insira as suas credenciais.</p>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -166,10 +161,7 @@
             {% endif %}
         {% endwith %}
 
-        {% if apartamento and apartamento.slug %}
-            <form method="POST" action="{{ url_for('auth.login_por_slug', slug=apartamento.slug) }}">
-        {% else %}
-            <form method="POST" action="{{ url_for('auth.login') }}">        {% endif %}
+        <form method="POST" action="{{ url_for('auth.login') }}">
             <div class="form-group">
                 <label for="email">Seu e-mail</label>
                 <input type="email" id="email" name="email" required>

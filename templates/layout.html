@@ -3,20 +3,22 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard Transporte</title>
+    <title>{% block title %}BIWEB — Gestão de Transporte{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=cache_buster) }}"></head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark no-print">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">Dashboard Transporte</a>
-            <div class="d-flex align-items-center">
-                {% if current_user.is_authenticated %}
-                    <span class="navbar-text me-3">
-                        Olá, {{ current_user.nome }}
-                    </span>
-                    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-danger btn-sm">Sair</a>
-                {% endif %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=cache_buster) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v=cache_buster) }}">
+</head>
+<body class="biweb-app">
+    <nav class="navbar navbar-expand-lg navbar-dark biweb-navbar no-print">
+        <div class="container-fluid px-3 px-lg-4">
+            <a class="navbar-brand" href="/">
+                <span class="brand-icon">🚛</span>
+                BIWEB{% if transportadora_nome %} — {{ transportadora_nome }}{% endif %}
+            </a>
+            <div class="d-flex align-items-center gap-3">
+                <span class="navbar-text text-white-50 small d-none d-md-inline">
+                    {{ usuario_nome }}
+                </span>
             </div>
         </div>
     </nav>
@@ -112,39 +114,14 @@
         </div>
     </div>
 
-    <div id="uploadModal" class="modal no-print">
-        <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <div id="uploadFormContainer">
-                <h2>Upload de Novas Planilhas</h2>
-                <p>Selecione uma ou mais planilhas do sistema SAT para importar os dados.</p>
-                <form id="uploadForm" method="POST" action="{{ url_for('main.upload_file') }}" enctype="multipart/form-data">
-                    <div class="form-group">
-                        <label for="files">1. Escolha os arquivos no seu computador:</label>
-                        <input type="file" name="files[]" id="files" multiple required>
-                    </div>
-                    <button type="submit" class="btn-salvar">Enviar e Importar</button>
-                </form>
-            </div>
-            <div id="progressContainer" style="display: none;">
-                <h4>Processando planilhas... Por favor, aguarde.</h4>
-                <div class="progress-road">
-                    <div class="progress-bar">
-                        <span class="truck-emoji">🚚</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/chartTheme.js', v=cache_buster) }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
     {% block scripts %}{% endblock %}
 
     <script class="no-print">
-       {% if current_user.is_authenticated and current_user.email != config.SUPER_ADMIN_EMAIL %}
         document.addEventListener('DOMContentLoaded', function() {
             let lastHeartbeatTime = 0;
             const heartbeatInterval = 30000;
@@ -164,7 +141,6 @@
             window.addEventListener('scroll', sendHeartbeat);
             sendHeartbeat();
         });
-       {% endif %}
     </script>
 </body>
 </html>

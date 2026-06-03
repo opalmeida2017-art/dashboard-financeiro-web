@@ -81,7 +81,16 @@ h1, h2 {
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-top: 30px;
+    margin: 30px auto 0;
+    max-width: 1100px;
+    text-align: center;
+}
+.chart-container h2 {
+    margin-bottom: 16px;
+}
+.chart-container canvas {
+    max-height: 420px;
+    margin: 0 auto;
 }
 .action-buttons {
     margin-left: auto;

@@ -6,5 +6,6 @@ class User(UserMixin):
         self.id = id
         self.email = email
         self.nome = nome
-        self.apartamento_id = apartamento_id
+        self.apartamento_id = apartamento_id  # legado no banco
+        self.transportadora_id = apartamento_id
         self.role = role

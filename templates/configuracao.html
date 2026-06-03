@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configurações do Robô</title>
+    <title>Atualização do banco SATI — BIWEB</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     
@@ -62,9 +62,13 @@
 <body>
     <div class="container my-4">
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-            <h1 class="h2">Configurações do Robô de Coleta</h1>
-            <div class="btn-toolbar mb-2 mb-md-0">
-                <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Fechar</a>
+            <div>
+                <h1 class="h2 mb-1">Configurações do Robô</h1>
+                <p class="text-muted small mb-0">Dados do <strong>PostgreSQL (SATI)</strong>. Atualização via backup no site SATI (sem exportação de planilhas).</p>
+            </div>
+            <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+                <button type="button" id="btn-atualizar-bd-config" class="btn btn-danger btn-sm">↻ Atualizar banco SATI</button>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary btn-sm">Voltar ao painel</a>
             </div>
         </div>
 
@@ -76,87 +80,23 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('main.configuracao') }}">
-            <ul class="nav nav-tabs" id="configTab" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="conexao-tab" data-bs-toggle="tab" data-bs-target="#conexao-pane" type="button">Conexão SAT</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="parametros-tab" data-bs-toggle="tab" data-bs-target="#parametros-pane" type="button">Parâmetros (Códigos)</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="periodo-tab" data-bs-toggle="tab" data-bs-target="#periodo-pane" type="button">Período de Exportação</button>
-                </li>
-            </ul>
-
-            <div class="tab-content" id="configTabContent">
-                <div class="tab-pane fade show active" id="conexao-pane" role="tabpanel">
-                    <div class="form-group mb-3"><label for="URL_LOGIN">Link do Site (URL)</label><input type="text" class="form-control" id="URL_LOGIN" name="URL_LOGIN" value="{{ configs.get('URL_LOGIN', '') }}"></div>
-                    <div class="form-group mb-3"><label for="USUARIO_ROBO">Usuário</label><input type="text" class="form-control" id="USUARIO_ROBO" name="USUARIO_ROBO" value="{{ configs.get('USUARIO_ROBO', '') }}"></div>
-                    <div class="form-group mb-3"><label for="SENHA_ROBO">Senha</label><input type="password" class="form-control" id="SENHA_ROBO" name="SENHA_ROBO" value="{{ configs.get('SENHA_ROBO', '') }}"></div>
-                </div>
-                <div class="tab-pane fade" id="parametros-pane" role="tabpanel">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-group mb-3">
-                                <label for="CODIGO_VIAGENS_CLIENTE">Base: Viagens por Cliente</label>
-                                <input type="text" class="form-control" name="CODIGO_VIAGENS_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_CLIENTE', '') }}">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group mb-3">
-                                <label for="CODIGO_VIAGENS_FAT_CLIENTE">Base: Fat. Viagens por Cliente</label>
-                                <input type="text" class="form-control" name="CODIGO_VIAGENS_FAT_CLIENTE" value="{{ configs.get('CODIGO_VIAGENS_FAT_CLIENTE', '') }}">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group mb-3">
-                                <label for="CODIGO_DESPESAS">Base: Despesas</label>
-                                <input type="text" class="form-control" name="CODIGO_DESPESAS" value="{{ configs.get('CODIGO_DESPESAS', '') }}">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group mb-3">
-                                <label for="CODIGO_CONTAS_PAGAR">Base: Contas a Pagar</label>
-                                <input type="text" class="form-control" name="CODIGO_CONTAS_PAGAR" value="{{ configs.get('CODIGO_CONTAS_PAGAR', '') }}">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group mb-3">
-                                <label for="CODIGO_CONTAS_RECEBER">Base: Contas a Receber</label>
-                                <input type="text" class="form-control" name="CODIGO_CONTAS_RECEBER" value="{{ configs.get('CODIGO_CONTAS_RECEBER', '') }}">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group mb-3">
-                                <label for="CODIGO_ACERTO_MOTORISTA">Base: Acerto Motorista</label>
-                                <input type="text" class="form-control" name="CODIGO_ACERTO_MOTORISTA" value="{{ configs.get('CODIGO_ACERTO_MOTORISTA', '') }}">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="periodo-pane" role="tabpanel">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group mb-3">
-                                <label for="DATA_INICIAL_ROBO">Data Inicial</label>
-                                <input type="date" class="form-control" id="DATA_INICIAL_ROBO" name="DATA_INICIAL_ROBO" value="{{ configs.get('DATA_INICIAL_ROBO_YMD', '') }}">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group mb-3">
-                                <label for="DATA_FINAL_ROBO">Data Final</label>
-                                <input type="date" class="form-control" id="DATA_FINAL_ROBO" name="DATA_FINAL_ROBO" value="{{ configs.get('DATA_FINAL_ROBO_YMD', '') }}">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-check form-switch mt-4">
-                      <input class="form-check-input" type="checkbox" id="live_monitoring_enabled" name="live_monitoring_enabled" {% if configs.get('live_monitoring_enabled') %}checked{% endif %}>
-                      <label class="form-check-label" for="live_monitoring_enabled">
-                          Ativar coleta em tempo real (a cada X minutos enquanto o dashboard estiver aberto)
-                         </label>
-                    </div>
-                </div>
+        <form method="POST" action="{{ url_for('main.configuracao') }}" class="border rounded bg-white p-4">
+            <div class="form-group mb-3">
+                <label for="nome_transportadora">Nome da transportadora (esta instalação)</label>
+                <input type="text" class="form-control" id="nome_transportadora" name="nome_transportadora"
+                       value="{{ transportadora.get('nome_empresa', transportadora_nome) }}">
+            </div>
+            <p class="alert alert-info py-2 small mb-3">Credenciais do SATI para login e <em>Envio de banco de dados</em> (backup ZIP → PostgreSQL).</p>
+            <div class="form-group mb-3"><label for="URL_LOGIN">Link do Site (URL)</label><input type="url" class="form-control" id="URL_LOGIN" name="URL_LOGIN" value="{{ configs.get('URL_LOGIN', '') }}" placeholder="https://sat1.intersite.com.br/c3332" required></div>
+            <p class="form-text text-muted small">Use <code>https://</code> no início. Sem isso o robô falha com &quot;invalid argument&quot;.</p>
+            <div class="form-group mb-3"><label for="USUARIO_ROBO">Usuário</label><input type="text" class="form-control" id="USUARIO_ROBO" name="USUARIO_ROBO" value="{{ configs.get('USUARIO_ROBO', '') }}" required></div>
+            <div class="form-group mb-3"><label for="SENHA_ROBO">Senha</label><input type="password" class="form-control" id="SENHA_ROBO" name="SENHA_ROBO" value="{{ configs.get('SENHA_ROBO', '') }}" required></div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="live_monitoring_enabled" name="live_monitoring_enabled"
+                       {% if configs.get('live_monitoring_enabled') in ('True', 'true', '1', 'yes', 'on') %}checked{% endif %}>
+                <label class="form-check-label" for="live_monitoring_enabled">
+                    Atualização automática diária do banco SATI (worker às 18h)
+                </label>
             </div>
 
             <div class="d-flex justify-content-end mt-4">
@@ -165,7 +105,7 @@
         </form>
 
         <div class="card mt-5">
-            <div class="card-header h5">Visualizador de Logs do Robô</div>
+            <div class="card-header h5">Logs — atualização do banco SATI</div>
             <div class="card-body">
                 <div class="log-actions">
                     <button id="loadLogsBtn" type="button" class="btn btn-primary">
@@ -181,7 +121,7 @@
                             <tr><th>Horário</th><th>Mensagem</th></tr>
                         </thead>
                         <tbody id="logs-body">
-                            <tr><td colspan="2" style="text-align:center; color: #888;">Clique em "Carregar Logs" para começar.</td></tr>
+                            <tr><td colspan="2" style="text-align:center; color: #888;">{% if auto_logs %}Carregando logs…{% else %}Clique em "Carregar Logs" ou inicie a atualização do banco.{% endif %}</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -248,13 +188,41 @@
                 if (logInterval) {
                     stopLogPolling();
                 } else {
-                    btnTextLoad.textContent = 'Parar Atualização';
-                    loadLogsBtn.classList.remove('btn-primary');
-                    loadLogsBtn.classList.add('btn-danger');
-                    fetchAndRenderLogs();
-                    logInterval = setInterval(fetchAndRenderLogs, 7000);
+                    startLogPolling();
                 }
             });
+
+            function startLogPolling() {
+                if (logInterval) return;
+                btnTextLoad.textContent = 'Parar Atualização';
+                loadLogsBtn.classList.remove('btn-primary');
+                loadLogsBtn.classList.add('btn-danger');
+                fetchAndRenderLogs();
+                logInterval = setInterval(fetchAndRenderLogs, 3000);
+            }
+
+            const btnBdConfig = document.getElementById('btn-atualizar-bd-config');
+            if (btnBdConfig) {
+                btnBdConfig.addEventListener('click', function () {
+                    if (!confirm('Gerar backup no SATI, baixar ZIP e restaurar PostgreSQL? Acompanhe o progresso nos logs.')) return;
+                    btnBdConfig.disabled = true;
+                    startLogPolling();
+                    fetch("{{ url_for('main.iniciar_coleta_endpoint') }}", { method: 'POST' })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.status !== 'sucesso' && !data.redirect) {
+                                alert(data.mensagem);
+                            }
+                            fetchAndRenderLogs();
+                        })
+                        .catch(() => alert('Erro ao iniciar atualização do banco.'))
+                        .finally(() => { btnBdConfig.disabled = false; });
+                });
+            }
+
+            {% if auto_logs %}
+            startLogPolling();
+            {% endif %}
 
             clearLogsBtn.addEventListener('click', function() {
                 if (!confirm('Tem certeza? Esta ação apagará TODOS os logs.')) return;
@@ -282,41 +250,6 @@
                     });
             });
         });
-        // --- INÍCIO DA NOVA VALIDAÇÃO DE DATAS ---
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.querySelector('form[action="{{ url_for('main.configuracao') }}"]');
-            const startDateInput = document.getElementById('DATA_INICIAL_ROBO');
-            const endDateInput = document.getElementById('DATA_FINAL_ROBO');
-
-            form.addEventListener('submit', function(event) {
-                const startDateStr = startDateInput.value;
-                const endDateStr = endDateInput.value;
-
-                // Só valida se ambas as datas estiverem preenchidas
-                if (startDateStr && endDateStr) {
-                    const startDate = new Date(startDateStr);
-                    const endDate = new Date(endDateStr);
-
-                    // Regra 1: Data final não pode ser menor que a inicial
-                    if (endDate < startDate) {
-                        alert('Erro: A data final não pode ser anterior à data inicial.');
-                        event.preventDefault(); // Impede o envio do formulário
-                        return;
-                    }
-
-                    // Regra 2: Intervalo não pode ser maior que 60 dias
-                    const diffTime = Math.abs(endDate - startDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                    if (diffDays > 60) {
-                        alert('Erro: O intervalo entre a data inicial e a final não pode ser maior que 60 dias.');
-                        event.preventDefault(); // Impede o envio do formulário
-                        return;
-                    }
-                }
-            });
-        });
-        // --- FIM DA NOVA VALIDAÇÃO DE DATAS ---
     </script>
 </body>
 </html>

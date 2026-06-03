@@ -85,6 +85,18 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
     print(f">>> [LOGIC] Chamando get_despesas_details_dashboard_data para o apartamento ID: {apartamento_id}")
     return dm.get_despesas_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
 
+def get_fluxo_viagem_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter=None):
+    print(f">>> [LOGIC] Chamando get_fluxo_viagem_data para o apartamento ID: {apartamento_id}")
+    return dm.get_fluxo_viagem_data(apartamento_id, start_date, end_date, placa_filter, filial_filter)
+
+def get_fluxo_veiculos_resumo(apartamento_id: int, start_date, end_date, filial_filter=None):
+    print(f">>> [LOGIC] Chamando get_fluxo_veiculos_resumo para o apartamento ID: {apartamento_id}")
+    return dm.get_fluxo_veiculos_resumo(apartamento_id, start_date, end_date, filial_filter)
+
+def get_fluxo_viagem_historico(apartamento_id: int, start_date, end_date, placa: str, filial_filter=None):
+    print(f">>> [LOGIC] Chamando get_fluxo_viagem_historico placa={placa} apt={apartamento_id}")
+    return dm.get_fluxo_viagem_historico(apartamento_id, start_date, end_date, placa, filial_filter)
+
 def get_expense_audit_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
     print(f">>> [LOGIC] Chamando get_expense_audit_data para o apartamento ID: {apartamento_id}")
     return dm.get_expense_audit_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
@@ -92,6 +104,14 @@ def get_expense_audit_data(apartamento_id: int, start_date, end_date, placa_filt
 def ler_configuracoes_robo(apartamento_id: int):
     print(f">>> [LOGIC] Chamando ler_configuracoes_robo para o apartamento ID: {apartamento_id}")
     return dm.ler_configuracoes_robo(apartamento_id)
+
+def executar_atualizacao_bd_sati(apartamento_id: int) -> bool:
+    """Robô: envio BI no SATI + download zip + restore PostgreSQL."""
+    from robos.coletor_atualizacao_bd import executar_atualizacao_bd_sati
+
+    print(f">>> [LOGIC] Atualização banco SATI apt={apartamento_id}")
+    return bool(executar_atualizacao_bd_sati(apartamento_id))
+
 
 def salvar_configuracoes_robo(apartamento_id: int, configs: dict):
     print(f">>> [LOGIC] Chamando salvar_configuracoes_robo para o apartamento ID: {apartamento_id}")
@@ -177,13 +197,15 @@ def get_despesas_por_filial_e_grupo(apartamento_id: int, start_date, end_date, f
     print(f">>> [LOGIC] Chamando get_despesas_por_filial_e_grupo para o apartamento ID: {apartamento_id}")
     return dm.get_despesas_por_filial_e_grupo(apartamento_id, start_date, end_date, filial_filter)
 
+def resolve_date_filters(apartamento_id: int, start_date=None, end_date=None):
+    """Quando o usuário não informa datas, usa o intervalo das viagens (não vencimentos futuros)."""
+    return dm.resolver_intervalo_consulta(apartamento_id, start_date, end_date)
+
+
 def get_unique_negocios(apartamento_id: int):
-    """Busca os valores únicos de 'descNegocio' da tabela de despesas."""
+    """Tipos de negócio: FROTA (próprio) e FRETE/AGENCIAMENTO (terceiro/agenciamento)."""
     print(f">>> [LOGIC] Chamando get_unique_negocios para o apartamento ID: {apartamento_id}")
-    df_despesas = dm.get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
-    if not df_despesas.empty and 'descNegocio' in df_despesas.columns:
-        return sorted([negocio for negocio in df_despesas['descNegocio'].dropna().unique() if negocio])
-    return []
+    return dm.get_unique_negocios(apartamento_id)
 
 
 def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int): # ALTERADO AQUI

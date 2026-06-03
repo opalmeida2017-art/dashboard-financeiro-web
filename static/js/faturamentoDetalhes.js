@@ -1,176 +1,196 @@
 document.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
-    
+    const BC = window.BIWEBCharts || {};
+    const C = BC.colors || { receita: '#2563eb', custoViagem: '#f59e0b', tipoD: '#7c3aed', teal: '#0d9488', slate: '#475569' };
+    const palette = BC.palette || ['#2563eb', '#0ea5e9', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#64748b'];
+    const thumbOpts = BC.thumbnailOptions ? BC.thumbnailOptions() : { maintainAspectRatio: false, plugins: { legend: { display: false } } };
+    const thumbHoriz = { ...thumbOpts, indexAxis: 'y' };
+
+    const barDs = (label, data, color, extra = {}) => ({
+        label,
+        data,
+        ...(BC.barStyle ? BC.barStyle(color) : { backgroundColor: color }),
+        ...extra,
+    });
+
+    const doughnutDs = (data) => ({
+        data,
+        backgroundColor: BC.doughnutBackgrounds ? BC.doughnutBackgrounds(data.length) : palette,
+        borderWidth: 0,
+    });
+
     fetch(`/api/faturamento_dashboard_data?${params.toString()}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Falha na API: ' + response.status);
+            return response.json();
+        })
         .then(data => {
             if (!data || Object.keys(data).length === 0) {
                 document.querySelector('.dashboard-layout').innerHTML = '<h2>Não há dados para os filtros selecionados.</h2>';
                 return;
             }
-            
+
             const chartConfigs = new Map();
             let featuredChartInstance = null;
             const featuredChartCanvas = document.getElementById('featuredChart').getContext('2d');
             const featuredChartTitle = document.getElementById('featured-chart-title');
 
+            function setActiveCard(chartId) {
+                document.querySelectorAll('.chart-card').forEach(el => {
+                    el.classList.toggle('active', el.dataset.chartId === chartId);
+                });
+            }
+
             function updateFeaturedChart(chartId) {
                 if (!chartConfigs.has(chartId)) return;
-                
                 const config = chartConfigs.get(chartId);
                 featuredChartTitle.textContent = config.title;
-
-                if (featuredChartInstance) {
-                    featuredChartInstance.destroy();
-                }
-                
+                setActiveCard(chartId);
+                if (featuredChartInstance) featuredChartInstance.destroy();
                 featuredChartInstance = new Chart(featuredChartCanvas, {
                     type: config.type,
                     data: config.data,
-                    options: { ...config.options, plugins: { legend: { display: true } } }
+                    options: BC.buildFeaturedOptions ? BC.buildFeaturedOptions(config) : config.options,
                 });
             }
 
-            const thumbnailOptions = {
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                }
-            };
-            
-            // Evolução Faturamento vs. Custo
             if (data.evolucao_faturamento_custo) {
                 const config = {
-                    title: 'Evolução Faturamento vs. Custo Total',
+                    title: 'Evolução faturamento vs. custo total',
                     type: 'line',
                     data: {
-                        labels: data.evolucao_faturamento_custo.map(d => d.Periodo),
+                        labels: data.evolucao_faturamento_custo.map(d => d.Periodo || d.PeriodoLabel),
                         datasets: [
-                            { label: 'Faturamento', data: data.evolucao_faturamento_custo.map(d => d.Faturamento), borderColor: 'rgba(41, 128, 185, 1)', fill: false },
-                            { label: 'Custo', data: data.evolucao_faturamento_custo.map(d => d.Custo), borderColor: '#E67E22', fill: false }
-                        ]
+                            { label: 'Faturamento', data: data.evolucao_faturamento_custo.map(d => d.Faturamento), ...(BC.lineStyle ? BC.lineStyle(C.receita) : { borderColor: C.receita }) },
+                            { label: 'Custo', data: data.evolucao_faturamento_custo.map(d => d.Custo), ...(BC.lineStyle ? BC.lineStyle(C.custoViagem) : { borderColor: C.custoViagem }) },
+                        ],
                     },
-                    options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
+                    options: {},
                 };
                 chartConfigs.set('evolucao', config);
-                new Chart(document.getElementById('evolucaoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+                new Chart(document.getElementById('evolucaoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbOpts });
             }
 
-            // Top Clientes
             if (data.top_clientes) {
                 const config = {
-                    title: 'Clientes por Faturamento',
+                    title: 'Clientes por faturamento',
                     type: 'bar',
                     data: {
                         labels: data.top_clientes.map(d => d.nomeCliente),
-                        datasets: [{ label: 'Faturamento', data: data.top_clientes.map(d => d.freteEmpresa), backgroundColor: 'rgba(41, 128, 185, 0.7)' }]
+                        datasets: [barDs('Faturamento', data.top_clientes.map(d => d.freteEmpresa), C.receita)],
                     },
-                    options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
+                    options: { indexAxis: 'y' },
                 };
                 chartConfigs.set('topClientes', config);
-                new Chart(document.getElementById('topClientesChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
+                new Chart(document.getElementById('topClientesChart').getContext('2d'), { type: config.type, data: config.data, options: thumbHoriz });
             }
-            
-            // Faturamento por Filial
+
             if (data.faturamento_filial) {
+                const vals = data.faturamento_filial.map(d => d.freteEmpresa);
                 const config = {
-                    title: 'Faturamento por Filial',
+                    title: 'Faturamento por filial',
                     type: 'doughnut',
                     data: {
                         labels: data.faturamento_filial.map(d => d.nomeFilial),
-                        datasets: [{ data: data.faturamento_filial.map(d => d.freteEmpresa) }]
+                        datasets: [doughnutDs(vals)],
                     },
-                    options: { maintainAspectRatio: false }
+                    options: {},
                 };
                 chartConfigs.set('fatFilial', config);
-                new Chart(document.getElementById('fatFilialChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+                new Chart(document.getElementById('fatFilialChart').getContext('2d'), { type: config.type, data: config.data, options: thumbOpts });
             }
-            
-            // Top Rotas
+
             if (data.top_rotas) {
                 const config = {
-                    title: 'Rotas Mais Frequentes',
+                    title: 'Rotas mais frequentes',
                     type: 'bar',
                     data: {
                         labels: data.top_rotas.map(d => d.rota),
-                        datasets: [{ label: 'Nº de Viagens', data: data.top_rotas.map(d => d.contagem), backgroundColor: 'rgba(26, 188, 156, 0.7)' }]
+                        datasets: [barDs('Nº de viagens', data.top_rotas.map(d => d.contagem), C.teal)],
                     },
-                    options: { maintainAspectRatio: false, indexAxis: 'y' }
+                    options: { indexAxis: 'y' },
                 };
                 chartConfigs.set('Rotas', config);
-                new Chart(document.getElementById('topRotasChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
+                new Chart(document.getElementById('topRotasChart').getContext('2d'), { type: config.type, data: config.data, options: thumbHoriz });
             }
-            
-            // Faturamento por Mercadoria
-            if(data.faturamento_por_mercadoria) {
+
+            if (data.faturamento_por_mercadoria) {
+                const vals = data.faturamento_por_mercadoria.map(d => d.faturamento);
                 const config = {
-                     title: 'Faturamento por Tipo de Mercadoria',
-                     type: 'doughnut',
-                     data: {
-                         labels: data.faturamento_por_mercadoria.map(d => d.mercadoria),
-                         datasets: [{ data: data.faturamento_por_mercadoria.map(d => d.faturamento) }]
-                     },
-                     options: { maintainAspectRatio: false }
+                    title: 'Faturamento por tipo de mercadoria',
+                    type: 'doughnut',
+                    data: {
+                        labels: data.faturamento_por_mercadoria.map(d => d.mercadoria),
+                        datasets: [doughnutDs(vals)],
+                    },
+                    options: {},
                 };
                 chartConfigs.set('fatMercadoria', config);
-                new Chart(document.getElementById('mercadoriaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+                new Chart(document.getElementById('mercadoriaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbOpts });
             }
 
-            // Viagens por Veículo
-            if(data.viagens_por_veiculo) {
+            if (data.viagens_por_veiculo) {
                 const config = {
-                     title: 'Viagens por Veículo',
-                     type: 'bar',
-                     data: {
-                         labels: data.viagens_por_veiculo.map(d => d.placa),
-                         datasets: [{ label: 'Nº de Viagens', data: data.viagens_por_veiculo.map(d => d.contagem), backgroundColor: 'rgba(142, 68, 173, 0.7)' }]
-                     },
-                     options: { maintainAspectRatio: false }
+                    title: 'Viagens por veículo',
+                    type: 'bar',
+                    data: {
+                        labels: data.viagens_por_veiculo.map(d => d.placa),
+                        datasets: [barDs('Nº de viagens', data.viagens_por_veiculo.map(d => d.contagem), C.tipoD)],
+                    },
+                    options: {},
                 };
                 chartConfigs.set('viagensVeiculo', config);
-                new Chart(document.getElementById('viagensVeiculoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+                new Chart(document.getElementById('viagensVeiculoChart').getContext('2d'), { type: config.type, data: config.data, options: thumbOpts });
             }
 
-            // Faturamento por Motorista
-            if(data.faturamento_motorista) {
+            if (data.faturamento_motorista) {
                 const config = {
-                     title: 'Motoristas por Faturamento',
-                     type: 'bar',
-                     data: {
-                         labels: data.faturamento_motorista.map(d => d.nomeMotorista),
-                         datasets: [{ label: 'Faturamento', data: data.faturamento_motorista.map(d => d.faturamento), backgroundColor: 'rgba(243, 156, 18, 0.7)' }]
-                     },
-                     options: { maintainAspectRatio: false, indexAxis: 'y', scales: { x: { ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') } } } }
+                    title: 'Motoristas por faturamento',
+                    type: 'bar',
+                    data: {
+                        labels: data.faturamento_motorista.map(d => d.nomeMotorista),
+                        datasets: [barDs('Faturamento', data.faturamento_motorista.map(d => d.faturamento), C.custoViagem)],
+                    },
+                    options: { indexAxis: 'y' },
                 };
                 chartConfigs.set('fatMotorista', config);
-                new Chart(document.getElementById('fatMotoristaChart').getContext('2d'), { type: config.type, data: config.data, options: { ...thumbnailOptions, indexAxis: 'y' } });
+                new Chart(document.getElementById('fatMotoristaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbHoriz });
             }
-            
-            // Volume por Rota
-            if(data.volume_por_rota) {
+
+            if (data.volume_por_rota) {
+                const pesos = data.volume_por_rota.map(d => Number(d.pesoSaida ?? d.pesosaida ?? 0));
                 const config = {
-                     title: 'Volume de Carga (kg) por Rota',
-                     type: 'bar',
-                     data: {
-                         labels: data.volume_por_rota.map(d => d.rota),
-                         datasets: [{ label: 'Peso Total (kg)', data: data.volume_por_rota.map(d => d.pesoSaida), backgroundColor: 'rgba(52, 73, 94, 0.7)' }]
-                     },
-                     options: { maintainAspectRatio: false, scales: { y: { ticks: { callback: v => v.toLocaleString('pt-BR') + ' kg' } } } }
+                    title: 'Volume de carga (kg) por rota',
+                    type: 'bar',
+                    data: {
+                        labels: data.volume_por_rota.map(d => d.rota),
+                        datasets: [barDs('Peso total (kg)', pesos, C.slate)],
+                    },
+                    options: {
+                        scales: {
+                            y: { ticks: { callback: v => Number(v).toLocaleString('pt-BR') + ' kg' } },
+                        },
+                    },
                 };
                 chartConfigs.set('volumeRota', config);
-                new Chart(document.getElementById('volumeRotaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbnailOptions });
+                new Chart(document.getElementById('volumeRotaChart').getContext('2d'), { type: config.type, data: config.data, options: thumbOpts });
             }
 
-            // Mostra o primeiro gráfico em destaque e adiciona os eventos de clique
-            updateFeaturedChart('evolucao');
+            const ordemPreferida = ['evolucao', 'topClientes', 'fatFilial', 'Rotas', 'fatMercadoria', 'viagensVeiculo', 'fatMotorista', 'volumeRota'];
+            const primeiroId = ordemPreferida.find(id => chartConfigs.has(id));
+            if (primeiroId) {
+                updateFeaturedChart(primeiroId);
+            } else {
+                featuredChartTitle.textContent = 'Nenhum gráfico disponível para os filtros atuais';
+            }
 
-            document.querySelectorAll('.thumbnail-item').forEach(item => {
-                item.addEventListener('click', function() {
-                    const chartId = this.dataset.chartId;
-                    updateFeaturedChart(chartId);
-                });
+            document.querySelectorAll('.chart-card').forEach(item => {
+                item.addEventListener('click', () => updateFeaturedChart(item.dataset.chartId));
             });
+        })
+        .catch(err => {
+            console.error(err);
+            document.querySelector('.dashboard-layout').innerHTML =
+                '<h2>Erro ao carregar gráficos de faturamento</h2><p>Verifique os filtros e tente novamente.</p>';
         });
 });

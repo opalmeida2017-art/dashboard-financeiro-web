@@ -2,14 +2,16 @@
 
 import os
 from sqlalchemy import create_engine
-from dotenv import load_dotenv
 
-# Carrega as variáveis de ambiente (como DATABASE_URL)
-load_dotenv()
+from biweb_env import load_env
 
-db_url = os.getenv('DATABASE_URL')
+load_env()
+
+db_url = os.getenv("DATABASE_URL")
 if not db_url:
-    raise ValueError("DATABASE_URL não definida. Verifique seu arquivo .env")
+    raise ValueError(
+        "DATABASE_URL não definida. No desktop, execute BIWEB.exe ou crie .env em "
+        "%LOCALAPPDATA%\\BIWEB\\.env"
+    )
 
-# Cria o objeto 'engine' que será compartilhado por toda a aplicação
 engine = create_engine(db_url)

@@ -41,7 +41,8 @@ def upgrade() -> None:
         sa.Column('status', sa.Text(), server_default='ativo', nullable=True),
         sa.Column('data_criacao', sa.Text(), nullable=False),
         sa.Column('data_vencimento', sa.Text(), nullable=True),
-        sa.Column('notas_admin', sa.Text(), nullable=True)
+        sa.Column('notas_admin', sa.Text(), nullable=True),
+        sa.Column('logo_filename', sa.Text(), nullable=True),
     )
 
     op.create_table('usuarios',

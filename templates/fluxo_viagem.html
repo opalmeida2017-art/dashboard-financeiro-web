@@ -1,0 +1,185 @@
+{% extends "layout.html" %}
+
+{% block title %}Fluxo de viagem — BIWEB{% endblock %}
+
+{% macro flux_truck_track(row) %}
+{% set anim = row.flux_anim %}
+<div class="flux-track"
+     data-truck-percent="{{ anim.truck_percent }}"
+     data-truck-index="{{ anim.truck_index }}"
+     data-truck-on-top="{{ '1' if anim.truck_on_top else '0' }}"
+     data-pula-nfe="{{ '1' if anim.pula_nfe else '0' }}">
+    <div class="flux-track-rail-wrap {% if anim.truck_on_top %}flux-track-rail-wrap--elevated{% endif %} {% if anim.mdfe_encerrado %}flux-track-rail-wrap--finished{% endif %}">
+        {% if anim.truck_on_top %}
+        <div class="flux-truck-lane" aria-hidden="false">
+            <div class="flux-truck flux-truck--on-top" style="left: 0%" role="img" aria-label="Posição atual no fluxo">
+                <span class="flux-truck-icon" aria-hidden="true">🚛</span>
+            </div>
+        </div>
+        {% endif %}
+        <div class="flux-track-rail">
+            <div class="flux-track-fill" style="width: 0%"></div>
+            {% if not anim.truck_on_top %}
+            <div class="flux-truck flux-truck--on-rail" style="left: 0%" role="img" aria-label="Posição atual no fluxo">
+                <span class="flux-truck-icon" aria-hidden="true">🚛</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="flux-track-nodes">
+            {% for stage in anim.stages %}
+            <div class="flux-node flux-node--{{ stage.state }}
+                {% if anim.pula_nfe and stage.id == 'nfe_emitida' %}flux-node--bypassed{% endif %}
+                {% if loop.index0 == anim.truck_index and not anim.truck_on_top %}flux-node--active{% endif %}
+                {% if loop.index0 == anim.truck_index and anim.truck_on_top %}flux-node--active flux-node--goal{% endif %}"
+                 title="{{ stage.label }}{% if stage.detail %}: {{ stage.detail }}{% endif %}">
+                {% if stage.get('dual_status') %}
+                <div class="flux-dual-status">
+                    <span class="flux-dual-status-item {% if stage.sem_ordem %}flux-dual-status-item--on flux-dual-status-item--alert{% endif %}">Sem ordem</span>
+                    <span class="flux-dual-status-item {% if stage.ordem_emitida %}flux-dual-status-item--on flux-dual-status-item--ok{% endif %}">Ordem emitida</span>
+                </div>
+                {% else %}
+                <span class="flux-node-dot"></span>
+                {% endif %}
+                <span class="flux-node-label">{{ stage.short }}</span>
+                {% if stage.detail and stage.id == 'pedagio_emitido' %}
+                <span class="flux-node-detail flux-node-detail--multi flux-node-detail--pedagio">{{ stage.detail }}</span>
+                {% elif stage.detail and stage.id != 'ordem_carregamento' and stage.state == 'done' %}
+                <span class="flux-node-detail{% if stage.id == 'cte_autorizado' %} flux-node-detail--multi{% endif %}">{{ stage.detail }}</span>
+                {% if stage.get('detail_sub') and stage.id == 'cte_autorizado' %}
+                <span class="flux-node-detail flux-node-detail--sub">{{ stage.detail_sub }}</span>
+                {% endif %}
+                {% elif stage.detail and stage.id == 'ordem_carregamento' and stage.ordem_emitida %}
+                <span class="flux-node-detail flux-node-detail--multi">Nº {{ stage.detail }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% if anim.pula_nfe %}
+    <p class="flux-track-hint">CT-e já emitido — fluxo avança sem aguardar NFE na trilha.</p>
+    {% elif not anim.tem_ordem and not anim.tem_cte %}
+    <p class="flux-track-hint flux-track-hint--warn">Sem ordem de carregamento — emita a ordem para o veículo avançar.</p>
+    {% elif anim.mdfe_encerrado %}
+    <p class="flux-track-hint flux-track-hint--ok">MDF-e encerrado — viagem concluída.</p>
+    {% elif anim.truck_on_top %}
+    <p class="flux-track-hint flux-track-hint--ok">MDF-e autorizado — aguardando encerramento.</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="dash-detail-page fluxo-page">
+    <header class="dash-detail-header">
+        <div>
+            {% if modo == 'historico' and placa_historico %}
+            <h1>Análise diária — {{ placa_historico }}</h1>
+            <p class="charts-hero-sub">Uma linha por <strong>viagem (manifesto/MDF-e)</strong>. Vários CT-es na mesma viagem aparecem com todas as ordens e numerações. MDF-e encerrado = caminhão no topo.</p>
+            {% else %}
+            <h1>Fluxo de viagem</h1>
+            <p class="charts-hero-sub">Clique na <strong>placa</strong> para ver cada viagem (manifesto). Vários CT-es no mesmo MDF-e ficam em uma única linha com todas as numerações.</p>
+            {% endif %}
+        </div>
+        {% if modo == 'historico' %}
+        <a href="{{ url_for('main.fluxo_viagem', start_date=selected_start_date, end_date=selected_end_date) }}" class="dash-back-link">&larr; Todos os veículos</a>
+        {% else %}
+        <a href="{{ url_for('main.index') }}?{{ qs_base }}" class="dash-back-link">&larr; Voltar ao painel</a>
+        {% endif %}
+    </header>
+
+    <section class="dash-filters">
+        <form method="GET" action="{{ url_for('main.fluxo_viagem') }}">
+            {% if modo == 'historico' and placa_historico %}
+            <input type="hidden" name="historico" value="1">
+            <input type="hidden" name="placa" value="{{ placa_historico }}">
+            {% endif %}
+            <div class="filter-field">
+                <label for="start_date">Início</label>
+                <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
+            </div>
+            <div class="filter-field">
+                <label for="end_date">Fim</label>
+                <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+            </div>
+            {% if modo != 'historico' %}
+            <div class="filter-field">
+                <label for="busca_placa">Ir para placa</label>
+                <input type="text" id="busca_placa" name="busca_placa" list="lista-placas" placeholder="Digite a placa…" autocomplete="off">
+                <datalist id="lista-placas">
+                    {% for item in placas %}
+                    <option value="{{ item.placa }}">{{ item.placa }} ({{ item.tipo }})</option>
+                    {% endfor %}
+                </datalist>
+            </div>
+            {% endif %}
+            <button type="submit" class="btn-apply">Aplicar</button>
+        </form>
+    </section>
+
+    <div class="fluxo-legend">
+        <span><span class="flux-legend-dot flux-legend-dot--done"></span> Concluído</span>
+        <span><span class="flux-legend-dot flux-legend-dot--pending"></span> Pendente</span>
+        <span><span class="flux-legend-dot flux-legend-dot--alert"></span> Sem ordem</span>
+        <span><span class="flux-truck-icon flux-truck-icon--legend">🚛</span> Esquerda → direita</span>
+        <span><span class="flux-truck-icon flux-truck-icon--legend">⬆</span> No topo = MDF-e autorizado/encerrado</span>
+    </div>
+
+    {% for row in rows %}
+    <article class="fluxo-vehicle-card {% if row.sem_viagem_periodo %}fluxo-row-empty{% endif %}">
+        <header class="fluxo-vehicle-card-head">
+            {% if modo == 'lista' %}
+            <a class="fluxo-placa-link" href="{{ url_for('main.fluxo_viagem', start_date=selected_start_date, end_date=selected_end_date, placa=row.placa, historico=1) }}">
+                <strong class="fluxo-placa">{{ row.placa }}</strong>
+            </a>
+            {% else %}
+            <strong class="fluxo-placa">{{ row.placa }}</strong>
+            <span class="fluxo-dia-badge">{{ row.data_dia }}</span>
+            {% endif %}
+            <span class="fluxo-motorista">{{ row.motorista }}</span>
+            <span class="fluxo-descarga-badge {% if row.tem_documento_descarga %}fluxo-descarga-badge--ok{% else %}fluxo-descarga-badge--warn{% endif %}">
+                {{ row.linha_descarga }}
+            </span>
+            {% if modo == 'lista' %}
+            <span class="fluxo-emissao">Última movimentação: {{ row.emissao }}</span>
+            {% else %}
+            <span class="fluxo-emissao">{{ row.emissao }}</span>
+            {% endif %}
+            {% if row.lista_ctes and row.qtd_ctes > 1 %}
+            <span class="fluxo-viagem-meta">Ordens: <strong>{{ row.labels.ordem or '—' }}</strong> · CT-es: <strong>{{ row.labels.cte }}</strong></span>
+            {% endif %}
+            {% if modo == 'historico' and row.lista_numeros %}
+            <span class="fluxo-relatorios">
+                {% for num in row.lista_numeros %}
+                <a class="fluxo-link-relatorio" href="#" data-numero="{{ num }}">Rel. {{ loop.index }} ↗</a>
+                {% endfor %}
+            </span>
+            {% elif row.numero and modo == 'historico' %}
+            <a class="fluxo-link-relatorio" href="#" data-numero="{{ row.numero }}">Relatório da viagem ↗</a>
+            {% endif %}
+        </header>
+        {{ flux_truck_track(row) }}
+    </article>
+    {% else %}
+    <div class="fluxo-empty">
+        {% if modo == 'historico' %}
+        Nenhuma movimentação para esta placa no período.
+        {% else %}
+        Nenhum veículo encontrado. Ajuste as datas ou atualize os dados do SATI.
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if rows %}
+    <p class="fluxo-footnote">
+        {% if modo == 'historico' %}
+        {{ rows | length }} viagem(ns) para {{ placa_historico }}.
+        {% else %}
+        {{ rows | length }} veículo(s) na frota.
+        {% endif %}
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/fluxoViagem.js', v=cache_buster) }}"></script>
+{% endblock %}

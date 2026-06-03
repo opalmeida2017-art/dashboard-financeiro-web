@@ -1,19 +1,19 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, Response, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_login import login_required, current_user
+from flask_login import current_user
+from extensions import login_required
 from werkzeug.utils import secure_filename
 import os
 import getpass
 import redis
 from rq import Queue
 import logic
-import coletor_principal
-import config
+import data_manager as dm
 import database as db
 import uuid
 from limpar_dados import limpar_dados_importados
-from datetime import datetime
-from .helpers import get_target_apartment_id, is_admin_in_context, super_admin_required, parse_filters
+from datetime import datetime, timedelta
+from .helpers import get_target_apartment_id, is_admin_in_context, parse_filters, normalize_placa_filter
 from extensions import bcrypt
 from db_connection import engine
 import time
@@ -52,13 +52,10 @@ redis_conn = redis.Redis.from_url(REDIS_URL) if REDIS_URL else None
 @main_bp.route('/')
 @login_required
 def index():
-    if current_user.email == 'op.almeida@hotmail.com' and not session.get('force_customer_view'):
-        return redirect(url_for('main.admin_dashboard'))
-    
     apartamento_id_alvo = get_target_apartment_id()
     if apartamento_id_alvo is None:
-        flash("Não foi possível identificar a empresa. Por favor, faça login novamente.", "error")
-        return redirect(url_for('auth.logout'))
+        flash("Não foi possível identificar a transportadora desta instalação.", "error")
+        return redirect(url_for('main.index'))
 
     logo_filename = logic.get_apartment_logo(apartamento_id_alvo)
     logo_url = None
@@ -67,10 +64,19 @@ def index():
         logo_url = url_for('static', filename=f'uploads/{logo_filename}')
 
     filters = parse_filters(request.args)
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters['start_date_obj'], filters['end_date_obj']
+    )
+    if not filters['start_date_str']:
+        filters['start_date_str'] = start_eff.strftime('%Y-%m-%d')
+        filters['end_date_str'] = end_eff.strftime('%Y-%m-%d')
+        filters['start_date_obj'] = start_eff
+        filters['end_date_obj'] = end_eff
     summary_data = logic.get_dashboard_summary(
         apartamento_id=apartamento_id_alvo,
-        start_date=filters['start_date_obj'],
-        end_date=filters['end_date_obj'],
+        start_date=start_eff,
+        end_date=end_eff,
         placa_filter=filters['placa'],
         filial_filter=filters['filial'],
         tipo_negocio_filter=filters['tipo_negocio']
@@ -113,47 +119,97 @@ def despesas_detalhes():
                            selected_end_date=filters['end_date_str'],
                            selected_placa=filters['placa'],
                            selected_filial=filters['filial'])
-@main_bp.route('/upload', methods=['POST'])
-@login_required
-def upload_file():
-    apartamento_id_alvo = get_target_apartment_id()
-    if not apartamento_id_alvo:
-        flash("Sessão inválida. Por favor, faça login novamente.", "error")
-        return redirect(url_for('auth.login'))
-        
-    uploaded_files = request.files.getlist('files[]')
-    if not uploaded_files or uploaded_files[0].filename == '':
-        flash('Erro: Nenhum ficheiro selecionado.', 'error')
-        return redirect(url_for('main.index'))
 
-    for file in uploaded_files:
-        if file and file.filename:
-            filename = file.filename
-            file_key = {info['path']: key for key, info in config.EXCEL_FILES_CONFIG.items()}.get(filename)
-            if file_key:
-                try:
-                    table_info = config.EXCEL_FILES_CONFIG[file_key]
-                    sheet_name = table_info.get('sheet_name')
-                    table_name = table_info['table']
-                    if table_name == 'relFilDespesasGerais':
-                        extra_cols = db.process_and_import_despesas(excel_source=file, sheet_name=sheet_name, table_name=table_name, apartamento_id=apartamento_id_alvo)
-                    else:
-                        key_columns = config.TABLE_PRIMARY_KEYS.get(table_name)
-                        if not key_columns:
-                            flash(f"ERRO: Chaves primárias não definidas para a tabela '{table_name}'.", 'error')
-                            continue
-                        extra_cols = db.import_excel_to_db(excel_source=file, sheet_name=sheet_name, table_name=table_name, key_columns=key_columns, apartamento_id=apartamento_id_alvo)
-                    
-                    flash(f'Sucesso: Planilha "{filename}" importada.', 'success')
-                    if extra_cols:
-                        flash(f'Aviso para "{filename}": As seguintes colunas não existem na base de dados e foram ignoradas: {", ".join(extra_cols)}', 'warning')
-                except Exception as e:
-                    flash(f'Erro ao processar "{filename}": {e}', 'error')
-            else:
-                flash(f'Erro: Nome de ficheiro "{filename}" não reconhecido.', 'error')
-    
-    logic.sync_expense_groups(apartamento_id_alvo)
-    return redirect(url_for('main.index'))
+
+def _resolver_intervalo_fluxo_viagem(apartamento_id, start_date, end_date):
+    """Fluxo operacional: padrão 30 dias (evita ano inteiro no SATI)."""
+    if start_date and end_date:
+        return dm.resolver_intervalo_consulta(apartamento_id, start_date, end_date)
+    fim = datetime.now().replace(hour=23, minute=59, second=59)
+    inicio = (fim - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return inicio, fim
+
+
+@main_bp.route('/fluxo_viagem')
+@login_required
+def fluxo_viagem():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        flash("Não foi possível identificar a empresa.", "error")
+        return redirect(url_for('auth.logout'))
+
+    filters = parse_filters(request.args)
+    start_eff, end_eff = _resolver_intervalo_fluxo_viagem(
+        apartamento_id_alvo, filters['start_date_obj'], filters['end_date_obj']
+    )
+    if not filters['start_date_str']:
+        filters['start_date_str'] = start_eff.strftime('%Y-%m-%d')
+        filters['end_date_str'] = end_eff.strftime('%Y-%m-%d')
+
+    historico_placa = request.args.get('historico') == '1'
+    placa_arg = normalize_placa_filter(request.args.get('placa') or filters.get('placa'))
+    qs_base = request.query_string.decode('utf-8')
+
+    if historico_placa and placa_arg and placa_arg != 'Todos':
+        rows = logic.get_fluxo_viagem_historico(
+            apartamento_id=apartamento_id_alvo,
+            start_date=start_eff,
+            end_date=end_eff,
+            placa=placa_arg,
+            filial_filter=filters['filial'],
+        )
+        modo = 'historico'
+        placa_historico = placa_arg
+    else:
+        rows = logic.get_fluxo_veiculos_resumo(
+            apartamento_id=apartamento_id_alvo,
+            start_date=start_eff,
+            end_date=end_eff,
+            filial_filter=filters['filial'],
+        )
+        modo = 'lista'
+        placa_historico = None
+
+    if modo == 'lista' and rows:
+        placas = [
+            {"placa": r.get("placa"), "tipo": ""}
+            for r in sorted(rows, key=lambda x: x.get("placa") or "")
+            if r.get("placa") and not r.get("sem_viagem_periodo")
+        ]
+        visto = set()
+        placas_unicas = []
+        for p in placas:
+            pl = p["placa"]
+            if pl not in visto:
+                visto.add(pl)
+                placas_unicas.append(p)
+        placas = placas_unicas
+    else:
+        # Histórico: placas do resumo (cache SATI) — evita relFilViagensCliente + despesas.
+        resumo_placas = logic.get_fluxo_veiculos_resumo(
+            apartamento_id=apartamento_id_alvo,
+            start_date=start_eff,
+            end_date=end_eff,
+            filial_filter=filters['filial'],
+        )
+        placas = [
+            {"placa": r.get("placa"), "tipo": ""}
+            for r in sorted(resumo_placas, key=lambda x: x.get("placa") or "")
+            if r.get("placa")
+        ]
+
+    return render_template(
+        'fluxo_viagem.html',
+        rows=rows,
+        placas=placas,
+        modo=modo,
+        placa_historico=placa_historico,
+        qs_base=qs_base,
+        selected_placa=placa_arg,
+        selected_start_date=filters['start_date_str'],
+        selected_end_date=filters['end_date_str'],
+    )
+
 
 @main_bp.route('/gerenciar-grupos-dados')
 @login_required
@@ -184,32 +240,175 @@ def gerenciar_grupos_salvar():
     flash('Classificação de grupos salva com sucesso!', 'success')
     return redirect(url_for('main.index'))
 
+def _iniciar_atualizacao_banco_sati(apartamento_id_alvo: int, *, allow_setup: bool = False):
+    """Valida e dispara atualização do banco SATI (SQL). Retorna (ok, payload_json, http_code)."""
+    logs_url = url_for('main.configuracao', auto_logs=1)
+
+    if not allow_setup and not is_admin_in_context():
+        return False, {
+            'status': 'erro',
+            'mensagem': 'Apenas administradores podem atualizar o banco SATI.',
+        }, 403
+
+    if not os.getenv('SATI_DATABASE_URL', '').strip():
+        return False, {
+            'status': 'erro',
+            'mensagem': 'SATI_DATABASE_URL não configurada no servidor (.env).',
+        }, 400
+
+    configs_robo = logic.ler_configuracoes_robo(apartamento_id_alvo)
+    if not dm.robo_credenciais_configuradas(configs_robo):
+        return False, {
+            'status': 'erro',
+            'mensagem': (
+                'Preencha e salve URL, usuário e senha na aba Conexão SAT desta tela '
+                '(Configurações do Robô).'
+            ),
+            'redirect': logs_url,
+        }, 400
+
+    execution_mode = os.getenv('EXECUTION_MODE', 'async')
+    if execution_mode == 'sync':
+        ok = logic.executar_atualizacao_bd_sati(apartamento_id_alvo)
+        dm.clear_data_cache(apartamento_id_alvo)
+        if ok:
+            flash('Banco SATI atualizado com sucesso!', 'success')
+            return True, {
+                'status': 'sucesso',
+                'mensagem': 'Banco SATI atualizado! Os dados do painel vêm do PostgreSQL.',
+                'redirect': logs_url,
+            }, 200
+        return False, {
+            'status': 'erro',
+            'mensagem': 'Falha na atualização. Veja os logs abaixo.',
+            'redirect': logs_url,
+        }, 200
+
+    if not redis_conn:
+        return False, {
+            'status': 'erro',
+            'mensagem': 'Serviço de fila (Redis) não está disponível. Use EXECUTION_MODE=sync no .env.',
+        }, 500
+
+    q = Queue(connection=redis_conn)
+    q.enqueue(logic.executar_atualizacao_bd_sati, apartamento_id_alvo, job_timeout=7200)
+    flash('Atualização do banco SATI iniciada.', 'success')
+    return True, {
+        'status': 'sucesso',
+        'mensagem': 'Atualização iniciada. Acompanhe o progresso nos logs.',
+        'redirect': logs_url,
+    }, 200
+
+
 @main_bp.route('/iniciar-coleta', methods=['POST'])
 @login_required
 def iniciar_coleta_endpoint():
+    """Atualiza o banco SATI via SAT (não exporta mais planilhas)."""
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
-        return jsonify({'status': 'erro', 'mensagem': 'Contexto do apartamento não encontrado.'}), 400
-
-    execution_mode = os.getenv("EXECUTION_MODE", "async")
-    
+        return jsonify({'status': 'erro', 'mensagem': 'Transportadora não identificada.'}), 400
     try:
-        if execution_mode == "sync":
-            coletor_principal.executar_todas_as_coletas(apartamento_id_alvo)
-            flash('Coleta de dados finalizada com sucesso!', 'success')
-            return jsonify({'status': 'sucesso', 'mensagem': 'Coleta finalizada!'})
-        else:
-            if not redis_conn:
-                return jsonify({'status': 'erro', 'mensagem': 'Serviço de fila (Redis) não está disponível.'}), 500
-            
-            q = Queue(connection=redis_conn)
-            q.enqueue(coletor_principal.executar_todas_as_coletas, apartamento_id_alvo, job_timeout=1800)
-            flash('A coleta de dados foi iniciada em segundo plano.', 'success')
-            return jsonify({'status': 'sucesso', 'mensagem': 'A coleta de dados foi iniciada em segundo plano.'})
-
+        ok, payload, code = _iniciar_atualizacao_banco_sati(apartamento_id_alvo)
+        return jsonify(payload), code
     except Exception as e:
-        flash(f'Ocorreu um erro ao iniciar a tarefa: {e}', 'error')
-        return jsonify({'status': 'erro', 'mensagem': f'Ocorreu um erro ao iniciar a tarefa: {e}'}), 500
+        flash(f'Erro ao iniciar atualização: {e}', 'error')
+        return jsonify({'status': 'erro', 'mensagem': str(e)}), 500
+
+
+@main_bp.route('/iniciar-atualizacao-bd', methods=['POST'])
+@login_required
+def iniciar_atualizacao_bd_endpoint():
+    """Alias do endpoint de atualização do banco (compatibilidade)."""
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({'status': 'erro', 'mensagem': 'Transportadora não identificada.'}), 400
+    try:
+        ok, payload, code = _iniciar_atualizacao_banco_sati(apartamento_id_alvo)
+        return jsonify(payload), code
+    except Exception as e:
+        return jsonify({'status': 'erro', 'mensagem': str(e)}), 500
+
+
+@main_bp.route('/instalacao', methods=['GET', 'POST'])
+def instalacao():
+    """Assistente inicial do BIWEB Desktop (link, usuário, senha SAT)."""
+    from biweb_env import save_robo_credentials, setup_completed
+    from tenant import ensure_transportadora
+
+    apartamento_id_alvo = ensure_transportadora()
+
+    if request.method == 'GET' and setup_completed():
+        return redirect(url_for('main.index'))
+
+    if request.method == 'POST':
+        nome = request.form.get('nome_transportadora', '').strip() or 'Minha Transportadora'
+        url_sat = request.form.get('URL_LOGIN', '').strip()
+        usuario = request.form.get('USUARIO_ROBO', '').strip()
+        senha = request.form.get('SENHA_ROBO', '').strip()
+        email_admin = request.form.get('email_admin', '').strip()
+        senha_admin = request.form.get('senha_admin', '').strip()
+
+        if not all([url_sat, usuario, senha]):
+            flash('Preencha URL, usuário e senha do SAT.', 'error')
+            return redirect(url_for('main.instalacao'))
+
+        logic.update_apartment_details(apartamento_id_alvo, nome, 'ativo', '', '')
+        logic.salvar_configuracoes_robo(
+            apartamento_id_alvo,
+            {
+                'URL_LOGIN': url_sat,
+                'USUARIO_ROBO': usuario,
+                'SENHA_ROBO': senha,
+                'USE_SATI_SOURCE': 'true',
+            },
+        )
+        save_robo_credentials(url_sat, usuario, senha)
+
+        if email_admin and senha_admin:
+            from sqlalchemy import text
+            from db_connection import engine
+
+            with engine.connect() as conn:
+                existe = conn.execute(
+                    text('SELECT id FROM usuarios WHERE email = :e'),
+                    {'e': email_admin},
+                ).first()
+            if not existe:
+                ph = bcrypt.generate_password_hash(senha_admin).decode('utf-8')
+                logic.add_user_to_apartment(
+                    apartamento_id_alvo, 'Administrador', email_admin, ph, 'admin'
+                )
+
+        if request.form.get('atualizar_agora'):
+            flash('Atualização do banco SATI iniciada. Aguarde nos logs…', 'info')
+            ok, payload, _code = _iniciar_atualizacao_banco_sati(
+                apartamento_id_alvo, allow_setup=True
+            )
+            if ok and payload.get('redirect'):
+                return redirect(payload['redirect'])
+            if not ok:
+                flash(payload.get('mensagem', 'Falha ao iniciar atualização.'), 'error')
+                return redirect(url_for('main.configuracao', auto_logs=1))
+
+        flash('Instalação concluída! O painel está pronto.', 'success')
+        return redirect(url_for('main.index'))
+
+    configs = logic.ler_configuracoes_robo(apartamento_id_alvo) or {}
+    transportadora = logic.get_apartment_details(apartamento_id_alvo) or {}
+    return render_template(
+        'instalacao.html',
+        configs=configs,
+        transportadora=transportadora,
+        transportadora_nome=transportadora.get('nome_empresa', ''),
+    )
+
+
+@main_bp.route('/instalacao/atualizar', methods=['POST'])
+def instalacao_atualizar():
+    apartamento_id_alvo = get_target_apartment_id()
+    ok, payload, code = _iniciar_atualizacao_banco_sati(apartamento_id_alvo)
+    return jsonify(payload), code
+
 
 @main_bp.route('/configuracao', methods=['GET', 'POST'])
 @login_required
@@ -220,65 +419,43 @@ def configuracao():
     
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
-        flash("Sessão inválida ou apartamento não encontrado.", "error")
+        flash("Sessão inválida.", "error")
         return redirect(url_for('auth.logout'))
 
     if request.method == 'POST':
-        start_date_str = request.form.get('DATA_INICIAL_ROBO')
-        end_date_str = request.form.get('DATA_FINAL_ROBO')
-
-        if start_date_str and end_date_str:
-            try:
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
-
-                if end_date < start_date:
-                    flash('Erro: A data final não pode ser anterior à data inicial.', 'error')
-                    return redirect(url_for('main.configuracao'))
-                
-                if (end_date - start_date).days > 60:
-                    flash('Erro: O intervalo entre a data inicial e a final não pode ser maior que 60 dias.', 'error')
-                    return redirect(url_for('main.configuracao'))
-
-            except ValueError:
-                flash('Formato de data inválido.', 'error')
-                return redirect(url_for('main.configuracao'))
-
+        nome_transportadora = request.form.get('nome_transportadora', '').strip()
+        if nome_transportadora:
+            logic.update_apartment_details(
+                apartamento_id_alvo, nome_transportadora, 'ativo', '', ''
+            )
         configs_to_save = {
             'URL_LOGIN': request.form.get('URL_LOGIN'),
             'USUARIO_ROBO': request.form.get('USUARIO_ROBO'),
             'SENHA_ROBO': request.form.get('SENHA_ROBO'),
-            'CODIGO_VIAGENS_CLIENTE': request.form.get('CODIGO_VIAGENS_CLIENTE'),
-            'CODIGO_VIAGENS_FAT_CLIENTE': request.form.get('CODIGO_VIAGENS_FAT_CLIENTE'),
-            'CODIGO_CONTAS_PAGAR': request.form.get('CODIGO_CONTAS_PAGAR'),
-            'CODIGO_CONTAS_RECEBER': request.form.get('CODIGO_CONTAS_RECEBER'),
-            'CODIGO_DESPESAS': request.form.get('CODIGO_DESPESAS'),
-            'CODIGO_ACERTO_MOTORISTA': request.form.get('CODIGO_ACERTO_MOTORISTA'),  
-            'DATA_INICIAL_ROBO': datetime.strptime(start_date_str, '%Y-%m-%d').strftime('%d/%m/%Y') if start_date_str else '',
-            'DATA_FINAL_ROBO': datetime.strptime(end_date_str, '%Y-%m-%d').strftime('%d/%m/%Y') if end_date_str else '',
-            'live_monitoring_enabled': 'live_monitoring_enabled' in request.form
+            'USE_SATI_SOURCE': 'true',
+            'live_monitoring_enabled': 'live_monitoring_enabled' in request.form,
         }
         logic.salvar_configuracoes_robo(apartamento_id_alvo, configs_to_save)
         flash('Configurações salvas com sucesso!', 'success')
         return redirect(url_for('main.configuracao'))
     
     configs_salvas = logic.ler_configuracoes_robo(apartamento_id_alvo)
-    try:
-        if configs_salvas.get('DATA_INICIAL_ROBO'):
-            configs_salvas['DATA_INICIAL_ROBO_YMD'] = datetime.strptime(configs_salvas['DATA_INICIAL_ROBO'], '%d/%m/%Y').strftime('%Y-%m-%d')
-        if configs_salvas.get('DATA_FINAL_ROBO'):
-            configs_salvas['DATA_FINAL_ROBO_YMD'] = datetime.strptime(configs_salvas['DATA_FINAL_ROBO'], '%d/%m/%Y').strftime('%Y-%m-%d')
-    except (ValueError, TypeError):
-        pass
-    return render_template('configuracao.html', configs=configs_salvas)
+    transportadora = logic.get_apartment_details(apartamento_id_alvo) or {}
+    auto_logs = request.args.get('auto_logs') in ('1', 'true', 'yes')
+    return render_template(
+        'configuracao.html',
+        configs=configs_salvas,
+        transportadora=transportadora,
+        auto_logs=auto_logs,
+    )
 
 @main_bp.route('/gerenciar_usuarios')
 @login_required
 def gerenciar_usuarios():
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
-        flash('Acesso negado. Selecione um apartamento para gerir.', 'error')
-        return redirect(url_for('main.select_apartment')) 
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('main.index')) 
 
     users = logic.get_users_for_apartment(apartamento_id_alvo)
     
@@ -372,101 +549,10 @@ def apagar_usuario(user_id):
         flash(message, 'error')
     return redirect(url_for('main.gerenciar_usuarios'))
 
-@main_bp.route('/super-admin', methods=['GET', 'POST'])
-@login_required
-@super_admin_required
-def admin_dashboard():
-    if request.method == 'POST':
-        for key, value in request.form.items():
-            if key.startswith('interval_'):
-                try:
-                    apartamento_id = int(key.split('_')[1])
-                    config_para_salvar = {'live_monitoring_interval_minutes': value}
-                    logic.salvar_configuracoes_robo(apartamento_id, config_para_salvar)
-                except (ValueError, IndexError):
-                    flash(f'Erro ao processar o intervalo para o campo {key}.', 'error')
-        
-        flash('Intervalos atualizados com sucesso!', 'success')
-        return redirect(url_for('main.admin_dashboard'))
-
-    session.pop('force_customer_view', None)
-    session.pop('viewing_apartment_id', None)
-    apartamentos = logic.get_apartments_with_usage_stats()
-    for apt in apartamentos:
-        if apt.get('slug'):
-            apt['access_link'] = url_for('auth.login_por_slug', slug=apt['slug'], _external=True)
-        else:
-            apt['access_link'] = "Sem slug definido"
-    
-    return render_template('super_admin/dashboard.html', apartamentos=apartamentos)
-
-@main_bp.route('/super-admin/limpar-dados/<int:apartamento_id>', methods=['POST'])
-@login_required
-@super_admin_required
-def limpar_dados_apartamento(apartamento_id):
-    try:
-        limpar_dados_importados(apartamento_id)
-        flash(f'Dados do apartamento {apartamento_id} limpos com sucesso.', 'success')
-        return jsonify({'status': 'success', 'message': 'Dados limpos.'})
-    except Exception as e:
-        flash(f'Erro ao limpar dados do apartamento {apartamento_id}: {e}', 'error')
-        return jsonify({'status': 'error', 'message': 'Erro ao limpar dados.'}), 500
-
-@main_bp.route('/super-admin/criar', methods=['GET', 'POST'])
-@login_required
-@super_admin_required
-def criar_apartamento():
-    if request.method == 'POST':
-        nome_empresa = request.form.get('nome_empresa')
-        admin_nome = request.form.get('admin_nome')
-        admin_email = request.form.get('admin_email')
-        admin_password = request.form.get('admin_password')
-
-        if not all([nome_empresa, admin_nome, admin_email, admin_password]):
-            flash("Todos os campos são obrigatórios.", "error")
-            return render_template('super_admin/criar_apartamento.html')
-
-        password_hash = bcrypt.generate_password_hash(admin_password).decode('utf-8')
-        success, message = logic.create_apartment_and_admin(nome_empresa, admin_nome, admin_email, password_hash)
-
-        if success:
-            flash(message, 'success')
-            return redirect(url_for('main.admin_dashboard'))
-        else:
-            flash(message, 'error')
-            return render_template('super_admin/criar_apartamento.html')
-    return render_template('super_admin/criar_apartamento.html')
-
-@main_bp.route('/super-admin/gerir/<int:apartamento_id>', methods=['GET', 'POST'])
-@login_required
-@super_admin_required
-def gerir_apartamento(apartamento_id):
-    if request.method == 'POST':
-        nome_empresa = request.form.get('nome_empresa')
-        status = request.form.get('status')
-        data_vencimento = request.form.get('data_vencimento')
-        notas = request.form.get('notas_admin')
-
-        success, message = logic.update_apartment_details(apartamento_id, nome_empresa, status, data_vencimento, notas)
-        
-        if success:
-            flash(message, 'success')
-        else:
-            flash(message, 'error')
-        
-        return redirect(url_for('main.admin_dashboard'))
-
-    apartamento = logic.get_apartment_details(apartamento_id)
-    if not apartamento:
-        flash("Apartamento não encontrado.", "error")
-        return redirect(url_for('main.admin_dashboard'))
-    
-    return render_template('super_admin/gerir_apartamento.html', apartamento=apartamento)
-
 @main_bp.cli.command("criar-admin")
 def criar_admin_command():
-    print("--- Assistente de Criação do Primeiro Apartamento e Admin ---")
-    nome_empresa = input("Nome da Empresa (Apartamento): ")
+    print("--- Assistente: primeira transportadora e administrador ---")
+    nome_empresa = input("Nome da transportadora: ")
     admin_nome = input("Seu nome completo: ")
     admin_email = input("Seu email (será seu login): ")
     admin_password = getpass.getpass("Digite uma senha para você: ")
@@ -562,7 +648,7 @@ def upload_logo():
 
     apartamento_id_alvo = get_target_apartment_id()
     if not apartamento_id_alvo:
-        flash("Apartamento não selecionado para upload de logo.", "danger")
+        flash("Transportadora não identificada para upload de logo.", "danger")
         return redirect(url_for('main.index'))
 
     if 'file' not in request.files:

@@ -1,132 +1,138 @@
 {% extends "layout.html" %}
 
+
+
+{% block title %}Faturamento detalhado — BIWEB{% endblock %}
+
+
+
 {% block content %}
-<style>
-    /* Estilos específicos desta página podem ficar aqui ou movidos para style.css */
-    .page-container {
-        padding-top: 0;
-    }
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-    .dashboard-layout {
-        display: grid;
-        grid-template-columns: 1fr;
-        grid-template-rows: 55vh 1fr;
-        gap: 20px;
-        height: calc(100vh - 150px); /* Ajustado para caber no layout */
-    }
-    #featured-chart-container {
-        background-color: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        display: flex;
-        flex-direction: column;
-    }
-    #featured-chart-title {
-        text-align: center;
-        margin-bottom: 15px;
-        flex-shrink: 0;
-    }
-    #thumbnail-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 20px;
-    }
-    .thumbnail-item {
-        background-color: white;
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        cursor: pointer;
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        height: 250px;
-        display: flex;
-        flex-direction: column;
-    }
-    .thumbnail-item:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-    }
-    .thumbnail-item h5 {
-        text-align: center;
-        font-size: 0.85rem;
-        flex-shrink: 0;
-        margin: 0;
-        padding-bottom: 10px;
-        height: 35px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .chart-canvas-wrapper {
-        position: relative;
-        flex-grow: 1; 
-    }
-    .chart-canvas-wrapper canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100% !important;
-        height: 100% !important;
-    }
-</style>
 
-<div class="page-container">
-    <div class="page-header">
-        <h1>Análise Detalhada de Faturamento</h1>
-        <a href="{{ url_for('main.index') }}?{{ request.query_string.decode('utf-8') }}" class="manage-link" ...>&larr; Voltar ao Dashboard</a>
-    </div>
+<div class="dash-detail-page">
 
-    <div class="dashboard-layout">
-        <div id="featured-chart-container">
-            <h3 id="featured-chart-title"></h3>
-            <div class="chart-canvas-wrapper">
+    <header class="dash-detail-header">
+
+        <h1>Análise de faturamento</h1>
+
+        <a href="{{ url_for('main.index') }}?{{ request.query_string.decode('utf-8') }}" class="dash-back-link">&larr; Voltar ao painel</a>
+
+    </header>
+
+
+
+    <div class="charts-studio dashboard-layout">
+
+        <section class="charts-hero" id="featured-chart-container">
+
+            <div class="charts-hero-toolbar">
+
+                <div class="charts-hero-head">
+
+                    <span class="charts-badge receita">Receita</span>
+
+                    <h2 id="featured-chart-title">Carregando gráfico…</h2>
+
+                    <p class="charts-hero-sub">Selecione um indicador abaixo para ampliar a visualização.</p>
+
+                </div>
+
+            </div>
+
+            <div class="charts-hero-canvas chart-canvas-wrapper featured">
+
                 <canvas id="featuredChart"></canvas>
+
             </div>
-        </div>
-        <div id="thumbnail-grid">
-            <div class="thumbnail-item" data-chart-id="evolucao">
-                <h5>Evolução Faturamento vs. Custo</h5>
-                <div class="chart-canvas-wrapper"><canvas id="evolucaoChart"></canvas></div>
+
+        </section>
+
+
+
+        <section class="charts-gallery">
+
+            <h3 class="charts-gallery-title">Indicadores de receita</h3>
+
+            <div id="thumbnail-grid" class="charts-grid">
+
+                <button type="button" class="chart-card" data-chart-id="evolucao">
+
+                    <span class="chart-card-label">Evolução faturamento vs. custo</span>
+
+                    <div class="chart-card-preview"><canvas id="evolucaoChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="topClientes">
+
+                    <span class="chart-card-label">Clientes</span>
+
+                    <div class="chart-card-preview"><canvas id="topClientesChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="fatFilial">
+
+                    <span class="chart-card-label">Faturamento por filial</span>
+
+                    <div class="chart-card-preview"><canvas id="fatFilialChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="Rotas">
+
+                    <span class="chart-card-label">Rotas mais frequentes</span>
+
+                    <div class="chart-card-preview"><canvas id="topRotasChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="fatMercadoria">
+
+                    <span class="chart-card-label">Por mercadoria</span>
+
+                    <div class="chart-card-preview"><canvas id="mercadoriaChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="viagensVeiculo">
+
+                    <span class="chart-card-label">Viagens por veículo</span>
+
+                    <div class="chart-card-preview"><canvas id="viagensVeiculoChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="fatMotorista">
+
+                    <span class="chart-card-label">Motoristas</span>
+
+                    <div class="chart-card-preview"><canvas id="fatMotoristaChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="volumeRota">
+
+                    <span class="chart-card-label">Volume por rota (kg)</span>
+
+                    <div class="chart-card-preview"><canvas id="volumeRotaChart"></canvas></div>
+
+                </button>
+
             </div>
-            <div class="thumbnail-item" data-chart-id="topClientes">
-                <h5>Clientes</h5>
-                <div class="chart-canvas-wrapper"><canvas id="topClientesChart"></canvas></div>
-            </div>
-            <div class="thumbnail-item" data-chart-id="fatFilial">
-                <h5>Faturamento por Filial</h5>
-                <div class="chart-canvas-wrapper"><canvas id="fatFilialChart"></canvas></div>
-            </div>
-            <div class="thumbnail-item" data-chart-id="Rotas">
-                <h5>Rotas</h5>
-                <div class="chart-canvas-wrapper"><canvas id="topRotasChart"></canvas></div>
-            </div>
-            <div class="thumbnail-item" data-chart-id="fatMercadoria">
-                <h5>Faturamento por Mercadoria</h5>
-                <div class="chart-canvas-wrapper"><canvas id="mercadoriaChart"></canvas></div>
-            </div>
-            <div class="thumbnail-item" data-chart-id="viagensVeiculo">
-                <h5>Viagens por Veículo</h5>
-                <div class="chart-canvas-wrapper"><canvas id="viagensVeiculoChart"></canvas></div>
-            </div>
-            <div class="thumbnail-item" data-chart-id="fatMotorista">
-                <h5>Motoristas</h5>
-                <div class="chart-canvas-wrapper"><canvas id="fatMotoristaChart"></canvas></div>
-            </div>
-            <div class="thumbnail-item" data-chart-id="volumeRota">
-                <h5>Volume por Rota (kg)</h5>
-                <div class="chart-canvas-wrapper"><canvas id="volumeRotaChart"></canvas></div>
-            </div>
-        </div>
+
+        </section>
+
     </div>
+
 </div>
+
 {% endblock %}
+
+
 
 {% block scripts %}
+
     <script src="{{ url_for('static', filename='js/faturamentoDetalhes.js') }}"></script>
+
 {% endblock %}
+
