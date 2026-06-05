@@ -231,11 +231,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 const BC = window.BIWEBCharts || {};
                 const fmt = BC.fmtMoeda || (v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                 const C = BC.colors || {};
+                const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
                 const labels = data.map(item => item.PeriodoLabel);
-                const faturamentoData = data.map(item => item.Faturamento || 0);
-                const custoData = data.map(item => item.Custo || 0);
-                const despesasGeraisData = data.map(item => item.DespesasGerais || 0);
-                const tipoDData = data.map(item => item.DespesaTipoD || 0);
+                const faturamentoData = data.map(item => num(item.Faturamento));
+                const custoData = data.map(item => num(item.Custo));
+                const despesasGeraisData = data.map(item => num(item.DespesasGerais));
+                const tipoDData = data.map(item => num(item.DespesaTipoD));
                 const bar = (label, values, color, stack) => ({
                     label,
                     data: values,
@@ -259,7 +260,14 @@ document.addEventListener('DOMContentLoaded', function () {
                             maintainAspectRatio: false,
                             plugins: {
                                 legend: { position: 'bottom' },
-                                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } },
+                                tooltip: {
+                                    callbacks: {
+                                        label: ctx => {
+                                            const v = BC.tooltipNumeric ? BC.tooltipNumeric(ctx) : Number(ctx.parsed?.y ?? ctx.raw ?? 0);
+                                            return `${ctx.dataset.label}: ${fmt(v)}`;
+                                        },
+                                    },
+                                },
                             },
                             scales: {
                                 x: { stacked: true },
@@ -470,10 +478,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }));
         
         function formatCurrency(value) {
-            if (value === null || value === undefined || isNaN(value)) {
-                value = 0;
-            }
-            return parseFloat(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const n = Number(value);
+            const safe = Number.isFinite(n) ? n : 0;
+            return safe.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
 
         function createItemsTableHtml(title, itemsArray, totalValue, tableClass, numero) {

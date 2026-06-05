@@ -113,6 +113,126 @@ def executar_atualizacao_bd_sati(apartamento_id: int) -> bool:
     return bool(executar_atualizacao_bd_sati(apartamento_id))
 
 
+def get_comprovante_descarga_payload(apartamento_id: int, numeros: list[int]) -> dict:
+    from comprovante_descarga import itens_para_numeros
+
+    itens = itens_para_numeros(apartamento_id, numeros)
+    return {"itens": itens, "numeros": numeros}
+
+
+def disparar_coleta_comprovantes_fluxo(
+    apartamento_id: int,
+    numeros_internos: list[int] | None = None,
+    *,
+    baixar_pdfs: bool = True,
+) -> dict:
+    """
+    Enfileira (ou executa) o robô Painel de Documentos para CT-es pendentes no fluxo.
+    """
+    import data_manager as dm
+    from comprovante_descarga import (
+        filtrar_numeros_para_coleta_automatica,
+        liberar_coleta_da_fila,
+        registrar_coleta_em_fila,
+    )
+
+    if numeros_internos is None:
+        numeros_internos = []
+    pendentes = filtrar_numeros_para_coleta_automatica(apartamento_id, numeros_internos)
+    if not pendentes:
+        return {
+            "status": "ignorado",
+            "mensagem": "Nenhum CT-e pendente de coleta (já na fila ou já com arquivo).",
+            "numeros": [],
+        }
+
+    configs = ler_configuracoes_robo(apartamento_id)
+    if not dm.robo_credenciais_configuradas(configs):
+        return {
+            "status": "erro",
+            "mensagem": "Credenciais do robô SATI não configuradas.",
+            "numeros": pendentes,
+        }
+
+    registrar_coleta_em_fila(apartamento_id, pendentes)
+
+    import os
+
+    execution_mode = os.getenv("EXECUTION_MODE", "async")
+    redis_url = os.getenv("REDIS_URL", "").strip()
+
+    if execution_mode == "sync" or not redis_url:
+        ok = executar_painel_documentos_sati(
+            apartamento_id,
+            numeros_internos=pendentes,
+            baixar_pdfs=baixar_pdfs,
+        )
+        dm.clear_data_cache(apartamento_id)
+        if not ok:
+            liberar_coleta_da_fila(apartamento_id, pendentes)
+        return {
+            "status": "sucesso" if ok else "erro",
+            "mensagem": "Coleta concluída." if ok else "Falha na coleta. Veja os logs.",
+            "numeros": pendentes,
+            "modo": "sync",
+        }
+
+    try:
+        import redis
+        from rq import Queue
+
+        conn = redis.Redis.from_url(redis_url)
+        q = Queue(connection=conn)
+        q.enqueue(
+            executar_painel_documentos_sati,
+            apartamento_id,
+            numeros_internos=pendentes,
+            baixar_pdfs=baixar_pdfs,
+            job_timeout=3600,
+        )
+        return {
+            "status": "sucesso",
+            "mensagem": f"Robô iniciado para {len(pendentes)} CT-e(s).",
+            "numeros": pendentes,
+            "modo": "async",
+        }
+    except Exception as e:
+        return {
+            "status": "erro",
+            "mensagem": f"Fila indisponível: {e}",
+            "numeros": pendentes,
+        }
+
+
+def resolver_arquivo_comprovante_descarga(apartamento_id: int, numero: int) -> str | None:
+    from comprovante_descarga import resolver_caminho_arquivo
+
+    return resolver_caminho_arquivo(apartamento_id, numero)
+
+
+def executar_painel_documentos_sati(
+    apartamento_id: int,
+    *,
+    data_ini: str | None = None,
+    data_fim: str | None = None,
+    numeros_internos: list[int] | None = None,
+    baixar_pdfs: bool = True,
+) -> bool:
+    """Robô: Painéis → Painel de Documentos (comprovantes de descarga)."""
+    from robos.coletor_painel_documentos import executar_painel_documentos_sati
+
+    print(f">>> [LOGIC] Painel de Documentos SATI apt={apartamento_id}")
+    return bool(
+        executar_painel_documentos_sati(
+            apartamento_id,
+            data_ini=data_ini,
+            data_fim=data_fim,
+            numeros_internos=numeros_internos,
+            baixar_pdfs=baixar_pdfs,
+        )
+    )
+
+
 def salvar_configuracoes_robo(apartamento_id: int, configs: dict):
     print(f">>> [LOGIC] Chamando salvar_configuracoes_robo para o apartamento ID: {apartamento_id}")
     return dm.salvar_configuracoes_robo(apartamento_id, configs)

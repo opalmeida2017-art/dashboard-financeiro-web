@@ -44,8 +44,6 @@ def create_app():
 
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'uma-chave-secreta-muito-dificil-de-adivinhar')
 
-
-
     upload_folder_path = os.path.join(app.root_path, 'static', 'uploads')
 
     os.makedirs(upload_folder_path, exist_ok=True)
@@ -184,9 +182,60 @@ def create_app():
         if not current_user.is_authenticated:
             try_auto_login()
 
+    @app.before_request
+    def biweb_registrar_atividade_sistema():
+        """Marca atividade do usuário para disparar robôs só em ociosidade."""
+        if request.endpoint in ("static",):
+            return
+        try:
+            from fluxo_monitor import registrar_atividade
 
+            tid = get_transportadora_id()
+            if tid:
+                registrar_atividade(int(tid), origem=request.endpoint or "http")
+        except Exception:
+            pass
+
+    _iniciar_monitor_ocioso(app)
 
     return app
+
+
+_idle_scheduler = None
+
+
+def _iniciar_monitor_ocioso(app):
+    """Agendador em background quando roda só o Flask (sem worker RQ)."""
+    global _idle_scheduler
+    if _idle_scheduler is not None:
+        return
+    if os.getenv("BIWEB_IDLE_MONITOR", "true").lower() in ("0", "false", "no", "off"):
+        return
+    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        return
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+    except ImportError:
+        return
+
+    try:
+        intervalo = max(1, int(os.getenv("BIWEB_IDLE_CHECK_MINUTES", "2")))
+    except ValueError:
+        intervalo = 2
+
+    def _tick():
+        with app.app_context():
+            try:
+                from fluxo_monitor import verificar_e_executar_tarefas_ociosas
+
+                verificar_e_executar_tarefas_ociosas()
+            except Exception as exc:
+                print(f"[idle-monitor] {exc}")
+
+    sched = BackgroundScheduler(daemon=True)
+    sched.add_job(_tick, "interval", minutes=intervalo, id="biweb_idle_monitor")
+    sched.start()
+    _idle_scheduler = sched
 
 
 

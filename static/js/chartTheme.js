@@ -36,6 +36,26 @@
         return fmtMoeda(n);
     }
 
+    /** Valor numérico correto no tooltip (evita índice 0/1 em barras horizontais ou stacked). */
+    function tooltipNumeric(ctx) {
+        const type = ctx.chart?.config?.type;
+        const indexAxis = ctx.chart?.options?.indexAxis;
+        let val;
+        if (type === 'doughnut' || type === 'pie') {
+            val = typeof ctx.parsed === 'number' ? ctx.parsed : ctx.raw;
+        } else if (indexAxis === 'y') {
+            val = ctx.parsed?.x ?? ctx.raw;
+        } else {
+            val = ctx.parsed?.y ?? ctx.parsed?.x ?? ctx.raw;
+        }
+        const n = Number(val);
+        if (Number.isFinite(n) && (type === 'doughnut' || type === 'pie' || Math.abs(n) > 1 || n === 0)) {
+            return n;
+        }
+        const fromDs = Number(ctx.dataset?.data?.[ctx.dataIndex]);
+        return Number.isFinite(fromDs) ? fromDs : 0;
+    }
+
     function applyDefaults() {
         if (typeof Chart === 'undefined') return;
         Chart.defaults.font.family = font;
@@ -95,16 +115,16 @@
                 cornerRadius: 8,
                 callbacks: {
                     label(ctx) {
-                        const parsed = ctx.parsed;
-                        const val = typeof parsed === 'number'
-                            ? parsed
-                            : (parsed?.y ?? parsed?.x ?? ctx.raw);
+                        const val = tooltipNumeric(ctx);
                         const name = ctx.dataset.label || ctx.label || '';
                         const prefix = name ? `${name}: ` : '';
                         const isKg = (ctx.dataset.label || '').toLowerCase().includes('kg');
+                        const isCount = (ctx.dataset.label || '').toLowerCase().includes('viagem');
                         const formatted = isKg
                             ? Number(val || 0).toLocaleString('pt-BR') + ' kg'
-                            : fmtMoeda(val);
+                            : isCount
+                                ? Number(val || 0).toLocaleString('pt-BR')
+                                : fmtMoeda(val);
                         return ` ${prefix}${formatted}`;
                     },
                 },
@@ -273,6 +293,7 @@
         palette,
         fmtMoeda,
         fmtCompact,
+        tooltipNumeric,
         doughnutBackgrounds,
         gridScales,
         pluginsBase,

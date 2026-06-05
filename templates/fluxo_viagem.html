@@ -27,6 +27,21 @@
         </div>
         <div class="flux-track-nodes">
             {% for stage in anim.stages %}
+            {% if stage.id == 'documento_descarga' %}
+            <button type="button"
+                class="flux-node flux-node--doc flux-node--{{ stage.state }} flux-node-doc-btn
+                {% if loop.index0 == anim.truck_index and not anim.truck_on_top %}flux-node--active{% endif %}"
+                data-numeros="{{ row.numeros_internos_fluxo|join(',') }}"
+                title="{{ stage.label }} — clique para ver o documento">
+                <span class="flux-node-dot flux-node-dot--icon" aria-hidden="true">{{ stage.icon or '📄' }}</span>
+                <span class="flux-node-label">{{ stage.short }}</span>
+                {% if stage.detail %}
+                <span class="flux-node-detail flux-node-detail--doc">{{ stage.detail }}</span>
+                {% elif stage.state != 'done' %}
+                <span class="flux-node-detail flux-node-detail--doc">Pendente</span>
+                {% endif %}
+            </button>
+            {% else %}
             <div class="flux-node flux-node--{{ stage.state }}
                 {% if anim.pula_nfe and stage.id == 'nfe_emitida' %}flux-node--bypassed{% endif %}
                 {% if loop.index0 == anim.truck_index and not anim.truck_on_top %}flux-node--active{% endif %}
@@ -51,7 +66,11 @@
                 {% elif stage.detail and stage.id == 'ordem_carregamento' and stage.ordem_emitida %}
                 <span class="flux-node-detail flux-node-detail--multi">Nº {{ stage.detail }}</span>
                 {% endif %}
+                {% if stage.get('detail_data_motorista') and stage.id == 'cte_autorizado' %}
+                <span class="flux-node-detail flux-node-detail--sub flux-node-detail--data-mot">{{ stage.detail_data_motorista }}</span>
+                {% endif %}
             </div>
+            {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -115,33 +134,54 @@
         </form>
     </section>
 
+    <div class="fluxo-toolbar">
+        <button type="button" id="btn-coletar-comprovantes-fluxo" class="btn-apply btn-apply--secondary">
+            Buscar comprovantes no SATI
+        </button>
+        <span class="fluxo-toolbar-hint">Painel de Documentos · datas em branco · número interno do CT-e</span>
+    </div>
+
     <div class="fluxo-legend">
         <span><span class="flux-legend-dot flux-legend-dot--done"></span> Concluído</span>
         <span><span class="flux-legend-dot flux-legend-dot--pending"></span> Pendente</span>
         <span><span class="flux-legend-dot flux-legend-dot--alert"></span> Sem ordem</span>
+        <span><span class="flux-truck-icon flux-truck-icon--legend">📄</span> Descarga — clique para ver o arquivo</span>
         <span><span class="flux-truck-icon flux-truck-icon--legend">🚛</span> Esquerda → direita</span>
         <span><span class="flux-truck-icon flux-truck-icon--legend">⬆</span> No topo = MDF-e autorizado/encerrado</span>
     </div>
 
     {% for row in rows %}
-    <article class="fluxo-vehicle-card {% if row.sem_viagem_periodo %}fluxo-row-empty{% endif %}">
+    <article class="fluxo-vehicle-card {% if row.sem_viagem_periodo %}fluxo-row-empty{% endif %}"
+        {% if row.precisa_coletar_comprovante %}data-precisa-coleta="1" data-numeros="{{ row.numeros_coleta_comprovante|join(',') }}"{% endif %}>
         <header class="fluxo-vehicle-card-head">
             {% if modo == 'lista' %}
             <a class="fluxo-placa-link" href="{{ url_for('main.fluxo_viagem', start_date=selected_start_date, end_date=selected_end_date, placa=row.placa, historico=1) }}">
                 <strong class="fluxo-placa">{{ row.placa }}</strong>
             </a>
+            {% if row.data_dia and row.data_dia != '—' %}
+            <span class="fluxo-dia-badge" title="Data viagem motorista do CT-e">{{ row.data_dia }}</span>
+            {% endif %}
             {% else %}
             <strong class="fluxo-placa">{{ row.placa }}</strong>
-            <span class="fluxo-dia-badge">{{ row.data_dia }}</span>
+            <span class="fluxo-dia-badge" title="Data viagem motorista do CT-e">{{ row.data_dia }}</span>
             {% endif %}
             <span class="fluxo-motorista">{{ row.motorista }}</span>
-            <span class="fluxo-descarga-badge {% if row.tem_documento_descarga %}fluxo-descarga-badge--ok{% else %}fluxo-descarga-badge--warn{% endif %}">
+            <span class="fluxo-descarga-badge {% if row.status_comprovante_descarga == 'arquivo_ok' %}fluxo-descarga-badge--ok{% elif row.precisa_coletar_comprovante %}fluxo-descarga-badge--warn{% else %}fluxo-descarga-badge--muted{% endif %}"
+                title="{% if row.status_comprovante_descarga == 'arquivo_ok' %}PDF já baixado{% elif row.status_comprovante_descarga == 'identificado_banco' %}Documento no banco — robô baixa o PDF{% elif row.status_comprovante_descarga == 'identificado_painel' %}Documento listado — robô baixa o PDF{% elif row.status_comprovante_descarga == 'pendente_coleta' %}Sem nome de documento na trilha{% elif row.precisa_coletar_comprovante %}Robô baixa o arquivo no Painel de Documentos{% else %}Aguardando MDF-e{% endif %}">
                 {{ row.linha_descarga }}
             </span>
-            {% if modo == 'lista' %}
-            <span class="fluxo-emissao">Última movimentação: {{ row.emissao }}</span>
-            {% else %}
-            <span class="fluxo-emissao">{{ row.emissao }}</span>
+            {% if row.precisa_coletar_comprovante and row.numeros_coleta_comprovante %}
+            <button type="button" class="fluxo-btn-sati fluxo-btn-sati-inline"
+                data-numeros="{{ row.numeros_coleta_comprovante|join(',') }}"
+                title="Baixar PDF no Painel de Documentos (SATI)">↻ Buscar arquivo</button>
+            {% endif %}
+            {% if row.ultima_movimentacao_fmt %}
+            <span class="fluxo-emissao">Última movimentação: {{ row.ultima_movimentacao_fmt }}</span>
+            {% elif modo == 'lista' %}
+            <span class="fluxo-emissao fluxo-emissao--muted">Última movimentação: —</span>
+            {% endif %}
+            {% if row.data_viagem_motorista_fmt %}
+            <span class="fluxo-emissao fluxo-emissao--motorista">Dt. motorista: {{ row.data_viagem_motorista_fmt }}</span>
             {% endif %}
             {% if row.lista_ctes and row.qtd_ctes > 1 %}
             <span class="fluxo-viagem-meta">Ordens: <strong>{{ row.labels.ordem or '—' }}</strong> · CT-es: <strong>{{ row.labels.cte }}</strong></span>
@@ -178,8 +218,22 @@
     </p>
     {% endif %}
 </div>
+
+<div id="flux-modal-descarga" class="flux-modal" hidden aria-hidden="true">
+    <div class="flux-modal-backdrop" data-flux-modal-close></div>
+    <div class="flux-modal-panel" role="dialog" aria-labelledby="flux-modal-descarga-title">
+        <header class="flux-modal-head">
+            <h2 id="flux-modal-descarga-title">Comprovante de descarga</h2>
+            <button type="button" class="flux-modal-close" data-flux-modal-close aria-label="Fechar">&times;</button>
+        </header>
+        <div id="flux-modal-descarga-body" class="flux-modal-body">
+            <p class="flux-modal-loading">Carregando…</p>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script id="flux-pendentes-coleta" type="application/json">{{ pendentes_coleta_json|safe }}</script>
 <script src="{{ url_for('static', filename='js/fluxoViagem.js', v=cache_buster) }}"></script>
 {% endblock %}

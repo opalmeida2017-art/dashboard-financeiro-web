@@ -1895,11 +1895,216 @@ def _fluxo_tem_documento_descarga(raw: dict) -> bool:
     return _fluxo_int_flag(raw.get("tem_documento")) > 0
 
 
-def _fluxo_linha_descarga(numero_txt: str, tem_doc: bool) -> str:
+def _fluxo_format_nome_documento_trilha(nomearq: str | None) -> str:
+    """Exibe só o nome do arquivo na etapa Documento da trilha."""
+    n = str(nomearq or "").strip().replace("\\", "/")
+    if not n:
+        return ""
+    base = n.split("/")[-1].strip()
+    return (base or n)[:48]
+
+
+def _fluxo_mapa_nomes_documento(
+    comprovantes_cache: list, raw: dict
+) -> dict[int, str]:
+    """Número interno → nomearq (cache do painel ou SATI)."""
+    mapa: dict[int, str] = {}
+    for c in comprovantes_cache or []:
+        n = _fluxo_int_or_none(c.get("numero_conhecimento"))
+        na = (c.get("nomearq") or "").strip()
+        if n is not None and na:
+            mapa[n] = na
+    for item in raw.get("documentos_nome_list") or []:
+        n = _fluxo_int_or_none(item.get("numero"))
+        na = (item.get("nomearq") or "").strip()
+        if n is not None and na:
+            mapa[n] = na
+    ni = _fluxo_int_or_none(raw.get("numero"))
+    na = (raw.get("nomearq_descarga_cte") or "").strip()
+    if ni is not None and na and ni not in mapa:
+        mapa[ni] = na
+    return mapa
+
+
+def _fluxo_nome_documento_descarga(comprovantes_cache: list, raw: dict) -> str:
+    """Primeiro nome de documento disponível para exibir na trilha."""
+    mapa = _fluxo_mapa_nomes_documento(comprovantes_cache, raw)
+    if not mapa:
+        return ""
+    return next(iter(mapa.values()))
+
+
+def _fluxo_numeros_coletar_comprovante(
+    steps: dict,
+    comprovantes_cache: list,
+    raw: dict,
+    numeros_list: list,
+) -> list[int]:
+    """
+    CT-es que o robô deve buscar: MDF-e ok, nome do documento conhecido na trilha,
+    PDF/texto ainda não baixado localmente.
+    """
+    if not steps.get("mdfe_autorizado"):
+        return []
+    try:
+        from comprovante_descarga import comprovante_completo_no_cache
+    except Exception:
+        def comprovante_completo_no_cache(_item):
+            return False
+
+    cache_by_num = {
+        _fluxo_int_or_none(c.get("numero_conhecimento")): c
+        for c in (comprovantes_cache or [])
+        if _fluxo_int_or_none(c.get("numero_conhecimento")) is not None
+    }
+    mapa_nome = _fluxo_mapa_nomes_documento(comprovantes_cache, raw)
+    nums_alvo = numeros_list or list(mapa_nome.keys())
+    resultado: list[int] = []
+    for n in nums_alvo:
+        ni = _fluxo_int_or_none(n)
+        if ni is None:
+            continue
+        if not mapa_nome.get(ni):
+            continue
+        if comprovante_completo_no_cache(cache_by_num.get(ni)):
+            continue
+        resultado.append(ni)
+    return sorted(set(resultado))
+
+
+def _aplicar_cache_comprovantes_painel(apartamento_id: int, raw_rows: list[dict]) -> None:
+    """Marca tem_documento e anexa metadados do Painel de Documentos por CT-e."""
+    try:
+        from comprovante_descarga import mapa_cache_por_numero
+
+        cache_map = mapa_cache_por_numero(apartamento_id)
+    except Exception:
+        return
+    if not cache_map:
+        return
+    for rec in raw_rows:
+        nums = set(rec.get("numeros_list") or [])
+        n = _fluxo_int_or_none(rec.get("numero"))
+        if n is not None:
+            nums.add(n)
+        docs = [cache_map[k] for k in nums if k in cache_map]
+        if docs:
+            rec["tem_documento"] = 1
+            rec["comprovantes_cache"] = docs
+
+
+def _fluxo_linha_status_viagem(
+    numero_txt: str,
+    steps: dict,
+    status_comprovante: str,
+) -> str:
+    """
+    Texto do banner superior — reflete a próxima etapa pendente na trilha.
+    Ordem sem número no SATI não prevalece se CT-e/MDF-e já existem.
+    """
     num = (numero_txt or "").strip() or "—"
-    if tem_doc:
-        return f"{num} · Comprov. descarga"
-    return f"{num} · Sem documento de descarga"
+
+    if not steps.get("ordem_carregamento") and not steps.get("cte_autorizado"):
+        return f"{num} · Aguardando ordem de carregamento"
+
+    if not steps.get("cte_autorizado"):
+        if not steps.get("nfe_emitida"):
+            return f"{num} · Aguardando NFE"
+        return f"{num} · Aguardando CT-e"
+
+    if not steps.get("mdfe_autorizado"):
+        return f"{num} · Aguardando MDF-e"
+
+    doc_pronto = steps.get("documento_descarga") or status_comprovante == "arquivo_ok"
+    if doc_pronto:
+        if steps.get("mdfe_encerrado"):
+            return f"{num} · MDF-e encerrado"
+        return f"{num} · Aguardando encerramento MDF-e"
+
+    rotulos_descarga = {
+        "arquivo_ok": f"{num} · Comprov. descarga (arquivo OK)",
+        "identificado_banco": f"{num} · Comprov. no banco (buscar arquivo)",
+        "identificado_painel": f"{num} · Comprov. listado (buscar arquivo)",
+        "pendente_coleta": f"{num} · Aguardando comprovante de descarga",
+    }
+    if status_comprovante in rotulos_descarga:
+        return rotulos_descarga[status_comprovante]
+
+    if steps.get("mdfe_encerrado"):
+        return f"{num} · MDF-e encerrado"
+
+    return f"{num} · Aguardando comprovante de descarga"
+
+
+def _fluxo_linha_descarga(
+    numero_txt: str,
+    status_comprovante: str,
+) -> str:
+    """Compatibilidade — preferir _fluxo_linha_status_viagem."""
+    num = (numero_txt or "").strip() or "—"
+    rotulos = {
+        "arquivo_ok": f"{num} · Comprov. descarga (arquivo OK)",
+        "identificado_banco": f"{num} · Comprov. no banco (buscar arquivo)",
+        "identificado_painel": f"{num} · Comprov. listado (buscar arquivo)",
+        "pendente_coleta": f"{num} · Aguardando comprovante de descarga",
+        "aguardando_mdfe": f"{num} · Aguardando MDF-e",
+    }
+    return rotulos.get(status_comprovante, f"{num} · Sem documento de descarga")
+
+
+def _fluxo_status_comprovante_descarga(
+    steps: dict, tem_doc: bool, comprovantes_cache: list, nome_documento: str = ""
+) -> str:
+    """
+    arquivo_ok — PDF/texto já no cache local (robô não precisa ir ao SATI).
+    identificado_banco — vínculo no PostgreSQL/SATI com nomearq, sem PDF local.
+    identificado_painel — só nomearq no cache do painel, sem PDF.
+    pendente_coleta — sem nome de documento na trilha (robô não busca).
+    aguardando_mdfe — ainda não na fase de descarga.
+    """
+    if not steps.get("mdfe_autorizado"):
+        return "aguardando_mdfe"
+    try:
+        from comprovante_descarga import comprovante_completo_no_cache
+
+        if any(comprovante_completo_no_cache(c) for c in (comprovantes_cache or [])):
+            return "arquivo_ok"
+    except Exception:
+        pass
+    tem_nome = bool((nome_documento or "").strip()) or any(
+        (c.get("nomearq") or "").strip() for c in (comprovantes_cache or [])
+    )
+    if not tem_nome:
+        return "pendente_coleta"
+    if any((c.get("nomearq") or "").strip() for c in (comprovantes_cache or [])):
+        return "identificado_painel"
+    if tem_doc or (nome_documento or "").strip():
+        return "identificado_banco"
+    return "pendente_coleta"
+
+
+def _fluxo_precisa_coletar_comprovante(
+    steps: dict,
+    comprovantes_cache: list,
+    raw: dict,
+    numeros_list: list,
+) -> bool:
+    """Robô só busca CT-es com nome do documento na trilha e sem PDF/texto local."""
+    return bool(
+        _fluxo_numeros_coletar_comprovante(steps, comprovantes_cache, raw, numeros_list)
+    )
+
+
+def coletar_numeros_pendentes_comprovante(rows: list[dict]) -> list[int]:
+    """Números internos com nome na trilha e sem PDF local (robô Painel de Documentos)."""
+    nums: set[int] = set()
+    for row in rows or []:
+        for n in row.get("numeros_coleta_comprovante") or []:
+            try:
+                nums.add(int(n))
+            except (TypeError, ValueError):
+                pass
+    return sorted(nums)
 
 
 def _fluxo_format_lista_numeros(valores) -> str:
@@ -1911,6 +2116,56 @@ def _fluxo_format_lista_numeros(valores) -> str:
     if not nums:
         return ""
     return ", ".join(str(n) for n in sorted(set(nums)))
+
+
+def _fluxo_format_cte_com_interno(
+    ctes_list: list,
+    numeros_list: list,
+    *,
+    num_cte=None,
+    numero=None,
+    pares: list | None = None,
+) -> str:
+    """
+    CT-e fiscal \\ número interno (conhecimento.numero).
+    Ex.: 23346 \\ 7965
+    """
+    linhas: list[str] = []
+    if pares:
+        for item in pares:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                fiscal, interno = item[0], item[1]
+            elif isinstance(item, dict):
+                fiscal = item.get("num_cte") or item.get("fiscal")
+                interno = item.get("numero") or item.get("interno")
+            else:
+                continue
+            f = _fluxo_int_or_none(fiscal)
+            if f is None:
+                continue
+            i = _fluxo_int_or_none(interno)
+            if i is not None:
+                linhas.append(f"{f} \\ {i}")
+            else:
+                linhas.append(str(f))
+    elif num_cte is not None or numero is not None or (ctes_list and numeros_list and len(ctes_list) == 1 and len(numeros_list) == 1):
+        f = _fluxo_int_or_none(num_cte) or (_fluxo_int_or_none(ctes_list[0]) if ctes_list else None)
+        i = _fluxo_int_or_none(numero) or (_fluxo_int_or_none(numeros_list[0]) if numeros_list else None)
+        if f is not None:
+            if i is not None:
+                linhas.append(f"{f} \\ {i}")
+            else:
+                linhas.append(str(f))
+    elif ctes_list:
+        linhas.append(_fluxo_format_lista_numeros(ctes_list))
+    # deduplica mantendo ordem
+    vistos: set[str] = set()
+    unicos = []
+    for ln in linhas:
+        if ln not in vistos:
+            vistos.add(ln)
+            unicos.append(ln)
+    return ", ".join(unicos)
 
 
 def _fluxo_group_key(raw: dict) -> tuple:
@@ -1935,6 +2190,7 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
     group = sorted(group, key=lambda r: str(r.get("emissao") or ""), reverse=True)
     base = dict(group[0])
     ordens, ctes, numeros, codordens = [], [], [], set()
+    pares_cte: list[tuple[int | None, int | None]] = []
     any_cte_auth = False
     any_cte_chave = False
     any_averb = False
@@ -1953,6 +2209,8 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
         n_doc = _fluxo_int_or_none(r.get("numero"))
         if n_doc is not None:
             numeros.append(n_doc)
+        if nc is not None or n_doc is not None:
+            pares_cte.append((nc, n_doc))
         if _ctestatus_autorizado(str(r.get("ctestatus") or "")) or _fluxo_step_done(r.get("ctechave")):
             any_cte_auth = True
         if _fluxo_step_done(r.get("ctechave")):
@@ -1976,10 +2234,30 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
         if _fluxo_int_flag(r.get("tem_documento")) > 0:
             base["tem_documento"] = 1
 
+    base_num = _fluxo_int_or_none(base.get("numero"))
+    for r in group:
+        if _fluxo_int_or_none(r.get("numero")) != base_num:
+            continue
+        dv = r.get("data_viagem_motorista")
+        if dv is not None and not (isinstance(dv, float) and pd.isna(dv)):
+            base["data_viagem_motorista"] = dv
+        break
+
+    docs_nome_list: list[dict] = []
+    for r in group:
+        ni = _fluxo_int_or_none(r.get("numero"))
+        na = (r.get("nomearq_descarga_cte") or "").strip()
+        if ni is not None and na:
+            docs_nome_list.append({"numero": ni, "nomearq": na})
+    base["documentos_nome_list"] = docs_nome_list
+    if docs_nome_list and not (base.get("nomearq_descarga_cte") or "").strip():
+        base["nomearq_descarga_cte"] = docs_nome_list[0]["nomearq"]
+
     base["ordens_list"] = sorted(set(ordens))
     base["ctes_list"] = sorted(set(ctes))
     base["codordens_list"] = sorted(codordens)
     base["numeros_list"] = numeros
+    base["ctes_pares_list"] = pares_cte
     base["qtd_ctes_manifesto"] = len(base["ctes_list"]) or len(group)
     if any_cte_auth:
         base["ctestatus"] = base.get("ctestatus") or "AUTORIZADO"
@@ -2048,12 +2326,17 @@ def _build_fluxo_row(raw: dict) -> dict:
         except (TypeError, ValueError):
             cod_manif = None
 
+    comprovantes_cache = list(raw.get("comprovantes_cache") or [])
+    tem_doc_banco = _fluxo_tem_documento_descarga(raw)
+    nome_documento = _fluxo_nome_documento_descarga(comprovantes_cache, raw)
+
     steps = {
         "ordem_carregamento": tem_ordem_viagem,
         "nfe_emitida": _fluxo_flag_sim(raw.get("nfe_emitida")),
         "cte_autorizado": cte_autorizado,
         "carga_averbada": _fluxo_step_done(raw.get("protocolo_averbacao")) or bool(protocolo_cte),
         "mdfe_autorizado": _mdfestatus_autorizado(raw.get("mdfestatus")) or _fluxo_step_done(raw.get("mdfeprot")),
+        "documento_descarga": False,
         "mdfe_encerrado": (
             _fluxo_step_done(raw.get("mdfe_prot_encerramento"))
             or _fluxo_step_done(raw.get("mdfe_data_finalizacao"))
@@ -2062,7 +2345,12 @@ def _build_fluxo_row(raw: dict) -> dict:
     steps["ciot_emitido"] = _fluxo_ciot_emitido(raw, steps)
     steps["pedagio_emitido"] = _fluxo_pedagio_emitido(raw, steps)
     pedagio_valor = _fluxo_format_pedagio_label(raw, steps)
-    tem_doc = _fluxo_tem_documento_descarga(raw)
+
+    status_comprovante = _fluxo_status_comprovante_descarga(
+        steps, tem_doc_banco, comprovantes_cache, nome_documento
+    )
+    steps["documento_descarga"] = status_comprovante == "arquivo_ok"
+    tem_doc = status_comprovante == "arquivo_ok" or tem_doc_banco
 
     mdfe_numero = _fluxo_format_mdfe_numero(raw)
 
@@ -2071,7 +2359,65 @@ def _build_fluxo_row(raw: dict) -> dict:
         ordem_txt = ", ".join(str(c) for c in codordens_list)
     elif not ordem_txt and cod_ordem is not None:
         ordem_txt = str(cod_ordem)
-    cte_txt = _fluxo_format_lista_numeros(ctes_list) or (str(num_cte) if num_cte is not None else "")
+    cte_txt = _fluxo_format_cte_com_interno(
+        ctes_list,
+        numeros_list,
+        num_cte=num_cte,
+        numero=n_raw,
+        pares=raw.get("ctes_pares_list"),
+    )
+
+    detalhe_descarga = {
+        "arquivo_ok": "Arquivo OK",
+        "identificado_banco": "No banco · buscar PDF",
+        "identificado_painel": "Listado · buscar PDF",
+        "pendente_coleta": "—",
+        "aguardando_mdfe": "—",
+    }.get(status_comprovante, "—")
+    nome_trilha = _fluxo_format_nome_documento_trilha(nome_documento)
+    if status_comprovante == "arquivo_ok" and comprovantes_cache:
+        for c in comprovantes_cache:
+            nt = _fluxo_format_nome_documento_trilha(c.get("nomearq"))
+            if nt:
+                detalhe_descarga = nt
+                break
+        if detalhe_descarga == "Arquivo OK" and nome_trilha:
+            detalhe_descarga = nome_trilha
+    elif nome_trilha and status_comprovante in (
+        "identificado_banco",
+        "identificado_painel",
+    ):
+        detalhe_descarga = nome_trilha
+
+    emissao = raw.get("emissao")
+    emissao_fmt = pd.NaT
+    if emissao is not None and not (isinstance(emissao, float) and pd.isna(emissao)):
+        emissao_fmt = pd.to_datetime(emissao, errors="coerce")
+        emissao_str = emissao_fmt.strftime("%d/%m/%Y %H:%M") if pd.notna(emissao_fmt) else "—"
+        data_dia = emissao_fmt.strftime("%d/%m/%Y") if pd.notna(emissao_fmt) else "—"
+        data_dia_iso = emissao_fmt.strftime("%Y-%m-%d") if pd.notna(emissao_fmt) else ""
+    else:
+        emissao_str = "—"
+        data_dia = "—"
+        data_dia_iso = ""
+
+    data_viagem_motorista_fmt = ""
+    data_viagem_motorista_trilha = ""
+    dv_fmt = pd.NaT
+    tem_cte = bool(cte_autorizado or ctes_list or num_cte is not None)
+    if tem_cte:
+        dv_raw = raw.get("data_viagem_motorista")
+        if dv_raw is not None and not (isinstance(dv_raw, float) and pd.isna(dv_raw)):
+            dv_fmt = pd.to_datetime(dv_raw, errors="coerce")
+            if pd.notna(dv_fmt):
+                data_viagem_motorista_fmt = dv_fmt.strftime("%d/%m/%Y %H:%M")
+                data_viagem_motorista_trilha = dv_fmt.strftime("%d/%m/%Y")
+                data_dia = dv_fmt.strftime("%d/%m/%Y")
+                data_dia_iso = dv_fmt.strftime("%Y-%m-%d")
+
+    # Preenchido depois por placa: data motorista do CT-e emitido anterior
+    ultima_movimentacao_fmt = ""
+    ultima_movimentacao_ts = pd.NaT
 
     labels = {
         "ordem": ordem_txt,
@@ -2086,19 +2432,9 @@ def _build_fluxo_row(raw: dict) -> dict:
         "mdfe_status": mdfe_numero or str(raw.get("mdfestatus") or "").strip() or "—",
         "mdfe_numero": mdfe_numero,
         "mdfe_enc": str(raw.get("mdfe_prot_encerramento") or "").strip(),
+        "documento_descarga": detalhe_descarga,
+        "data_viagem_motorista": data_viagem_motorista_trilha,
     }
-
-    emissao = raw.get("emissao")
-    emissao_fmt = pd.NaT
-    if emissao is not None and not (isinstance(emissao, float) and pd.isna(emissao)):
-        emissao_fmt = pd.to_datetime(emissao, errors="coerce")
-        emissao_str = emissao_fmt.strftime("%d/%m/%Y %H:%M") if pd.notna(emissao_fmt) else "—"
-        data_dia = emissao_fmt.strftime("%d/%m/%Y") if pd.notna(emissao_fmt) else "—"
-        data_dia_iso = emissao_fmt.strftime("%Y-%m-%d") if pd.notna(emissao_fmt) else ""
-    else:
-        emissao_str = "—"
-        data_dia = "—"
-        data_dia_iso = ""
 
     progresso_total = len(steps)
     concluidos = sum(1 for v in steps.values() if v)
@@ -2106,26 +2442,44 @@ def _build_fluxo_row(raw: dict) -> dict:
     flux_anim = _build_flux_anim(steps, labels)
 
     mdfe_lbl = labels.get("mdfe_numero") or labels.get("mdfe_status") or ""
-    if mdfe_lbl and mdfe_lbl != "—":
+    if ordem_txt and not mdfe_lbl and not cte_txt:
+        numero_exibicao = ordem_txt.split(",")[0].strip()
+    elif mdfe_lbl and mdfe_lbl != "—":
         numero_exibicao = mdfe_lbl
     elif cte_txt:
-        numero_exibicao = cte_txt
+        numero_exibicao = cte_txt.split(",")[0].strip()
     elif ordem_txt:
-        numero_exibicao = ordem_txt
+        numero_exibicao = ordem_txt.split(",")[0].strip()
     elif cod_manif:
         numero_exibicao = str(cod_manif)
     else:
         numero_exibicao = "—"
 
-    linha_descarga = _fluxo_linha_descarga(numero_exibicao, tem_doc)
+    numeros_internos_fluxo = sorted(
+        set(numeros_list)
+        | {n for n in [_fluxo_int_or_none(raw.get("numero"))] if n is not None}
+    )
+    numeros_coleta = _fluxo_numeros_coletar_comprovante(
+        steps, comprovantes_cache, raw, numeros_internos_fluxo
+    )
+    precisa_coletar = bool(numeros_coleta)
+    linha_descarga = _fluxo_linha_status_viagem(
+        numero_exibicao, steps, status_comprovante
+    )
 
     return {
         "placa": str(raw.get("placa") or "—").strip().upper() or "—",
         "motorista": str(raw.get("motorista") or "—").strip() or "—",
         "emissao": emissao_str,
+        "ultima_movimentacao_fmt": ultima_movimentacao_fmt,
+        "data_viagem_motorista_fmt": data_viagem_motorista_fmt,
+        "data_viagem_motorista_ts": dv_fmt.isoformat() if pd.notna(dv_fmt) else "",
         "data_dia": data_dia,
         "data_dia_iso": data_dia_iso,
         "emissao_ts": emissao_fmt.isoformat() if pd.notna(emissao_fmt) else "",
+        "ultima_movimentacao_ts": (
+            ultima_movimentacao_ts.isoformat() if pd.notna(ultima_movimentacao_ts) else ""
+        ),
         "num_ordem": ordens_list[0] if ordens_list else num_ordem,
         "num_cte": ctes_list[0] if ctes_list else num_cte,
         "numero": numeros_list[0] if numeros_list else raw.get("numero"),
@@ -2136,7 +2490,13 @@ def _build_fluxo_row(raw: dict) -> dict:
         "lista_numeros": numeros_list,
         "numero_exibicao": numero_exibicao,
         "linha_descarga": linha_descarga,
-        "tem_documento_descarga": tem_doc,
+        "tem_documento_descarga": steps["documento_descarga"],
+        "precisa_coletar_comprovante": precisa_coletar,
+        "status_comprovante_descarga": status_comprovante,
+        "nome_documento_descarga": nome_documento,
+        "comprovantes_descarga": comprovantes_cache,
+        "numeros_internos_fluxo": numeros_internos_fluxo,
+        "numeros_coleta_comprovante": numeros_coleta,
         "steps": steps,
         "labels": labels,
         "flux_anim": flux_anim,
@@ -2153,6 +2513,7 @@ _FLUX_STAGE_KEYS = (
     "ciot_emitido",
     "pedagio_emitido",
     "mdfe_autorizado",
+    "documento_descarga",
     "mdfe_encerrado",
 )
 
@@ -2172,10 +2533,16 @@ def _flux_truck_index(steps: dict, n: int) -> int:
         return 0
 
     if steps.get("mdfe_encerrado"):
-        return n - 1
+        return keys.index("mdfe_encerrado")
 
     if steps.get("mdfe_autorizado"):
-        return keys.index("mdfe_autorizado")
+        doc_idx = keys.index("documento_descarga")
+        enc_idx = keys.index("mdfe_encerrado")
+        if not steps.get("documento_descarga"):
+            return doc_idx
+        if not steps.get("mdfe_encerrado"):
+            return enc_idx
+        return enc_idx
 
     # CT-e emitido: avança até a última etapa concluída (ex.: ordem só com codordemcar, sem oc.numero)
     if steps.get("cte_autorizado") and furthest_done > 0:
@@ -2219,6 +2586,7 @@ def _build_flux_anim(steps: dict, labels: dict) -> dict:
             "state": node_state("cte_autorizado"),
             "detail": labels.get("cte") or "—",
             "detail_sub": labels.get("cte_status") or "",
+            "detail_data_motorista": labels.get("data_viagem_motorista") or "",
         },
         {
             "id": "carga_averbada",
@@ -2247,6 +2615,15 @@ def _build_flux_anim(steps: dict, labels: dict) -> dict:
             "short": "MDF-e",
             "state": node_state("mdfe_autorizado"),
             "detail": labels.get("mdfe_numero") or labels.get("mdfe_status") or "",
+        },
+        {
+            "id": "documento_descarga",
+            "label": "Comprovante de descarga",
+            "short": "Descarga",
+            "state": node_state("documento_descarga"),
+            "detail": labels.get("documento_descarga") or "",
+            "clickable": True,
+            "icon": "📄",
         },
         {
             "id": "mdfe_encerrado",
@@ -2343,10 +2720,92 @@ def _get_fluxo_viagem_fallback(
     return rows
 
 
-def _fluxo_ultima_por_placa(merged: list[dict]) -> list[dict]:
-    """Mantém só a viagem mais recente de cada placa (merged já ordenado por emissão desc)."""
+def _fluxo_ordem_emissao_cte_row(row: dict) -> tuple:
+    """Ordena CT-es da placa pela data de emissão (e número interno)."""
+    ts = pd.to_datetime(row.get("emissao_ts") or "", errors="coerce")
+    if pd.isna(ts):
+        ts = pd.to_datetime(row.get("data_viagem_motorista_ts") or "", errors="coerce")
+    if pd.isna(ts):
+        ts = pd.Timestamp.min
+    numero = _fluxo_int_or_none(row.get("numero")) or 0
+    return (ts, numero)
+
+
+def _aplicar_ultima_movimentacao_cte_anterior(rows: list[dict]) -> None:
+    """
+    Por placa: última movimentação = data viagem motorista do CT-e emitido anterior.
+    Ex.: CT-e 1 (10/06) → sem última; CT-e 4 (20/06) → última 10/06; CT-e 6 (30/06) → última 20/06.
+    """
+    from collections import defaultdict
+
+    por_placa: dict[str, list[dict]] = defaultdict(list)
+    for row in rows or []:
+        placa = str(row.get("placa") or "").strip().upper()
+        if not placa or placa in ("—", "NAN"):
+            continue
+        if not (row.get("data_viagem_motorista_fmt") or row.get("emissao_ts")):
+            continue
+        por_placa[placa].append(row)
+
+    for grupo in por_placa.values():
+        grupo.sort(key=_fluxo_ordem_emissao_cte_row)
+        prev_fmt = ""
+        prev_ts = ""
+        for row in grupo:
+            if prev_fmt:
+                row["ultima_movimentacao_fmt"] = prev_fmt
+                row["ultima_movimentacao_ts"] = prev_ts
+            else:
+                row["ultima_movimentacao_fmt"] = ""
+                row["ultima_movimentacao_ts"] = ""
+
+            dv = (row.get("data_viagem_motorista_fmt") or "").strip()
+            if dv:
+                prev_fmt = dv
+                prev_ts = row.get("data_viagem_motorista_ts") or ""
+
+
+def _fluxo_ultima_por_placa_rows(rows: list[dict]) -> list[dict]:
+    """Mantém só o CT-e/viagem mais recente de cada placa (já com última mov. calculada)."""
+    ordenado = sorted(
+        rows,
+        key=lambda r: pd.to_datetime(
+            r.get("data_viagem_motorista_ts") or r.get("emissao_ts") or "",
+            errors="coerce",
+        ),
+        reverse=True,
+    )
     por_placa: dict[str, dict] = {}
-    for rec in merged:
+    for row in ordenado:
+        placa = str(row.get("placa") or "").strip().upper()
+        if not placa or placa in ("—", "NAN"):
+            continue
+        if placa not in por_placa:
+            por_placa[placa] = row
+    return list(por_placa.values())
+
+
+def _fluxo_ts_movimentacao_raw(rec: dict) -> pd.Timestamp:
+    """Prioriza data viagem motorista do CT-e para ordenar última movimentação."""
+    for key in ("data_viagem_motorista", "emissao"):
+        val = rec.get(key)
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            continue
+        ts = pd.to_datetime(val, errors="coerce")
+        if pd.notna(ts):
+            return ts
+    return pd.NaT
+
+
+def _fluxo_ultima_por_placa(merged: list[dict]) -> list[dict]:
+    """Mantém só a viagem mais recente de cada placa (por data motorista ou emissão)."""
+    ordenado = sorted(
+        merged,
+        key=lambda r: _fluxo_ts_movimentacao_raw(r),
+        reverse=True,
+    )
+    por_placa: dict[str, dict] = {}
+    for rec in ordenado:
         placa = str(rec.get("placa") or "").strip().upper()
         if not placa or placa in ("—", "NAN"):
             continue
@@ -2375,9 +2834,11 @@ def _load_fluxo_viagem_rows(
                 if placa_filter and placa_filter != "Todos":
                     df = df[df["placa"] == str(placa_filter).strip().upper()]
                 raw_rows = _agrupar_fluxo_por_viagem(df.to_dict(orient="records"))
-                if apenas_ultima_por_placa:
-                    raw_rows = _fluxo_ultima_por_placa(raw_rows)
+                _aplicar_cache_comprovantes_painel(apartamento_id, raw_rows)
                 rows = [_build_fluxo_row(rec) for rec in raw_rows]
+                _aplicar_ultima_movimentacao_cte_anterior(rows)
+                if apenas_ultima_por_placa:
+                    rows = _fluxo_ultima_por_placa_rows(rows)
         except Exception as e:
             print(f"ERRO fluxo viagem SATI: {e}")
 
@@ -2385,22 +2846,21 @@ def _load_fluxo_viagem_rows(
         rows = _get_fluxo_viagem_fallback(
             apartamento_id, start_date, end_date, placa_filter, filial_filter
         )
+        _aplicar_ultima_movimentacao_cte_anterior(rows)
         if apenas_ultima_por_placa and rows:
-            by_placa: dict[str, dict] = {}
-            for row in sorted(rows, key=lambda r: r.get("emissao_ts") or "", reverse=True):
-                placa = row.get("placa") or "—"
-                if placa not in by_placa:
-                    by_placa[placa] = row
-            rows = list(by_placa.values())
+            rows = _fluxo_ultima_por_placa_rows(rows)
 
-    rows.sort(key=lambda r: r.get("emissao_ts") or "", reverse=True)
+    rows.sort(
+        key=lambda r: r.get("data_viagem_motorista_ts") or r.get("emissao_ts") or "",
+        reverse=True,
+    )
     return rows
 
 
 def _empty_fluxo_resumo(placa: str, motorista: str = "—") -> dict:
     steps = {k: False for k in (
         "ordem_carregamento", "nfe_emitida", "cte_autorizado", "carga_averbada", "ciot_emitido",
-        "pedagio_emitido", "mdfe_autorizado", "mdfe_encerrado",
+        "pedagio_emitido", "mdfe_autorizado", "documento_descarga", "mdfe_encerrado",
     )}
     labels = {k: "" for k in (
         "ordem", "cte", "cte_status", "averbacao", "ciot", "pedagio", "mdfe_status", "mdfe_enc",
@@ -2422,6 +2882,10 @@ def _empty_fluxo_resumo(placa: str, motorista: str = "—") -> dict:
         "progresso": 0,
         "progresso_total": len(steps),
         "sem_viagem_periodo": True,
+        "numeros_internos_fluxo": [],
+        "comprovantes_descarga": [],
+        "tem_documento_descarga": False,
+        "linha_descarga": "— · Sem documento de descarga",
     }
 
 
@@ -2643,6 +3107,10 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
                     break
         colunas_existentes = {k: v for k, v in colunas_para_manter.items() if k in df_copy.columns}
         df_formatado = df_copy[list(colunas_existentes.keys())].rename(columns=colunas_existentes)
+        if "valor_calculado" in df_formatado.columns:
+            df_formatado["valor_calculado"] = pd.to_numeric(
+                df_formatado["valor_calculado"], errors="coerce"
+            ).fillna(0.0)
         return df_formatado.fillna("").to_dict("records")
 
     custos_detalhados_formatado = formatar_df_para_relatorio(df_custos)

@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request, Response,current_app
 from extensions import login_required
 from sqlalchemy import text
 import json
+import re
 import time
 from datetime import datetime, timedelta
 import logic
@@ -51,7 +52,15 @@ def api_monthly_summary():
         filial_filter=filters['filial'],
         tipo_negocio_filter=filters['tipo_negocio']
     )
-    return jsonify(monthly_data.to_dict(orient='records'))
+    records = monthly_data.to_dict(orient='records')
+    for row in records:
+        for key in ('Faturamento', 'Custo', 'DespesasGerais', 'DespesaTipoD', 'TotalDespesas'):
+            if key in row and row[key] is not None:
+                try:
+                    row[key] = float(row[key])
+                except (TypeError, ValueError):
+                    row[key] = 0.0
+    return jsonify(records)
 
 @api_bp.route('/get_robot_logs')
 @login_required
@@ -186,7 +195,91 @@ def api_relatorio_viagem(numero): # ALTERADO AQUI
         print(f"ERRO CRÍTICO na API /api/relatorio_viagem para o CT-e {numero}: {e}") # ALTERADO AQUI
         return jsonify({"error": "Ocorreu um erro inesperado no servidor ao processar os dados desta viagem."}), 500
 
-    
+
+@api_bp.route('/comprovante_descarga')
+@login_required
+def api_comprovante_descarga_lista():
+    """Texto e metadados dos comprovantes (Painel de Documentos / cache)."""
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"error": "Transportadora não identificada."}), 400
+
+    bruto = request.args.get("numeros") or request.args.get("numero") or ""
+    numeros = []
+    for parte in re.split(r"[,;\s]+", str(bruto).strip()):
+        if not parte:
+            continue
+        try:
+            numeros.append(int(parte))
+        except (TypeError, ValueError):
+            continue
+    if not numeros:
+        return jsonify({"error": "Informe numeros (número interno do CT-e)."}), 400
+
+    payload = logic.get_comprovante_descarga_payload(apartamento_id_alvo, numeros)
+    if not payload.get("itens"):
+        return jsonify({
+            "itens": [],
+            "mensagem": "Nenhum comprovante no cache. Use «Buscar no SATI» no fluxo de viagem.",
+        }), 404
+    return jsonify(payload)
+
+
+@api_bp.route('/fluxo/coletar_comprovantes_automatico', methods=['POST'])
+@login_required
+def api_fluxo_coletar_comprovantes_automatico():
+    """
+    Dispara o robô Painel de Documentos para CT-es em fase comprovante de descarga.
+    Body JSON opcional: { "numeros_internos": [7801, ...] }
+    Se omitido, usa números enviados ou lista vazia (cliente envia da tela).
+    """
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"status": "erro", "mensagem": "Transportadora não identificada."}), 400
+
+    numeros = []
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        val = payload.get("numeros_internos") or payload.get("numeros")
+        if isinstance(val, list):
+            for item in val:
+                try:
+                    numeros.append(int(item))
+                except (TypeError, ValueError):
+                    pass
+
+    baixar = True
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if payload.get("baixar_pdfs") is False:
+            baixar = False
+
+    resultado = logic.disparar_coleta_comprovantes_fluxo(
+        apartamento_id_alvo,
+        numeros,
+        baixar_pdfs=baixar,
+    )
+    code = 200 if resultado.get("status") in ("sucesso", "ignorado") else 400
+    return jsonify(resultado), code
+
+
+@api_bp.route('/comprovante_descarga/<int:numero>/arquivo')
+@login_required
+def api_comprovante_descarga_arquivo(numero: int):
+    from flask import send_file
+    import os
+
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({"error": "Transportadora não identificada."}), 400
+
+    path = logic.resolver_arquivo_comprovante_descarga(apartamento_id_alvo, numero)
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "Arquivo não encontrado. Execute a coleta com download no SATI."}), 404
+
+    return send_file(path, mimetype="application/pdf", as_attachment=False)
+
+
 @api_bp.route('/heartbeat', methods=['POST'])
 @login_required
 def api_heartbeat():

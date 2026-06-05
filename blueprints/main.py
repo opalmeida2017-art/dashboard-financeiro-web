@@ -198,6 +198,24 @@ def fluxo_viagem():
             if r.get("placa")
         ]
 
+    import json
+
+    pendentes_coleta = dm.coletar_numeros_pendentes_comprovante(rows)
+
+    try:
+        from fluxo_monitor import salvar_lista_fluxo
+
+        salvar_lista_fluxo(
+            apartamento_id_alvo,
+            rows,
+            start_date=filters['start_date_str'],
+            end_date=filters['end_date_str'],
+            modo=modo,
+            numeros_pendentes=pendentes_coleta,
+        )
+    except Exception as e:
+        print(f"Aviso: não foi possível salvar lista do fluxo: {e}")
+
     return render_template(
         'fluxo_viagem.html',
         rows=rows,
@@ -208,6 +226,7 @@ def fluxo_viagem():
         selected_placa=placa_arg,
         selected_start_date=filters['start_date_str'],
         selected_end_date=filters['end_date_str'],
+        pendentes_coleta_json=json.dumps(pendentes_coleta),
     )
 
 
@@ -324,6 +343,141 @@ def iniciar_atualizacao_bd_endpoint():
         return jsonify({'status': 'erro', 'mensagem': 'Transportadora não identificada.'}), 400
     try:
         ok, payload, code = _iniciar_atualizacao_banco_sati(apartamento_id_alvo)
+        return jsonify(payload), code
+    except Exception as e:
+        return jsonify({'status': 'erro', 'mensagem': str(e)}), 500
+
+
+def _parse_numeros_internos_painel() -> list[int]:
+    """Lê números internos do CT-e (JSON, form ou query)."""
+    import re
+
+    bruto = []
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        val = payload.get("numeros_internos") or payload.get("numeros")
+        if isinstance(val, list):
+            bruto = val
+        elif isinstance(val, str):
+            bruto = re.split(r"[,;\s]+", val.strip())
+    else:
+        val = (
+            request.form.get("numeros_internos")
+            or request.args.get("numeros_internos")
+            or request.args.get("numeros")
+        )
+        if val:
+            bruto = re.split(r"[,;\s]+", str(val).strip())
+
+    numeros = []
+    for item in bruto:
+        s = str(item).strip()
+        if not s:
+            continue
+        try:
+            numeros.append(int(s))
+        except (TypeError, ValueError):
+            continue
+    return numeros
+
+
+def _iniciar_painel_documentos_sati(apartamento_id_alvo: int):
+    """Dispara robô Painel de Documentos (comprovantes descarga)."""
+    logs_url = url_for('main.configuracao', auto_logs=1)
+
+    if not is_admin_in_context():
+        return False, {
+            'status': 'erro',
+            'mensagem': 'Apenas administradores podem executar o robô do Painel de Documentos.',
+        }, 403
+
+    configs_robo = logic.ler_configuracoes_robo(apartamento_id_alvo)
+    if not dm.robo_credenciais_configuradas(configs_robo):
+        return False, {
+            'status': 'erro',
+            'mensagem': (
+                'Preencha e salve URL, usuário e senha na aba Conexão SAT '
+                '(Configurações do Robô).'
+            ),
+            'redirect': logs_url,
+        }, 400
+
+    baixar_pdfs = request.args.get('baixar_pdfs', 'true').lower() not in ('0', 'false', 'no')
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if payload.get('baixar_pdfs') is False:
+            baixar_pdfs = False
+        elif payload.get('baixar_pdfs') is True:
+            baixar_pdfs = True
+    data_ini = (request.args.get('data_ini') or '').strip() or None
+    data_fim = (request.args.get('data_fim') or '').strip() or None
+    numeros_internos = _parse_numeros_internos_painel()
+    if not numeros_internos:
+        return False, {
+            'status': 'erro',
+            'mensagem': (
+                'Informe pelo menos um número interno do CT-e '
+                '(conhecimento.numero), ex.: 7801.'
+            ),
+            'redirect': logs_url,
+        }, 400
+
+    execution_mode = os.getenv('EXECUTION_MODE', 'async')
+    if execution_mode == 'sync':
+        ok = logic.executar_painel_documentos_sati(
+            apartamento_id_alvo,
+            data_ini=data_ini,
+            data_fim=data_fim,
+            numeros_internos=numeros_internos,
+            baixar_pdfs=baixar_pdfs,
+        )
+        dm.clear_data_cache(apartamento_id_alvo)
+        if ok:
+            flash('Painel de Documentos coletado com sucesso!', 'success')
+            return True, {
+                'status': 'sucesso',
+                'mensagem': 'Comprovantes listados no cache. O fluxo de viagem usará esses dados.',
+                'redirect': logs_url,
+            }, 200
+        return False, {
+            'status': 'erro',
+            'mensagem': 'Falha na coleta do painel. Veja os logs abaixo.',
+            'redirect': logs_url,
+        }, 200
+
+    if not redis_conn:
+        return False, {
+            'status': 'erro',
+            'mensagem': 'Serviço de fila (Redis) não está disponível. Use EXECUTION_MODE=sync no .env.',
+        }, 500
+
+    q = Queue(connection=redis_conn)
+    q.enqueue(
+        logic.executar_painel_documentos_sati,
+        apartamento_id_alvo,
+        data_ini=data_ini,
+        data_fim=data_fim,
+        numeros_internos=numeros_internos,
+        baixar_pdfs=baixar_pdfs,
+        job_timeout=3600,
+    )
+    flash('Coleta do Painel de Documentos iniciada.', 'success')
+    return True, {
+        'status': 'sucesso',
+        'mensagem': 'Robô iniciado. Acompanhe o progresso nos logs.',
+        'redirect': logs_url,
+    }, 200
+
+
+@main_bp.route('/iniciar-painel-documentos', methods=['POST'])
+@login_required
+def iniciar_painel_documentos_endpoint():
+    """Painéis → Painel de Documentos (lista comprovantes de descarga no SATI)."""
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        return jsonify({'status': 'erro', 'mensagem': 'Transportadora não identificada.'}), 400
+    try:
+        ok, payload, code = _iniciar_painel_documentos_sati(apartamento_id_alvo)
         return jsonify(payload), code
     except Exception as e:
         return jsonify({'status': 'erro', 'mensagem': str(e)}), 500

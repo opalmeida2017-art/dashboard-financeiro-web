@@ -20,9 +20,16 @@ conn = redis.from_url(redis_url)
 
 
 def check_and_run_live_robots():
-    print(f"[{datetime.now()}] Worker (Live): Verificando robôs em tempo real...")
+    print(f"[{datetime.now()}] Worker (Live): Verificando ociosidade / fluxo salvo...")
     with main_app.app.app_context():
-        pass
+        try:
+            from fluxo_monitor import verificar_e_executar_tarefas_ociosas
+
+            resultado = verificar_e_executar_tarefas_ociosas()
+            if resultado and resultado.get("status") not in ("ignorado",):
+                print(f"[{datetime.now()}] Tarefas ociosas: {resultado}")
+        except Exception as e:
+            print(f"[{datetime.now()}] ERRO tarefas ociosas: {e}")
 
 
 def schedule_robot_check():

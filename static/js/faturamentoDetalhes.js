@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const palette = BC.palette || ['#2563eb', '#0ea5e9', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#7c3aed', '#64748b'];
     const thumbOpts = BC.thumbnailOptions ? BC.thumbnailOptions() : { maintainAspectRatio: false, plugins: { legend: { display: false } } };
     const thumbHoriz = { ...thumbOpts, indexAxis: 'y' };
+    const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
     const barDs = (label, data, color, extra = {}) => ({
         label,
@@ -61,8 +62,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     data: {
                         labels: data.evolucao_faturamento_custo.map(d => d.Periodo || d.PeriodoLabel),
                         datasets: [
-                            { label: 'Faturamento', data: data.evolucao_faturamento_custo.map(d => d.Faturamento), ...(BC.lineStyle ? BC.lineStyle(C.receita) : { borderColor: C.receita }) },
-                            { label: 'Custo', data: data.evolucao_faturamento_custo.map(d => d.Custo), ...(BC.lineStyle ? BC.lineStyle(C.custoViagem) : { borderColor: C.custoViagem }) },
+                            { label: 'Faturamento', data: data.evolucao_faturamento_custo.map(d => num(d.Faturamento)), ...(BC.lineStyle ? BC.lineStyle(C.receita) : { borderColor: C.receita }) },
+                            { label: 'Custo', data: data.evolucao_faturamento_custo.map(d => num(d.Custo)), ...(BC.lineStyle ? BC.lineStyle(C.custoViagem) : { borderColor: C.custoViagem }) },
                         ],
                     },
                     options: {},
@@ -77,7 +78,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     type: 'bar',
                     data: {
                         labels: data.top_clientes.map(d => d.nomeCliente),
-                        datasets: [barDs('Faturamento', data.top_clientes.map(d => d.freteEmpresa), C.receita)],
+                        datasets: [barDs('Faturamento', data.top_clientes.map(d => num(d.freteEmpresa)), C.receita)],
                     },
                     options: { indexAxis: 'y' },
                 };
@@ -86,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (data.faturamento_filial) {
-                const vals = data.faturamento_filial.map(d => d.freteEmpresa);
+                const vals = data.faturamento_filial.map(d => num(d.freteEmpresa));
                 const config = {
                     title: 'Faturamento por filial',
                     type: 'doughnut',
@@ -106,7 +107,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     type: 'bar',
                     data: {
                         labels: data.top_rotas.map(d => d.rota),
-                        datasets: [barDs('Nº de viagens', data.top_rotas.map(d => d.contagem), C.teal)],
+                        datasets: [barDs('Nº de viagens', data.top_rotas.map(d => num(d.contagem)), C.teal)],
                     },
                     options: { indexAxis: 'y' },
                 };
@@ -115,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (data.faturamento_por_mercadoria) {
-                const vals = data.faturamento_por_mercadoria.map(d => d.faturamento);
+                const vals = data.faturamento_por_mercadoria.map(d => num(d.faturamento));
                 const config = {
                     title: 'Faturamento por tipo de mercadoria',
                     type: 'doughnut',
@@ -135,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     type: 'bar',
                     data: {
                         labels: data.viagens_por_veiculo.map(d => d.placa),
-                        datasets: [barDs('Nº de viagens', data.viagens_por_veiculo.map(d => d.contagem), C.tipoD)],
+                        datasets: [barDs('Nº de viagens', data.viagens_por_veiculo.map(d => num(d.contagem)), C.tipoD)],
                     },
                     options: {},
                 };

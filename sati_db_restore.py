@@ -108,25 +108,57 @@ def _parse_pg_url(url: str) -> dict:
 
 def _pg_major_from_path(path: str) -> int:
     m = re.search(r"PostgreSQL[/\\](\d+)", path.replace("\\", "/"), re.I)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"/postgresql/(\d+)/bin/", path.replace("\\", "/"), re.I)
     return int(m.group(1)) if m else 0
+
+
+def _pg_restore_major(path: str) -> int:
+    mv = _pg_major_from_path(path)
+    if mv >= 16:
+        return mv
+    try:
+        proc = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        m = re.search(r"PostgreSQL[^\d]*(\d+)", out, re.I)
+        if m:
+            return int(m.group(1))
+    except Exception:
+        pass
+    return mv
 
 
 def _find_pg_restore() -> str:
     """
     Dump SATI atual usa formato 1.16+ → exige pg_restore do PostgreSQL 16 ou superior.
-  """
+    """
     instalados: list[tuple[int, str]] = []
     for ver in ("17", "16", "15", "14", "13"):
         win = Path(f"C:/Program Files/PostgreSQL/{ver}/bin/pg_restore.exe")
         if win.exists():
             instalados.append((int(ver), str(win)))
 
+    for ver in ("17", "16", "15"):
+        linux = Path(f"/usr/lib/postgresql/{ver}/bin/pg_restore")
+        if linux.is_file():
+            instalados.append((int(ver), str(linux)))
+
+    for p in ("/usr/bin/pg_restore", "/usr/local/bin/pg_restore"):
+        if Path(p).is_file():
+            instalados.append((_pg_restore_major(p), p))
+
     try:
         from embedded_pg import pg_restore_path
 
         p = pg_restore_path()
         if Path(p).exists():
-            mv = _pg_major_from_path(p) or 16
+            mv = _pg_restore_major(p) or 16
             instalados.append((mv, p))
     except Exception:
         pass
@@ -134,11 +166,11 @@ def _find_pg_restore() -> str:
     for name in ("pg_restore", "pg_restore.exe"):
         found = shutil.which(name)
         if found:
-            instalados.append((_pg_major_from_path(found) or 0, found))
+            instalados.append((_pg_restore_major(found), found))
 
     custom = os.getenv("SATI_PG_RESTORE", "").strip()
     if custom and Path(custom).exists():
-        cv = _pg_major_from_path(custom)
+        cv = _pg_restore_major(custom)
         instalados.append((cv or 14, custom))
 
     if not instalados:
@@ -156,7 +188,7 @@ def _find_pg_restore() -> str:
 
     custom = os.getenv("SATI_PG_RESTORE", "").strip()
     if custom and Path(custom).exists():
-        cv = _pg_major_from_path(custom)
+        cv = _pg_restore_major(custom)
         if cv >= 16 and cv >= best_ver:
             return custom
         if cv and cv < 16:
@@ -183,6 +215,83 @@ def extrair_zip_dump(zip_path: Path, destino: Path) -> Path:
     return dumps[0]
 
 
+def _espelhar_dominios_public(sati_url: str, schema: str, apartamento_id: int | None) -> None:
+    """
+    Dump SATI cria DOMAIN em c3332, mas tabelas referenciam public.dom_*.
+    Copia os domínios para public antes de criar as tabelas.
+    """
+    from sqlalchemy import create_engine, text
+
+    eng = create_engine(sati_url)
+    schema_sql = re.sub(r"[^a-zA-Z0-9_]", "", schema) or "c3332"
+    sql = f"""
+        DO $$
+        DECLARE r record;
+        BEGIN
+          FOR r IN
+            SELECT t.typname AS n
+            FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE n.nspname = '{schema_sql}' AND t.typtype = 'd'
+          LOOP
+            BEGIN
+              EXECUTE format('CREATE DOMAIN public.%I AS {schema_sql}.%I', r.n, r.n);
+            EXCEPTION WHEN duplicate_object THEN
+              NULL;
+            END;
+          END LOOP;
+        END $$;
+        """
+    with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text(sql))
+    _log(apartamento_id, f"Domínios {schema} espelhados em public.")
+
+
+def _restaurar_por_secoes(
+    pg_restore: str,
+    pg: dict,
+    dump_path: Path,
+    apartamento_id: int | None,
+) -> None:
+    """Restore SATI: pre-data → espelha domínios → pre-data/data/post-data."""
+    env = os.environ.copy()
+    if pg["password"]:
+        env["PGPASSWORD"] = pg["password"]
+
+    base = [
+        pg_restore,
+        "-h",
+        pg["host"],
+        "-p",
+        pg["port"],
+        "-U",
+        pg["user"],
+        "-d",
+        pg["database"],
+        "--no-owner",
+        "--no-acl",
+    ]
+
+    def run_section(extra: list[str], label: str, fail_on_error: bool = False) -> None:
+        cmd = base + extra + [str(dump_path)]
+        _log(apartamento_id, f"pg_restore {label}…")
+        proc = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=int(os.getenv("SATI_RESTORE_TIMEOUT_SEC", "7200")),
+        )
+        if fail_on_error and proc.returncode != 0:
+            stderr = (proc.stderr or "")[-4000:]
+            stdout = (proc.stdout or "")[-2000:]
+            raise RuntimeError(
+                f"pg_restore ({label}) falhou (código {proc.returncode}).\n{stderr}\n{stdout}"
+            )
+
+    run_section(["--section=pre-data"], "pre-data domínios (1/4)")
+
+
 def restaurar_dump_sati(
     dump_path: Path,
     apartamento_id: int | None = None,
@@ -198,52 +307,50 @@ def restaurar_dump_sati(
     pg_restore = _find_pg_restore()
     _log(apartamento_id, f"Usando pg_restore: {pg_restore}")
 
-    env = os.environ.copy()
-    if pg["password"]:
-        env["PGPASSWORD"] = pg["password"]
-
-    cmd = [
-        pg_restore,
-        "-h",
-        pg["host"],
-        "-p",
-        pg["port"],
-        "-U",
-        pg["user"],
-        "-d",
-        pg["database"],
-        "--schema",
-        schema,
-        "--clean",
-        "--if-exists",
-        "--no-owner",
-        "--no-acl",
-        "-v",
-        str(dump_path),
-    ]
-
     _log(
         apartamento_id,
         f"Restaurando dump no banco {pg['database']} (schema {schema}) — "
         "não use o painel até aparecer 'Restore concluído'.",
     )
-    _log(apartamento_id, f"Comando: {' '.join(cmd[:8])} … {dump_path.name}")
 
     with _restore_lock(apartamento_id):
-        proc = subprocess.run(
-            cmd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=int(os.getenv("SATI_RESTORE_TIMEOUT_SEC", "7200")),
-        )
+        _restaurar_por_secoes(pg_restore, pg, dump_path, apartamento_id)
+        _espelhar_dominios_public(sati_url, schema, apartamento_id)
 
-        if proc.returncode != 0:
-            stderr = (proc.stderr or "")[-4000:]
-            stdout = (proc.stdout or "")[-2000:]
-            raise RuntimeError(
-                f"pg_restore falhou (código {proc.returncode}).\n{stderr}\n{stdout}"
+        env = os.environ.copy()
+        if pg["password"]:
+            env["PGPASSWORD"] = pg["password"]
+        base = [
+            pg_restore,
+            "-h",
+            pg["host"],
+            "-p",
+            pg["port"],
+            "-U",
+            pg["user"],
+            "-d",
+            pg["database"],
+            "--no-owner",
+            "--no-acl",
+        ]
+        for label, extra, strict in (
+            ("pre-data tabelas (2/4)", ["--section=pre-data"], False),
+            ("data (3/4)", ["--section=data"], True),
+            ("post-data (4/4)", ["--section=post-data"], False),
+        ):
+            cmd = base + extra + [str(dump_path)]
+            _log(apartamento_id, f"pg_restore {label}…")
+            proc = subprocess.run(
+                cmd,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=int(os.getenv("SATI_RESTORE_TIMEOUT_SEC", "7200")),
             )
+            if strict and proc.returncode != 0:
+                raise RuntimeError(
+                    f"pg_restore ({label}) falhou.\n{(proc.stderr or '')[-3000:]}"
+                )
 
         _verificar_tabelas_apos_restore(apartamento_id, schema)
 

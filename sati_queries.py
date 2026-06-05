@@ -72,6 +72,7 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 v.placa,
                 mot.nome AS motorista,
                 {emissao} AS emissao,
+                {_safe_ts("c.dataviagemmotorista")} AS data_viagem_motorista,
                 oc.numero AS num_ordem,
                 oc.emitida AS nfe_emitida,
                 c.codordemcar,
@@ -107,6 +108,7 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 mf.datafinalizacao AS mdfe_data_finalizacao,
                 mfe.prot_encerramento AS mdfe_prot_encerramento,
                 COALESCE(mf_dados.tem_doc_manifesto, 0) AS tem_documento,
+                doc_cte.nomearq_descarga_cte,
                 mf.codmanif
             FROM {schema}.conhecimento c
             LEFT JOIN {schema}.conhecimentoadic ad ON ad.numero = c.numero
@@ -132,6 +134,13 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                     AND NULLIF(TRIM(d_manif.nomearq::text), '') IS NOT NULL
                 WHERE mc_self.numero = c.numero
             ) mf_dados ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT MAX(NULLIF(TRIM(d.nomearq::text), '')) AS nomearq_descarga_cte
+                FROM {schema}.documento d
+                WHERE d.nometabela = 'CONHECIMENTO'
+                  AND d.chavetabela = c.numero
+                  AND NULLIF(TRIM(d.nomearq::text), '') IS NOT NULL
+            ) doc_cte ON TRUE
             LEFT JOIN LATERAL (
                 SELECT m.mdfechave, m.mdfestatus, m.mdfeprot, m.numeromdfe, m.seriemdfe,
                        m.codmanif, m.datafinalizacao, m.valorpedagio, m.pedagioembfretemot
@@ -160,6 +169,7 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 v.placa,
                 mot.nome AS motorista,
                 {emissao_oc} AS emissao,
+                NULL::timestamp AS data_viagem_motorista,
                 oc.numero AS num_ordem,
                 oc.emitida AS nfe_emitida,
                 oc.codordemcar,
@@ -172,6 +182,7 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 NULL::integer, NULL::integer,
                 NULL::timestamp, NULL::varchar,
                 0 AS tem_documento,
+                NULL::varchar AS nomearq_descarga_cte,
                 NULL::integer AS codmanif
             FROM {schema}.ordemcar oc
             LEFT JOIN {schema}.veiculo v ON v.codveiculo = oc.codveiculo
