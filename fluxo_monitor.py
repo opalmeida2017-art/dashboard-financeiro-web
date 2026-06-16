@@ -164,9 +164,9 @@ def atualizar_pendentes_da_lista_salva(apartamento_id: int) -> list[int]:
 
 def _lock_painel_ativo(apartamento_id: int) -> bool:
     try:
-        from robos.coletor_painel_documentos import _caminho_lock_robo_painel
+        from robos.coletor_painel_documentos import lock_painel_em_execucao
 
-        return os.path.isfile(_caminho_lock_robo_painel(apartamento_id))
+        return lock_painel_em_execucao(apartamento_id)
     except Exception:
         path = os.path.join(_pasta_apartamento(apartamento_id), "painel_documentos_robo.lock")
         return os.path.isfile(path)

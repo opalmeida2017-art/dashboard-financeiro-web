@@ -45,9 +45,15 @@ def executar_atualizacao_bd_sati(apartamento_id: int):
         actions = ActionChains(driver)
 
         base_robo.fazer_login(driver, wait, configs)
-        base_robo.navegar_envio_banco_dados(driver, wait, actions, apartamento_id)
+        try:
+            base_robo.navegar_envio_banco_dados(driver, wait, actions, apartamento_id)
+        except Exception as e:
+            raise RuntimeError(f"Falha ao abrir Envio de Banco de Dados: {e}") from e
 
-        url_zip = base_robo.executar_envio_banco_bi(driver, wait, apartamento_id)
+        try:
+            url_zip = base_robo.executar_envio_banco_bi(driver, wait, apartamento_id)
+        except Exception as e:
+            raise RuntimeError(f"Falha no processamento do envio BI: {e}") from e
         nome_zip = os.getenv("SATI_ZIP_FILENAME", "SATI-c3332-atual.zip")
 
         base_robo.baixar_zip_sati(

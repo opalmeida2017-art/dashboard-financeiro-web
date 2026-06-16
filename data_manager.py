@@ -2107,6 +2107,56 @@ def coletar_numeros_pendentes_comprovante(rows: list[dict]) -> list[int]:
     return sorted(nums)
 
 
+FLUXO_FILTRO_COMPROVANTE_OPCOES = (
+    ("todos", "Todas as viagens"),
+    ("com_comprovante", "Com comprovante de descarga"),
+    ("com_anexo", "Comprovante com anexo (PDF)"),
+    ("sem_anexo", "Comprovante sem anexo"),
+)
+
+
+def normalizar_filtro_comprovante_fluxo(valor: str | None) -> str:
+    chave = (valor or "todos").strip().lower()
+    validos = {k for k, _ in FLUXO_FILTRO_COMPROVANTE_OPCOES}
+    return chave if chave in validos else "todos"
+
+
+def _fluxo_row_tem_comprovante_descarga(row: dict) -> bool:
+    """Documento de descarga identificado no SATI/painel (com ou sem PDF local)."""
+    st = str(row.get("status_comprovante_descarga") or "").strip()
+    if st in ("arquivo_ok", "identificado_banco", "identificado_painel"):
+        return True
+    return bool(row.get("tem_documento_descarga")) or bool(
+        (row.get("nome_documento_descarga") or "").strip()
+    )
+
+
+def _fluxo_row_comprovante_com_anexo(row: dict) -> bool:
+    return str(row.get("status_comprovante_descarga") or "").strip() == "arquivo_ok"
+
+
+def _fluxo_row_comprovante_sem_anexo(row: dict) -> bool:
+    """Nome do comprovante conhecido, PDF ainda não baixado."""
+    return str(row.get("status_comprovante_descarga") or "").strip() in (
+        "identificado_banco",
+        "identificado_painel",
+    )
+
+
+def filtrar_fluxo_por_comprovante(rows: list[dict], filtro: str | None) -> list[dict]:
+    """Filtra linhas da trilha por situação do comprovante de descarga."""
+    chave = normalizar_filtro_comprovante_fluxo(filtro)
+    if chave == "todos":
+        return list(rows or [])
+    if chave == "com_comprovante":
+        return [r for r in (rows or []) if _fluxo_row_tem_comprovante_descarga(r)]
+    if chave == "com_anexo":
+        return [r for r in (rows or []) if _fluxo_row_comprovante_com_anexo(r)]
+    if chave == "sem_anexo":
+        return [r for r in (rows or []) if _fluxo_row_comprovante_sem_anexo(r)]
+    return list(rows or [])
+
+
 def _fluxo_format_lista_numeros(valores) -> str:
     nums = []
     for v in valores or []:

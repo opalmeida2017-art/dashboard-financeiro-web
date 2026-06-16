@@ -155,6 +155,10 @@ def api_fluxo_viagem():
         rows = logic.get_fluxo_veiculos_resumo(
             apartamento_id_alvo, start_eff, end_eff, filters["filial"]
         )
+    comprovante_filtro = dm.normalizar_filtro_comprovante_fluxo(
+        request.args.get("comprovante")
+    )
+    rows = dm.filtrar_fluxo_por_comprovante(rows, comprovante_filtro)
     return jsonify(rows)
 
 @api_bp.route('/despesas_audit_data')

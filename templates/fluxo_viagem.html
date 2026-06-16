@@ -119,6 +119,14 @@
                 <label for="end_date">Fim</label>
                 <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
             </div>
+            <div class="filter-field">
+                <label for="comprovante">Comprovante descarga</label>
+                <select id="comprovante" name="comprovante">
+                    {% for valor, rotulo in comprovante_filtro_opcoes %}
+                    <option value="{{ valor }}" {% if selected_comprovante_filtro == valor %}selected{% endif %}>{{ rotulo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             {% if modo != 'historico' %}
             <div class="filter-field">
                 <label for="busca_placa">Ir para placa</label>
@@ -148,6 +156,9 @@
         <span><span class="flux-truck-icon flux-truck-icon--legend">📄</span> Descarga — clique para ver o arquivo</span>
         <span><span class="flux-truck-icon flux-truck-icon--legend">🚛</span> Esquerda → direita</span>
         <span><span class="flux-truck-icon flux-truck-icon--legend">⬆</span> No topo = MDF-e autorizado/encerrado</span>
+        {% if selected_comprovante_filtro != 'todos' %}
+        <span class="fluxo-legend-filtro-ativo">Filtro ativo: comprovante de descarga</span>
+        {% endif %}
     </div>
 
     {% for row in rows %}
@@ -200,7 +211,9 @@
     </article>
     {% else %}
     <div class="fluxo-empty">
-        {% if modo == 'historico' %}
+        {% if selected_comprovante_filtro != 'todos' %}
+        Nenhuma viagem corresponde ao filtro de comprovante selecionado.
+        {% elif modo == 'historico' %}
         Nenhuma movimentação para esta placa no período.
         {% else %}
         Nenhum veículo encontrado. Ajuste as datas ou atualize os dados do SATI.
@@ -208,12 +221,12 @@
     </div>
     {% endfor %}
 
-    {% if rows %}
+    {% if rows or selected_comprovante_filtro != 'todos' %}
     <p class="fluxo-footnote">
         {% if modo == 'historico' %}
-        {{ rows | length }} viagem(ns) para {{ placa_historico }}.
+        {{ rows | length }} viagem(ns) para {{ placa_historico }}{% if selected_comprovante_filtro != 'todos' and total_antes_filtro_comprovante > (rows | length) %} (de {{ total_antes_filtro_comprovante }} no período){% endif %}.
         {% else %}
-        {{ rows | length }} veículo(s) na frota.
+        {{ rows | length }} veículo(s){% if selected_comprovante_filtro != 'todos' and total_antes_filtro_comprovante > (rows | length) %} (de {{ total_antes_filtro_comprovante }} na frota){% endif %}.
         {% endif %}
     </p>
     {% endif %}

@@ -76,6 +76,25 @@ def get_transportadora_nome(transportadora_id: int | None = None) -> str:
     return os.getenv("BIWEB_TRANSPORTADORA_NOME", "Transportadora")
 
 
+_NOMES_EXIBICAO_IGNORAR = frozenset({
+    "teste",
+    "minha transportadora",
+    "transportadora",
+})
+
+
+def nome_exibicao_navbar(valor: str | None) -> str:
+    """Oculta nomes de teste/placeholder no cabeçalho do painel."""
+    nome = (valor or "").strip()
+    if not nome or nome.lower() in _NOMES_EXIBICAO_IGNORAR:
+        return ""
+    return nome
+
+
+def get_transportadora_nome_exibicao(transportadora_id: int | None = None) -> str:
+    return nome_exibicao_navbar(get_transportadora_nome(transportadora_id))
+
+
 def ensure_transportadora() -> int:
     """Garante uma única transportadora no banco (primeira instalação)."""
     nome = os.getenv("BIWEB_TRANSPORTADORA_NOME", "Minha Transportadora").strip()

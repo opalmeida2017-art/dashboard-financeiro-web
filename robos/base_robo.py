@@ -361,81 +361,414 @@ def abrir_menu_exp_imp(driver, wait, actions, apartamento_id):
     return menu_exp
 
 
+def _wait_curto(driver, segundos: int = 12):
+    return WebDriverWait(driver, segundos)
+
+
+def _scroll_para_elemento(driver, el) -> None:
+    try:
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center', inline:'nearest'});", el
+        )
+    except Exception:
+        pass
+
+
+def _celula_menu_hover(driver, elemento):
+    """Célula TD do menu RichFaces (id terminando em _itm) — alvo correto do mouse."""
+    try:
+        td = driver.execute_script(
+            """
+            var el = arguments[0];
+            var cur = el;
+            while (cur) {
+                if (cur.tagName === 'TD' && cur.id && cur.id.indexOf('_itm') >= 0) return cur;
+                cur = cur.parentElement;
+            }
+            cur = el;
+            while (cur) {
+                if (cur.tagName === 'TD') return cur;
+                cur = cur.parentElement;
+            }
+            return el;
+            """,
+            elemento,
+        )
+        return td or elemento
+    except Exception:
+        return elemento
+
+
+def _mover_mouse_para_elemento(driver, actions, elemento, apartamento_id, descricao: str = ""):
+    """Hover real + eventos JS — RichFaces só abre submenu com mouse sobre o TD."""
+    alvo = _celula_menu_hover(driver, elemento)
+    _scroll_para_elemento(driver, alvo)
+    if descricao:
+        db.logar_progresso(apartamento_id, f"Mouse sobre {descricao}…")
+    try:
+        ActionChains(driver).move_to_element(alvo).pause(0.5).perform()
+    except Exception:
+        try:
+            actions.move_to_element(alvo).pause(0.5).perform()
+        except Exception:
+            pass
+    try:
+        driver.execute_script(
+            """
+            var el = arguments[0];
+            function fire(node) {
+                if (!node) return;
+                var r = node.getBoundingClientRect();
+                var x = r.left + r.width / 2, y = r.top + r.height / 2;
+                ['mouseover', 'mouseenter', 'mousemove'].forEach(function (t) {
+                    node.dispatchEvent(new MouseEvent(t, {
+                        bubbles: true, cancelable: true, view: window,
+                        clientX: x, clientY: y
+                    }));
+                });
+            }
+            fire(el);
+            var lbl = el.querySelector('.rf-ddm-lbl-dec') || el.querySelector('.rf-ddm-lbl');
+            if (lbl) fire(lbl);
+            """,
+            alvo,
+        )
+    except Exception:
+        pass
+    time.sleep(0.4)
+    return alvo
+
+
+def _tentar_abrir_submenu_richfaces(driver, menu_base_id: str) -> bool:
+    """Tenta abrir dropdown via API RichFaces (fallback se hover falhar)."""
+    try:
+        return bool(
+            driver.execute_script(
+                """
+                var base = arguments[0];
+                var ids = [base, base + '_itm', base + '_label'];
+                if (typeof RichFaces !== 'undefined' && RichFaces.component) {
+                    for (var i = 0; i < ids.length; i++) {
+                        var el = document.getElementById(ids[i]);
+                        if (!el) continue;
+                        var c = RichFaces.component(el);
+                        if (!c) continue;
+                        if (typeof c.show === 'function') { c.show(); return true; }
+                        if (typeof c.expand === 'function') { c.expand(); return true; }
+                    }
+                }
+                return false;
+                """,
+                menu_base_id,
+            )
+        )
+    except Exception:
+        return False
+
+
+def _abrir_submenu_dropdown(
+    driver, wait, actions, hover_alvo, lista_id: str, menu_base_id: str, apartamento_id
+) -> bool:
+    """Hover/clique até o submenu RichFaces (formMenu:xxx_list) ficar visível."""
+    _mover_mouse_para_elemento(driver, actions, hover_alvo, apartamento_id)
+    _tentar_abrir_submenu_richfaces(driver, menu_base_id)
+    _aguardar_menu_lista(driver, wait, lista_id, timeout=8)
+    if _menu_lista_visivel(driver, lista_id):
+        return True
+
+    db.logar_progresso(apartamento_id, "Hover não abriu submenu — tentando clique…")
+    try:
+        hover_alvo.click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", hover_alvo)
+    time.sleep(0.5)
+    _tentar_abrir_submenu_richfaces(driver, menu_base_id)
+    _aguardar_menu_lista(driver, wait, lista_id, timeout=8)
+    return _menu_lista_visivel(driver, lista_id)
+
+
+def _listar_menus_topo_sati(driver, apartamento_id, contexto: str = "") -> None:
+    """Diagnóstico: rótulos da barra superior quando um menu não é encontrado."""
+    try:
+        labels = []
+        for el in driver.find_elements(By.CSS_SELECTOR, "div.rf-ddm-lbl-dec"):
+            txt = (el.text or "").strip()
+            if txt:
+                labels.append(txt)
+        if labels:
+            sufixo = f" ({contexto})" if contexto else ""
+            db.logar_progresso(
+                apartamento_id,
+                f"Menus visíveis no SATI{sufixo}: {', '.join(labels)}",
+            )
+    except Exception:
+        pass
+
+
+def _listar_itens_submenu(driver, lista_id: str, apartamento_id, contexto: str) -> None:
+    try:
+        lista = driver.find_element(By.ID, lista_id)
+        labels = []
+        for el in lista.find_elements(By.CSS_SELECTOR, "span.rf-ddm-itm-lbl"):
+            txt = (el.text or "").strip()
+            if txt:
+                labels.append(txt)
+        if labels:
+            db.logar_progresso(
+                apartamento_id,
+                f"Itens em {contexto}: {', '.join(labels)}",
+            )
+    except Exception:
+        pass
+
+
+def _buscar_elemento_visivel(driver, selectors, usar_iframes: bool = False):
+    """Primeiro elemento visível entre seletores (página principal e, opcionalmente, iframes)."""
+    driver.switch_to.default_content()
+    for by, sel in selectors:
+        try:
+            for el in driver.find_elements(by, sel):
+                if el.is_displayed():
+                    return el
+        except Exception:
+            pass
+    if not usar_iframes:
+        return None
+    for iframe in driver.find_elements(By.TAG_NAME, "iframe"):
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(iframe)
+            for by, sel in selectors:
+                try:
+                    for el in driver.find_elements(by, sel):
+                        if el.is_displayed():
+                            return el
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    driver.switch_to.default_content()
+    return None
+
+
+def _extrair_percentual_barra(style: str | None) -> int | None:
+    if not style:
+        return None
+    m = re.search(r"width\s*:\s*([\d.]+)\s*%", style, re.I)
+    if not m:
+        return None
+    return int(float(m.group(1)))
+
+
+def _ler_percentual_progresso_envio_bd(driver) -> int | None:
+    """Lê formCad:pb.prgs (barra RichFaces) — ex.: style='width: 11%;'."""
+    el = _buscar_elemento_visivel(
+        driver,
+        [
+            (By.ID, "formCad:pb.prgs"),
+            (By.CSS_SELECTOR, "div.rf-pb-prgs[id='formCad:pb.prgs']"),
+            (By.CSS_SELECTOR, ".rf-pb-prgs"),
+        ],
+        usar_iframes=True,
+    )
+    if el is None:
+        return None
+    return _extrair_percentual_barra(el.get_attribute("style"))
+
+
+def _aguardar_tela_envio_bd(driver, apartamento_id: int, timeout: int = 150):
+    """Aguarda formCad:enviarDadosBI na página principal ou em iframe."""
+    selectors = [
+        (By.ID, "formCad:enviarDadosBI"),
+        (By.CSS_SELECTOR, "select[id='formCad:enviarDadosBI']"),
+        (By.XPATH, "//select[contains(@id,'enviarDadosBI')]"),
+        (By.XPATH, "//*[contains(@id,'enviarDadosBI')]"),
+    ]
+    inicio = time.time()
+    ultimo_log = 0.0
+    while time.time() - inicio < timeout:
+        if time.time() - ultimo_log >= 15:
+            db.logar_progresso(
+                apartamento_id,
+                "Aguardando formulário Envio de Banco de Dados…",
+            )
+            ultimo_log = time.time()
+
+        driver.switch_to.default_content()
+        for by, sel in selectors:
+            try:
+                el = driver.find_element(by, sel)
+                if el.is_displayed():
+                    return el
+            except Exception:
+                pass
+
+        for idx, iframe in enumerate(driver.find_elements(By.TAG_NAME, "iframe")):
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(iframe)
+                for by, sel in selectors:
+                    try:
+                        el = driver.find_element(by, sel)
+                        if el.is_displayed():
+                            db.logar_progresso(
+                                apartamento_id,
+                                f"Formulário envio BI detectado no iframe {idx}.",
+                            )
+                            return el
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        time.sleep(2)
+
+    driver.switch_to.default_content()
+    raise TimeoutError(
+        f"Tela 'Envio de Banco de Dados' (formCad:enviarDadosBI) não carregou em {timeout}s."
+    )
+
+
 def _abrir_menu_configuracoes(driver, wait, actions, apartamento_id):
     """Menu superior SATI: Configurações (formMenu:j_idt711)."""
     db.logar_progresso(apartamento_id, "Abrindo menu Configurações…")
+    time.sleep(0.5)
+
+    menu = None
+    for el in driver.find_elements(
+        By.XPATH,
+        "//div[contains(@class,'rf-ddm-lbl-dec') and normalize-space()='Configurações']",
+    ):
+        if el.is_displayed():
+            menu = el
+            break
+    if menu is None:
+        for el in driver.find_elements(By.ID, "formMenu:j_idt711_itm"):
+            if el.is_displayed():
+                menu = el
+                break
+
     candidatos = [
+        (By.ID, "formMenu:j_idt711_itm"),
+        (By.XPATH, "//td[@id='formMenu:j_idt711_itm']"),
         (By.ID, "formMenu:j_idt711_label"),
-        (By.ID, "formMenu:j_idt711"),
-        (
-            By.XPATH,
-            "//div[contains(@class,'rf-ddm-lbl')][.//div[normalize-space()='Configurações']]",
-        ),
         (
             By.XPATH,
             "//div[contains(@class,'rf-ddm-lbl-dec') and normalize-space()='Configurações']",
         ),
+        (
+            By.XPATH,
+            "//div[contains(@class,'rf-ddm-lbl')][contains(normalize-space(),'Configurações')]",
+        ),
     ]
-    menu = None
-    for by, sel in candidatos:
-        try:
-            menu = wait.until(EC.visibility_of_element_located((by, sel)))
-            break
-        except Exception:
-            continue
     if menu is None:
+        for by, sel in candidatos:
+            try:
+                menu = _wait_curto(driver, 6).until(
+                    EC.visibility_of_element_located((by, sel))
+                )
+                break
+            except Exception:
+                continue
+
+    if menu is None:
+        _listar_menus_topo_sati(driver, apartamento_id, "menu Configurações não encontrado")
         raise RuntimeError("Menu 'Configurações' não encontrado na barra do SATI.")
 
-    actions.move_to_element(menu).perform()
-    time.sleep(1)
-    try:
-        wait.until(EC.visibility_of_element_located((By.ID, "formMenu:j_idt711_list")))
-    except Exception:
-        menu.click()
-        time.sleep(1)
-    return menu
+    db.logar_progresso(apartamento_id, "Menu Configurações localizado — posicionando mouse…")
+    hover_alvo = _celula_menu_hover(driver, menu)
+
+    if not _abrir_submenu_dropdown(
+        driver,
+        wait,
+        actions,
+        hover_alvo,
+        "formMenu:j_idt711_list",
+        "formMenu:j_idt711",
+        apartamento_id,
+    ):
+        _listar_menus_topo_sati(driver, apartamento_id, "submenu Configurações não abriu")
+        raise RuntimeError(
+            "Submenu 'Configurações' não abriu (formMenu:j_idt711_list invisível)."
+        )
+
+    _listar_itens_submenu(driver, "formMenu:j_idt711_list", apartamento_id, "Configurações")
+    return hover_alvo
 
 
 def navegar_envio_banco_dados(driver, wait, actions, apartamento_id):
     """Menu Configurações → Envio de Banco de Dados (formMenu:j_idt747 → formCad:enviarDadosBI)."""
-    _abrir_menu_configuracoes(driver, wait, actions, apartamento_id)
+    menu_cfg = _abrir_menu_configuracoes(driver, wait, actions, apartamento_id)
 
     envio_selectors = [
         (By.ID, "formMenu:j_idt747"),
         (By.CSS_SELECTOR, "[id='formMenu:j_idt747']"),
-        (By.XPATH, "//div[contains(@class,'rf-ddm-itm')][@id='formMenu:j_idt747']"),
         (
             By.XPATH,
-            "//span[contains(@class,'rf-ddm-itm-lbl') and "
-            "contains(normalize-space(),'Envio de Banco de Dados')]",
+            "//div[@id='formMenu:j_idt711_list']"
+            "//div[contains(@class,'rf-ddm-itm')][@id='formMenu:j_idt747']",
         ),
         (
             By.XPATH,
-            "//span[contains(@class,'rf-ddm-itm-lbl') and contains(.,'Envio de Banco')]",
+            "//div[@id='formMenu:j_idt711_list']"
+            "//span[contains(@class,'rf-ddm-itm-lbl') and "
+            "normalize-space()='Envio de Banco de Dados']"
+            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
+        ),
+        (
+            By.XPATH,
+            "//div[@id='formMenu:j_idt711_list']"
+            "//span[contains(@class,'rf-ddm-itm-lbl') and contains(.,'Envio de Banco')]"
+            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
+        ),
+        (
+            By.XPATH,
+            "//span[contains(@class,'rf-ddm-itm-lbl') and "
+            "normalize-space()='Envio de Banco de Dados']"
+            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
+        ),
+        (
+            By.XPATH,
+            "//span[contains(@class,'rf-ddm-itm-lbl') and contains(.,'Envio de Banco')]"
+            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
         ),
     ]
 
     envio = None
     for by, sel in envio_selectors:
         try:
-            envio = WebDriverWait(driver, 8).until(EC.element_to_be_clickable((by, sel)))
+            _mover_mouse_para_elemento(
+                driver, actions, menu_cfg, apartamento_id, "Configurações (manter aberto)"
+            )
+            time.sleep(0.4)
+            envio = _wait_curto(driver, 12).until(EC.element_to_be_clickable((by, sel)))
+            db.logar_progresso(
+                apartamento_id,
+                f"Item 'Envio de Banco de Dados' localizado ({by}).",
+            )
             break
         except Exception:
             continue
 
     if envio is None:
+        _listar_itens_submenu(
+            driver, "formMenu:j_idt711_list", apartamento_id, "Configurações (falha)"
+        )
         raise RuntimeError(
             "Item 'Envio de Banco de Dados' não encontrado dentro de Configurações."
         )
 
     db.logar_progresso(apartamento_id, "Clicando em Envio de Banco de Dados…")
     try:
-        envio.click()
+        _mover_mouse_para_elemento(driver, actions, envio, apartamento_id, "Envio de Banco de Dados")
+        ActionChains(driver).move_to_element(envio).pause(0.2).click(envio).perform()
     except Exception:
-        driver.execute_script("arguments[0].click();", envio)
+        try:
+            envio.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", envio)
 
-    time.sleep(2)
-    wait.until(EC.presence_of_element_located((By.ID, "formCad:enviarDadosBI")))
+    time.sleep(1)
+    _aguardar_tela_envio_bd(driver, apartamento_id)
     db.logar_progresso(apartamento_id, "Tela 'Envio de Banco de Dados' aberta.")
 
 
@@ -451,6 +784,8 @@ def executar_envio_banco_bi(driver, wait, apartamento_id, tempo_max_seg=3600):
     db.logar_progresso(apartamento_id, "Envio iniciado. Aguardando processamento…")
 
     tempo_ini = time.time()
+    ultimo_pct = -1
+    ultimo_log_pct = 0.0
     while time.time() - tempo_ini < tempo_max_seg:
         try:
             fin = driver.find_element(By.ID, "formCad:pb.fin")
@@ -459,7 +794,18 @@ def executar_envio_banco_bi(driver, wait, apartamento_id, tempo_max_seg=3600):
                 break
         except Exception:
             pass
-        time.sleep(3)
+
+        pct = _ler_percentual_progresso_envio_bd(driver)
+        agora = time.time()
+        if pct is not None and pct != ultimo_pct and (agora - ultimo_log_pct >= 3):
+            db.logar_progresso(
+                apartamento_id,
+                f"Processamento SATI (formCad:pb.prgs): {pct}%",
+            )
+            ultimo_pct = pct
+            ultimo_log_pct = agora
+
+        time.sleep(2)
     else:
         raise TimeoutError(
             f"Tempo esgotado ({tempo_max_seg}s) aguardando conclusão do envio BI."
@@ -595,6 +941,12 @@ def baixar_arquivo_com_sessao(driver, url: str, pasta_destino: str, nome_arquivo
         db.logar_progresso(apartamento_id, f"Baixando {nome_arquivo}…")
         try:
             resp = sess.get(tentativa_url, stream=True, timeout=120, headers=headers)
+            if resp.status_code == 404:
+                db.logar_progresso(
+                    apartamento_id,
+                    f"Arquivo não encontrado no servidor (404): {nome_arquivo}",
+                )
+                return None
             resp.raise_for_status()
             if os.path.isfile(destino):
                 os.remove(destino)
@@ -611,6 +963,8 @@ def baixar_arquivo_com_sessao(driver, url: str, pasta_destino: str, nome_arquivo
             )
             if os.path.isfile(destino):
                 os.remove(destino)
+        except requests.HTTPError as e:
+            db.logar_progresso(apartamento_id, f"Falha HTTP ({tentativa_url[:80]}): {e}")
         except Exception as e:
             db.logar_progresso(apartamento_id, f"Falha HTTP ({tentativa_url[:80]}): {e}")
     return None
@@ -1190,13 +1544,22 @@ def baixar_comprovante_via_aba_visualizador(
         url_completa = bool(
             url and re.search(r"2COMPROVANT_\d+\.(pdf|jpe?g|png)", url, re.I)
         )
+        http_404 = False
         if url_completa:
             db.logar_progresso(apartamento_id, "Download HTTP direto (URL completa)…")
             baixado = baixar_arquivo_com_sessao(
                 driver, url, pasta_downloads, nome_arquivo, apartamento_id
             )
+            if not baixado and url:
+                try:
+                    import requests as _req
 
-        if not baixado:
+                    probe = _req.head(url.split("?")[0], timeout=15, allow_redirects=True)
+                    http_404 = probe.status_code == 404
+                except Exception:
+                    pass
+
+        if not baixado and not http_404:
             for tentativa in range(1, 3):
                 db.logar_progresso(
                     apartamento_id,
@@ -1211,14 +1574,20 @@ def baixar_comprovante_via_aba_visualizador(
                 baixado = None
                 time.sleep(1)
 
-        if not baixado and url and url_completa:
+        if not baixado and url and url_completa and not http_404:
             db.logar_progresso(apartamento_id, "Repetindo download HTTP…")
             baixado = baixar_arquivo_com_sessao(
                 driver, url, pasta_downloads, nome_arquivo, apartamento_id
             )
 
         if not baixado:
-            db.logar_progresso(apartamento_id, f"FALHA: PDF não salvo ({nome_arquivo}).")
+            if http_404:
+                db.logar_progresso(
+                    apartamento_id,
+                    f"Comprovante listado no painel, mas arquivo ausente no servidor ({nome_arquivo}).",
+                )
+            else:
+                db.logar_progresso(apartamento_id, f"FALHA: PDF não salvo ({nome_arquivo}).")
             return None
 
         return _finalizar_destino_comprovante(baixado, pasta_downloads, nome_arquivo, apartamento_id)

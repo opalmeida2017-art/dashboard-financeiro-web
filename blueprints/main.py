@@ -170,6 +170,12 @@ def fluxo_viagem():
         modo = 'lista'
         placa_historico = None
 
+    comprovante_filtro = dm.normalizar_filtro_comprovante_fluxo(
+        request.args.get('comprovante')
+    )
+    total_antes_filtro = len(rows)
+    rows = dm.filtrar_fluxo_por_comprovante(rows, comprovante_filtro)
+
     if modo == 'lista' and rows:
         placas = [
             {"placa": r.get("placa"), "tipo": ""}
@@ -226,6 +232,9 @@ def fluxo_viagem():
         selected_placa=placa_arg,
         selected_start_date=filters['start_date_str'],
         selected_end_date=filters['end_date_str'],
+        selected_comprovante_filtro=comprovante_filtro,
+        comprovante_filtro_opcoes=dm.FLUXO_FILTRO_COMPROVANTE_OPCOES,
+        total_antes_filtro_comprovante=total_antes_filtro,
         pendentes_coleta_json=json.dumps(pendentes_coleta),
     )
 

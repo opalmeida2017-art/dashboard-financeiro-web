@@ -245,24 +245,73 @@ def _processo_ativo(pid: int) -> bool:
         return False
 
 
+def _ler_lock_robo_painel(apartamento_id: int) -> dict:
+    path = _caminho_lock_robo_painel(apartamento_id)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = (f.read() or "").strip()
+        if raw.startswith("{"):
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        if raw.isdigit():
+            return {
+                "pid": int(raw),
+                "started": datetime.fromtimestamp(os.path.getmtime(path)).isoformat(
+                    timespec="seconds"
+                ),
+            }
+    except (json.JSONDecodeError, OSError, ValueError):
+        pass
+    return {}
+
+
+def _idade_lock_segundos(lock: dict, path: str) -> float:
+    raw = lock.get("started")
+    if raw:
+        try:
+            started = datetime.fromisoformat(str(raw))
+            return max(0.0, (datetime.now() - started).total_seconds())
+        except ValueError:
+            pass
+    try:
+        return max(0.0, time.time() - os.path.getmtime(path))
+    except OSError:
+        return 0.0
+
+
 def _limpar_lock_robo_obsoleto(apartamento_id: int) -> None:
-    """Remove lock de execução travada ou de processo que já terminou."""
+    """Remove lock travado (worker RQ long-lived ou processo morto)."""
     path = _caminho_lock_robo_painel(apartamento_id)
     if not os.path.isfile(path):
         return
     try:
-        with open(path, encoding="utf-8") as f:
-            pid_txt = (f.read() or "").strip()
-        pid = int(pid_txt) if pid_txt.isdigit() else 0
-        idade = time.time() - os.path.getmtime(path)
-        if idade > 12 * 60 or not _processo_ativo(pid):
+        lock = _ler_lock_robo_painel(apartamento_id)
+        pid = int(lock.get("pid") or 0)
+        idade = _idade_lock_segundos(lock, path)
+        try:
+            max_min = max(30, int(os.getenv("ROBO_PAINEL_LOCK_MAX_MIN", "120")))
+        except ValueError:
+            max_min = 120
+        max_seg = max_min * 60
+        if idade > max_seg:
             os.remove(path)
-            db.logar_progresso(apartamento_id, "Lock obsoleto do robô removido.")
+            db.logar_progresso(apartamento_id, "Lock obsoleto do robô removido (tempo máximo).")
+            return
+        if pid and not _processo_ativo(pid) and idade > 120:
+            os.remove(path)
+            db.logar_progresso(apartamento_id, "Lock obsoleto do robô removido (processo encerrado).")
     except OSError:
         try:
             os.remove(path)
         except OSError:
             pass
+
+
+def lock_painel_em_execucao(apartamento_id: int) -> bool:
+    _limpar_lock_robo_obsoleto(apartamento_id)
+    return os.path.isfile(_caminho_lock_robo_painel(apartamento_id))
 
 
 def _adquirir_lock_robo_painel(apartamento_id: int) -> bool:
@@ -272,8 +321,13 @@ def _adquirir_lock_robo_painel(apartamento_id: int) -> bool:
     if os.path.isfile(path):
         return False
     try:
+        payload = {
+            "pid": os.getpid(),
+            "started": datetime.now().isoformat(timespec="seconds"),
+            "robot": "painel_documentos",
+        }
         with open(path, "w", encoding="utf-8") as f:
-            f.write(str(os.getpid()))
+            json.dump(payload, f, ensure_ascii=False)
         return True
     except OSError:
         return False

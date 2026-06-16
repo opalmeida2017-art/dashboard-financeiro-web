@@ -67,7 +67,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 e.preventDefault();
                 const start = document.getElementById('start_date')?.value || '';
                 const end = document.getElementById('end_date')?.value || '';
-                const params = new URLSearchParams({ historico: '1', placa, start_date: start, end_date: end });
+                const comprovante = document.getElementById('comprovante')?.value || 'todos';
+                const params = new URLSearchParams({
+                    historico: '1',
+                    placa,
+                    start_date: start,
+                    end_date: end,
+                    comprovante: comprovante,
+                });
                 window.location.href = '/fluxo_viagem?' + params.toString();
             }
         });

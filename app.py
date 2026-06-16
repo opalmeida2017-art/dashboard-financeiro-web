@@ -1,4 +1,4 @@
-#Teste de versao Final Definitive Version - Corrigido)
+# BIWEB — painel de gestão de transporte
 
 import os
 
@@ -20,7 +20,8 @@ from tenant import (
     ensure_local_admin,
     ensure_transportadora,
     get_transportadora_id,
-    get_transportadora_nome,
+    get_transportadora_nome_exibicao,
+    nome_exibicao_navbar,
     try_auto_login,
 )
 from biweb_paths import is_frozen, resource_root
@@ -128,9 +129,9 @@ def create_app():
         )
         return dict(
             is_admin_in_context=is_admin_in_context,
-            transportadora_nome=get_transportadora_nome(),
+            transportadora_nome=get_transportadora_nome_exibicao(),
             transportadora_id=get_transportadora_id(),
-            usuario_nome=nome_ui,
+            usuario_nome=nome_exibicao_navbar(nome_ui),
         )
 
 

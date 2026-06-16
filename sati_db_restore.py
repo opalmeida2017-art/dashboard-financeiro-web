@@ -215,6 +215,44 @@ def extrair_zip_dump(zip_path: Path, destino: Path) -> Path:
     return dumps[0]
 
 
+def _preparar_banco_para_restore(
+    sati_url: str, schema: str, apartamento_id: int | None
+) -> None:
+    """
+    Apaga o schema do tenant antes do pg_restore.
+    Sem isso, a etapa COPY (data) falha com chaves duplicadas na 2ª atualização.
+    """
+    if os.getenv("SATI_RESTORE_KEEP_SCHEMA", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        _log(apartamento_id, f"Mantendo schema {schema} (SATI_RESTORE_KEEP_SCHEMA=1).")
+        return
+
+    from sqlalchemy import create_engine, text
+
+    schema_sql = re.sub(r"[^a-zA-Z0-9_]", "", schema) or "c3332"
+    eng = create_engine(sati_url)
+    with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(
+            text(
+                """
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND pid <> pg_backend_pid()
+                """
+            )
+        )
+        conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_sql}" CASCADE'))
+    _log(
+        apartamento_id,
+        f"Schema {schema_sql} removido — carga limpa (evita COPY com chaves duplicadas).",
+    )
+
+
 def _espelhar_dominios_public(sati_url: str, schema: str, apartamento_id: int | None) -> None:
     """
     Dump SATI cria DOMAIN em c3332, mas tabelas referenciam public.dom_*.
@@ -314,6 +352,7 @@ def restaurar_dump_sati(
     )
 
     with _restore_lock(apartamento_id):
+        _preparar_banco_para_restore(sati_url, schema, apartamento_id)
         _restaurar_por_secoes(pg_restore, pg, dump_path, apartamento_id)
         _espelhar_dominios_public(sati_url, schema, apartamento_id)
 
