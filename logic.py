@@ -81,6 +81,20 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
     print(f">>> [LOGIC] Chamando get_faturamento_details_dashboard_data para o apartamento ID: {apartamento_id}")
     return dm.get_faturamento_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)
 
+
+def get_gestao_comercial_data(apartamento_id, analise_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
+    import gestao_comercial as gc
+    return gc.get_gestao_comercial_data(
+        apartamento_id, analise_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter
+    )
+
+
+def get_visao_bi_data(visao_key, analise_id, apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
+    import visoes_bi as vb
+    return vb.get_visao_bi_data(
+        visao_key, analise_id, apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter
+    )
+
 def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter):
     print(f">>> [LOGIC] Chamando get_despesas_details_dashboard_data para o apartamento ID: {apartamento_id}")
     return dm.get_despesas_details_dashboard_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter)

@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ analise.titulo }} — Visão comercial{% endblock %}
+
+{% block content %}
+<div class="dash-detail-page" id="gc-analise-page" data-analise-id="{{ analise_id }}">
+    <header class="dash-detail-header">
+        <div>
+            <p class="gc-analise-badge">Análise {{ analise_id }} · Visão comercial</p>
+            <h1>{{ analise.titulo }}</h1>
+            <p class="subtitle" style="margin:0.25rem 0 0;color:var(--text-muted);">{{ analise.subtitulo }}</p>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
+            <a href="{{ url_for('main.visao_comercial') }}?{{ request.query_string.decode('utf-8') }}" class="dash-back-link">&larr; Todas as análises</a>
+            <a href="{{ url_for('main.index') }}?{{ request.query_string.decode('utf-8') }}" class="dash-back-link">Painel</a>
+        </div>
+    </header>
+
+    <section class="gc-pergunta-banner">
+        <span class="gc-pergunta-label">Pergunta de gestão</span>
+        <p class="gc-pergunta-text">{{ analise.pergunta }}</p>
+    </section>
+
+    <section class="gc-kpi-row" id="gc-kpi-row">
+        <div class="gc-kpi-skeleton">Carregando indicadores…</div>
+    </section>
+
+    <div class="charts-studio dashboard-layout">
+        <section class="charts-hero">
+            <div class="charts-hero-toolbar">
+                <div class="charts-hero-head">
+                    <span class="charts-badge receita">Comercial</span>
+                    <h2 id="gc-chart-title">Carregando gráfico…</h2>
+                    <p class="charts-hero-sub">Custos rateados proporcionalmente à receita do período (mesma base do painel).</p>
+                </div>
+            </div>
+            <div class="charts-hero-canvas chart-canvas-wrapper featured">
+                <canvas id="gcMainChart"></canvas>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/gestaoComercial.js', v=cache_buster) }}"></script>
+{% endblock %}

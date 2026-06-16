@@ -146,13 +146,36 @@
         <aside class="dash-side-panel">
             <div class="side-card">
                 <h3>Análises</h3>
-                <a class="side-link" href="{{ url_for('main.faturamento_detalhes') }}?{{ request.query_string.decode('utf-8') }}">
-                    <span class="icon blue">📈</span>
-                    <span>Faturamento detalhado</span>
+                <a class="side-link" href="{{ url_for('main.visao_comercial') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon purple">💼</span>
+                    <span>Visão comercial</span>
                 </a>
-                <a class="side-link" href="{{ url_for('main.despesas_detalhes') }}?{{ request.query_string.decode('utf-8') }}">
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='financeira') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon red">💰</span>
+                    <span>Visão financeira</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='frota') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon blue">🚛</span>
+                    <span>Visão de frota</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='operacional') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon green">📋</span>
+                    <span>Visão operacional</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='estrategica') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon purple">🎯</span>
+                    <span>Cruzamentos estratégicos</span>
+                </a>
+            </div>
+            <div class="side-card">
+                <h3>Exploratório</h3>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='volume') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon blue">📈</span>
+                    <span>Visão volume</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='custos') }}?{{ request.query_string.decode('utf-8') }}">
                     <span class="icon red">📉</span>
-                    <span>Despesas detalhadas</span>
+                    <span>Estrutura de custos</span>
                 </a>
             </div>
             <div class="side-card">
@@ -411,8 +434,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const btnVerGrafico = choiceModal.querySelector('#btnVerGrafico');
         const btnAuditar = choiceModal.querySelector('#btnAuditar');
         
-        const urlGraficoFaturamento = `{{ url_for('main.faturamento_detalhes') }}?${params.toString()}`;
-        const urlGraficoDespesas = `{{ url_for('main.despesas_detalhes') }}?${params.toString()}`;
+        const urlGraficoFaturamento = `{{ url_for('main.visao_bi', visao_key='volume') }}?${params.toString()}`;
+        const urlGraficoDespesas = `{{ url_for('main.visao_bi', visao_key='custos') }}?${params.toString()}`;
         const conhecimentos = {{ summary.faturamento_conhecimentos|tojson if summary and summary.faturamento_conhecimentos else '[]' }};
 
         document.querySelectorAll('.card[data-type="faturamento"]').forEach(card => card.addEventListener('click', (event) => {

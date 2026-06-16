@@ -103,22 +103,100 @@ def index():
 @main_bp.route('/faturamento_detalhes')
 @login_required
 def faturamento_detalhes():
-    filters = parse_filters(request.args)
-    return render_template('faturamento_detalhes.html', 
-                           selected_start_date=filters['start_date_str'],
-                           selected_end_date=filters['end_date_str'],
-                           selected_placa=filters['placa'],
-                           selected_filial=filters['filial'])
+    qs = request.query_string.decode('utf-8')
+    url = url_for('main.visao_bi', visao_key='volume')
+    return redirect(f'{url}?{qs}' if qs else url)
+
 
 @main_bp.route('/despesas_detalhes')
 @login_required
 def despesas_detalhes():
+    qs = request.query_string.decode('utf-8')
+    url = url_for('main.visao_bi', visao_key='custos')
+    return redirect(f'{url}?{qs}' if qs else url)
+
+
+@main_bp.route('/visao_comercial')
+@login_required
+def visao_comercial():
+    import gestao_comercial as gc
     filters = parse_filters(request.args)
-    return render_template('despesas_detalhes.html',
-                           selected_start_date=filters['start_date_str'],
-                           selected_end_date=filters['end_date_str'],
-                           selected_placa=filters['placa'],
-                           selected_filial=filters['filial'])
+    return render_template(
+        'visao_comercial_index.html',
+        analises=gc.ANALISES_LIST,
+        selected_start_date=filters['start_date_str'],
+        selected_end_date=filters['end_date_str'],
+        selected_placa=filters['placa'],
+        selected_filial=filters['filial'],
+    )
+
+
+@main_bp.route('/visao_comercial/<int:analise_id>')
+@login_required
+def visao_comercial_analise(analise_id: int):
+    import gestao_comercial as gc
+    if analise_id not in gc.ANALISES:
+        flash('Análise comercial não encontrada.', 'error')
+        return redirect(url_for('main.visao_comercial'))
+    filters = parse_filters(request.args)
+    analise = dict(gc.ANALISES[analise_id])
+    analise['id'] = analise_id
+    return render_template(
+        'visao_comercial_analise.html',
+        analise=analise,
+        analise_id=analise_id,
+        selected_start_date=filters['start_date_str'],
+        selected_end_date=filters['end_date_str'],
+        selected_placa=filters['placa'],
+        selected_filial=filters['filial'],
+    )
+
+
+@main_bp.route('/visao/<visao_key>')
+@login_required
+def visao_bi(visao_key: str):
+    import visoes_bi as vb
+    if visao_key not in vb.VISOES:
+        flash('Visão não encontrada.', 'error')
+        return redirect(url_for('main.index'))
+    visao = vb.VISOES[visao_key]
+    filters = parse_filters(request.args)
+    return render_template(
+        'visao_bi_index.html',
+        visao_key=visao_key,
+        visao_titulo=visao['titulo'],
+        visao_subtitulo=visao['subtitulo'],
+        analises=vb.list_analises(visao_key),
+        selected_start_date=filters['start_date_str'],
+        selected_end_date=filters['end_date_str'],
+        selected_placa=filters['placa'],
+        selected_filial=filters['filial'],
+    )
+
+
+@main_bp.route('/visao/<visao_key>/<int:analise_id>')
+@login_required
+def visao_bi_analise(visao_key: str, analise_id: int):
+    import visoes_bi as vb
+    meta = vb.get_visao_meta(visao_key, analise_id)
+    if not meta:
+        flash('Análise não encontrada.', 'error')
+        return redirect(url_for('main.visao_bi', visao_key=visao_key))
+    visao = vb.VISOES[visao_key]
+    filters = parse_filters(request.args)
+    return render_template(
+        'visao_bi_analise.html',
+        visao_key=visao_key,
+        visao_titulo=visao['titulo'],
+        analise=meta,
+        analise_id=analise_id,
+        badge=visao['badge'],
+        badge_class=visao['badge_class'],
+        selected_start_date=filters['start_date_str'],
+        selected_end_date=filters['end_date_str'],
+        selected_placa=filters['placa'],
+        selected_filial=filters['filial'],
+    )
 
 
 def _resolver_intervalo_fluxo_viagem(apartamento_id, start_date, end_date):

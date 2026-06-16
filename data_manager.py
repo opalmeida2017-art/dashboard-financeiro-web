@@ -1165,6 +1165,7 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
             )
             fat_filial = df_fil.groupby(filial_col)[col_map_fat["freteempresa"]].sum().reset_index()
         fat_filial.columns = ["nomeFilial", "freteEmpresa"]
+        fat_filial = fat_filial.sort_values("freteEmpresa", ascending=False)
         dashboard_data["faturamento_filial"] = fat_filial.to_dict(orient="records")
 
     if 'cidorigemformat' in col_map_viagens_cli and 'ciddestinoformat' in col_map_viagens_cli:
@@ -1693,7 +1694,7 @@ def get_despesas_details_dashboard_data(apartamento_id: int, start_date, end_dat
         
     df_desp_norm = _normalizar_coluna_filial(df_despesas_gerais)
     if not df_desp_norm.empty and 'nomefil' in df_desp_norm.columns:
-        filial_df = df_desp_norm.groupby('nomefil')['valor_calculado'].sum().reset_index()
+        filial_df = df_desp_norm.groupby('nomefil')['valor_calculado'].sum().sort_values(ascending=False).reset_index()
         filial_df.rename(columns={'nomefil': 'nomeFil', 'valor_calculado': 'vlcontabil'}, inplace=True)
         dashboard_data['despesa_filial'] = filial_df.to_dict(orient='records')
 

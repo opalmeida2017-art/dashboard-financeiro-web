@@ -113,6 +113,62 @@ def api_faturamento_dashboard_data():
     )
     return jsonify(dashboard_data)
 
+@api_bp.route('/gestao_comercial_data')
+@login_required
+def api_gestao_comercial_data():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Transportadora não identificada"}), 400
+    try:
+        analise_id = int(request.args.get("analise", "1"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Parâmetro analise inválido"}), 400
+    filters = _parse_filters()
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters["start_date_obj"], filters["end_date_obj"]
+    )
+    data = logic.get_gestao_comercial_data(
+        apartamento_id=apartamento_id_alvo,
+        analise_id=analise_id,
+        start_date=start_eff,
+        end_date=end_eff,
+        placa_filter=filters["placa"],
+        filial_filter=filters["filial"],
+        tipo_negocio_filter=filters["tipo_negocio"],
+    )
+    return jsonify(data)
+
+@api_bp.route('/visao_bi_data')
+@login_required
+def api_visao_bi_data():
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Transportadora não identificada"}), 400
+    visao_key = request.args.get("visao", "").strip()
+    if not visao_key:
+        return jsonify({"error": "Parâmetro visao obrigatório"}), 400
+    try:
+        analise_id = int(request.args.get("analise", "1"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Parâmetro analise inválido"}), 400
+    filters = _parse_filters()
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters["start_date_obj"], filters["end_date_obj"]
+    )
+    data = logic.get_visao_bi_data(
+        visao_key=visao_key,
+        analise_id=analise_id,
+        apartamento_id=apartamento_id_alvo,
+        start_date=start_eff,
+        end_date=end_eff,
+        placa_filter=filters["placa"],
+        filial_filter=filters["filial"],
+        tipo_negocio_filter=filters["tipo_negocio"],
+    )
+    return jsonify(data)
+
 @api_bp.route('/despesas_dashboard_data')
 @login_required
 def api_despesas_dashboard_data():

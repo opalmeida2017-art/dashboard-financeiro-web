@@ -1,0 +1,548 @@
+"""Visão comercial — análises 1–6 (BD SATI via data_manager)."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+
+import data_manager as dm
+
+ANALISES = {
+    1: {
+        "titulo": "Margem por cliente",
+        "subtitulo": "Rentabilidade da carteira",
+        "pergunta": (
+            "Quais clientes faturam muito mas deixam pouco lucro? "
+            "Vale renegociar tabela ou reduzir atendimento?"
+        ),
+        "icone": "purple",
+        "emoji": "👥",
+    },
+    2: {
+        "titulo": "Receita vs custo por rota",
+        "subtitulo": "Origem → destino",
+        "pergunta": (
+            "Quais rotas precisam de reajuste de frete ou não devem ser aceitas no agenciamento?"
+        ),
+        "icone": "blue",
+        "emoji": "🗺️",
+    },
+    3: {
+        "titulo": "Ticket médio por cliente",
+        "subtitulo": "Evolução no período",
+        "pergunta": (
+            "O cliente está crescendo em volume com frete menor (pressão de preço) ou em valor real?"
+        ),
+        "icone": "green",
+        "emoji": "🎫",
+    },
+    4: {
+        "titulo": "Concentração de receita",
+        "subtitulo": "Curva de Pareto (80/20)",
+        "pergunta": (
+            "Dependemos demais de 2–3 clientes? Qual o risco se perdermos um contrato?"
+        ),
+        "icone": "red",
+        "emoji": "📊",
+    },
+    5: {
+        "titulo": "Frota própria vs agenciamento",
+        "subtitulo": "Comparativo por tipo de frete",
+        "pergunta": (
+            "Vale mais investir em frota própria ou manter terceiros nesta rota/cliente?"
+        ),
+        "icone": "blue",
+        "emoji": "🚛",
+    },
+    6: {
+        "titulo": "Spread frete empresa × motorista",
+        "subtitulo": "Margem operacional do frete",
+        "pergunta": (
+            "O spread cobre custo fixo e margem desejada? Há motorista ou rota com spread negativo?"
+        ),
+        "icone": "purple",
+        "emoji": "💰",
+    },
+}
+
+ANALISES_LIST = [{"id": k, **v} for k, v in sorted(ANALISES.items())]
+
+
+def _fmt_brl(val: float) -> str:
+    return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _fmt_pct(val: float) -> str:
+    return f"{val:.1f}%".replace(".", ",")
+
+
+def _num(series):
+    return pd.to_numeric(series, errors="coerce").fillna(0.0)
+
+
+def _custo_operacional_total(
+    filtered_data: dict,
+    apartamento_id: int,
+    placa_filter: str,
+    start_date: datetime,
+    end_date: datetime,
+    filial_filter: list,
+    tipo_negocio_filter: str,
+) -> float:
+    df_viagens = filtered_data["df_viagens_cliente"]
+    df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
+    df_flags = filtered_data["df_flags"]
+    df_acerto = filtered_data["df_acerto_motorista_raw"]
+    df_despesas_raw = filtered_data["df_despesas_raw"]
+
+    expense = dm._get_final_expense_dataframes(
+        df_viagens, df_despesas_filtrado, df_flags, df_acerto
+    )
+    custo_viagem = (
+        expense["custos"]["valor_calculado"].sum()
+        if not expense["custos"].empty
+        else 0.0
+    )
+    despesas_gerais = (
+        expense["despesas"]["valor_calculado"].sum()
+        if not expense["despesas"].empty
+        else 0.0
+    )
+    df_tipo_d = dm._calcular_df_tipo_d(
+        df_despesas_raw, df_flags, start_date, end_date, filial_filter, tipo_negocio_filter
+    )
+    tipo_d = dm._total_tipo_d_com_rateio(df_tipo_d, placa_filter, apartamento_id)
+    return float(custo_viagem + despesas_gerais + tipo_d)
+
+
+def _base_viagens_fat(filtered_data: dict) -> pd.DataFrame:
+    df_v = filtered_data["df_viagens_cliente"]
+    df_f = filtered_data["df_fat_filtrado"]
+    if df_v.empty or df_f.empty:
+        return pd.DataFrame()
+    cv = dm._get_case_insensitive_column_map(df_v.columns)
+    cf = dm._get_case_insensitive_column_map(df_f.columns)
+    if "numero" not in cv or "freteempresa" not in cf:
+        return pd.DataFrame()
+    cols_v = [cv["numero"]]
+    for key in (
+        "nomecliente",
+        "cidorigemformat",
+        "ciddestinoformat",
+        "dataviagemmotorista",
+        "tipofrete",
+        "nomemotorista",
+        "fretemotorista",
+    ):
+        if key in cv:
+            cols_v.append(cv[key])
+    df = pd.merge(
+        df_v[cols_v].drop_duplicates(subset=[cv["numero"]]),
+        df_f[[cf["numero"], cf["freteempresa"]]],
+        left_on=cv["numero"],
+        right_on=cf["numero"],
+        how="inner",
+    )
+    df["receita"] = _num(df[cf["freteempresa"]])
+    df = df[df["receita"] > 0]
+    return df
+
+
+def _alocar_custo_proporcional(df: pd.DataFrame, dim_col: str, custo_total: float) -> pd.DataFrame:
+    if df.empty or dim_col not in df.columns:
+        return pd.DataFrame()
+    grp = (
+        df.groupby(dim_col, dropna=False)
+        .agg(receita=("receita", "sum"), viagens=("receita", "count"))
+        .reset_index()
+    )
+    grp[dim_col] = grp[dim_col].fillna("(sem nome)").astype(str).str.strip()
+    grp = grp[grp[dim_col] != ""]
+    total_rec = grp["receita"].sum()
+    if total_rec <= 0:
+        grp["custo_alocado"] = 0.0
+        grp["lucro"] = 0.0
+        grp["margem_pct"] = 0.0
+        return grp
+    grp["custo_alocado"] = custo_total * (grp["receita"] / total_rec)
+    grp["lucro"] = grp["receita"] - grp["custo_alocado"]
+    grp["margem_pct"] = np.where(grp["receita"] > 0, grp["lucro"] / grp["receita"] * 100, 0)
+    return grp.sort_values("receita", ascending=False)
+
+
+def _kpis_margem(grp: pd.DataFrame, dim_label: str) -> list:
+    if grp.empty:
+        return [
+            {"label": f"Total {dim_label}", "value": "0", "hint": "Sem dados no período"},
+            {"label": "Receita total", "value": "R$ 0", "hint": ""},
+            {"label": "Margem média", "value": "0%", "hint": ""},
+        ]
+    neg = int((grp["margem_pct"] < 0).sum())
+    rec_total = grp["receita"].sum()
+    margem_media = (grp["lucro"].sum() / rec_total * 100) if rec_total > 0 else 0
+    pior = grp.sort_values("margem_pct").iloc[0]
+    dim_col = grp.columns[0]
+    return [
+        {"label": f"Total {dim_label}", "value": str(len(grp)), "hint": f"{neg} com margem negativa"},
+        {"label": "Receita total", "value": _fmt_brl(rec_total), "hint": "conhecimento.freteempresa"},
+        {"label": "Margem média", "value": _fmt_pct(margem_media), "hint": "Após rateio de custos do período"},
+        {
+            "label": "Menor margem",
+            "value": _fmt_pct(float(pior["margem_pct"])),
+            "hint": str(pior[dim_col])[:40],
+        },
+    ]
+
+
+def _kpis_receita_custo(grp: pd.DataFrame, dim_label: str) -> list:
+    if grp.empty:
+        return _kpis_margem(grp, dim_label)
+    neg = int((grp["lucro"] < 0).sum())
+    pior = grp.sort_values("lucro").iloc[0]
+    dim_col = grp.columns[0]
+    rec_total = grp["receita"].sum()
+    custo_total = grp["custo_alocado"].sum()
+    return [
+        {"label": f"Total {dim_label}", "value": str(len(grp)), "hint": f"{neg} com prejuízo estimado"},
+        {"label": "Receita total", "value": _fmt_brl(rec_total), "hint": ""},
+        {"label": "Custo alocado", "value": _fmt_brl(custo_total), "hint": "Rateio proporcional ao período"},
+        {
+            "label": "Pior resultado",
+            "value": _fmt_brl(float(pior["lucro"])),
+            "hint": str(pior[dim_col])[:40],
+        },
+    ]
+
+
+def _chart_hbar_margem(grp: pd.DataFrame, dim_col: str, top: int = 12) -> dict:
+    top_df = grp.head(top).sort_values("margem_pct", ascending=True)
+    return {
+        "mode": "margem_hbar",
+        "type": "bar",
+        "indexAxis": "y",
+        "labels": [str(x)[:42] for x in top_df[dim_col]],
+        "datasets": [
+            {
+                "label": "Margem %",
+                "unit": "percent",
+                "data": [round(float(x), 1) for x in top_df["margem_pct"]],
+            },
+        ],
+    }
+
+
+def _chart_hbar_receita_custo(grp: pd.DataFrame, dim_col: str, top: int = 12) -> dict:
+    top_df = grp.head(top).sort_values("receita", ascending=True)
+    return {
+        "mode": "receita_custo_hbar",
+        "type": "bar",
+        "indexAxis": "y",
+        "labels": [str(x)[:42] for x in top_df[dim_col]],
+        "datasets": [
+            {
+                "label": "Receita (R$)",
+                "unit": "currency",
+                "data": [round(float(x), 2) for x in top_df["receita"]],
+            },
+            {
+                "label": "Custo alocado (R$)",
+                "unit": "currency",
+                "data": [round(float(x), 2) for x in top_df["custo_alocado"]],
+            },
+        ],
+    }
+
+
+def _chart_receita_custo_bar(grp: pd.DataFrame, dim_col: str) -> dict:
+    return {
+        "mode": "receita_custo_bar",
+        "type": "bar",
+        "labels": [str(x) for x in grp[dim_col]],
+        "datasets": [
+            {
+                "label": "Receita (R$)",
+                "unit": "currency",
+                "data": [round(float(x), 2) for x in grp["receita"]],
+            },
+            {
+                "label": "Custo alocado (R$)",
+                "unit": "currency",
+                "data": [round(float(x), 2) for x in grp["custo_alocado"]],
+            },
+        ],
+    }
+
+
+def _chart_pareto(grp: pd.DataFrame, dim_col: str, top: int = 15) -> dict:
+    top_df = grp.head(top)
+    return {
+        "mode": "pareto",
+        "type": "bar",
+        "labels": [str(x)[:30] for x in top_df[dim_col]],
+        "datasets": [
+            {
+                "label": "Faturamento (R$)",
+                "unit": "currency",
+                "data": [round(float(x), 2) for x in top_df["receita"]],
+            },
+            {
+                "label": "% acumulado",
+                "unit": "percent",
+                "yAxis": "percent",
+                "data": [round(float(x), 1) for x in top_df["pct_acum"]],
+            },
+        ],
+    }
+
+
+def _chart_spread_hbar(grp: pd.DataFrame, dim_col: str) -> dict:
+    top_df = grp.sort_values("spread", ascending=True)
+    return {
+        "mode": "spread_hbar",
+        "type": "bar",
+        "indexAxis": "y",
+        "labels": [str(x)[:35] for x in top_df[dim_col]],
+        "datasets": [
+            {
+                "label": "Spread total (R$)",
+                "unit": "currency",
+                "data": [round(float(x), 2) for x in top_df["spread"]],
+            },
+        ],
+    }
+
+
+def get_gestao_comercial_data(
+    apartamento_id: int,
+    analise_id: int,
+    start_date,
+    end_date,
+    placa_filter: str,
+    filial_filter: list,
+    tipo_negocio_filter: str,
+) -> dict:
+    if analise_id not in ANALISES:
+        return {"error": "Análise inválida"}
+
+    dm.sync_expense_groups_if_needed(apartamento_id)
+    start_date, end_date = dm.resolver_intervalo_consulta(apartamento_id, start_date, end_date)
+    filtered = dm._obter_dados_filtrados_mestre(
+        apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter
+    )
+    df = _base_viagens_fat(filtered)
+    meta = dict(ANALISES[analise_id])
+    meta["id"] = analise_id
+
+    if df.empty:
+        return {
+            "analise": meta,
+            "kpis": [{"label": "Dados", "value": "—", "hint": "Nenhuma viagem faturada no período"}],
+            "chart": None,
+            "chart_secondary": None,
+        }
+
+    cv = dm._get_case_insensitive_column_map(df.columns)
+    custo_total = _custo_operacional_total(
+        filtered,
+        apartamento_id,
+        placa_filter,
+        start_date,
+        end_date,
+        filial_filter,
+        tipo_negocio_filter,
+    )
+
+    if analise_id == 1:
+        col = cv.get("nomecliente", "nomecliente")
+        grp = _alocar_custo_proporcional(df, col, custo_total)
+        return {
+            "analise": meta,
+            "kpis": _kpis_margem(grp, "clientes"),
+            "chart": _chart_hbar_margem(grp, col),
+            "chart_title": "Margem estimada por cliente (top receita)",
+        }
+
+    if analise_id == 2:
+        orig = cv.get("cidorigemformat", "cidorigemformat")
+        dest = cv.get("ciddestinoformat", "ciddestinoformat")
+        df = df.copy()
+        df["rota"] = (
+            df[orig].fillna("?").astype(str).str.strip()
+            + " → "
+            + df[dest].fillna("?").astype(str).str.strip()
+        )
+        grp = _alocar_custo_proporcional(df, "rota", custo_total)
+        return {
+            "analise": meta,
+            "kpis": _kpis_receita_custo(grp, "rotas"),
+            "chart": _chart_hbar_receita_custo(grp, "rota"),
+            "chart_title": "Receita vs custo alocado por rota (top faturamento)",
+        }
+
+    if analise_id == 3:
+        col_cli = cv.get("nomecliente", "nomecliente")
+        col_dt = cv.get("dataviagemmotorista", "dataviagemmotorista")
+        df = df.copy()
+        df[col_dt] = pd.to_datetime(df[col_dt], errors="coerce")
+        df = df.dropna(subset=[col_dt])
+        periodo = "M" if (end_date - start_date).days > 62 else "W"
+        df["periodo"] = df[col_dt].dt.to_period(periodo)
+        top_clientes = (
+            df.groupby(col_cli)["receita"].sum().sort_values(ascending=False).head(5).index.tolist()
+        )
+        labels = sorted(df["periodo"].unique())
+        fmt = "%b/%Y" if periodo == "M" else "%d/%m"
+        label_str = [pd.Period(p).to_timestamp().strftime(fmt) for p in labels]
+        datasets = []
+        for cli in top_clientes:
+            sub = df[df[col_cli] == cli]
+            por_periodo = sub.groupby("periodo")["receita"].agg(["sum", "count"])
+            por_periodo["ticket"] = por_periodo["sum"] / por_periodo["count"].clip(lower=1)
+            tickets = por_periodo["ticket"]
+            datasets.append(
+                {
+                    "label": str(cli)[:35],
+                    "data": [round(float(tickets.get(p, 0)), 2) for p in labels],
+                }
+            )
+        ticket_geral = df["receita"].sum() / max(len(df), 1)
+        variacao = 0.0
+        if len(labels) >= 2 and top_clientes:
+            cli0 = top_clientes[0]
+            sub0 = df[df[col_cli] == cli0]
+            por_p = sub0.groupby("periodo")["receita"].agg(["sum", "count"])
+            por_p["ticket"] = por_p["sum"] / por_p["count"].clip(lower=1)
+            vals = [float(por_p["ticket"].get(p, 0)) for p in labels if por_p["ticket"].get(p, 0) > 0]
+            if len(vals) >= 2:
+                variacao = (vals[-1] - vals[0]) / vals[0] * 100 if vals[0] else 0
+        return {
+            "analise": meta,
+            "kpis": [
+                {"label": "Ticket médio geral", "value": _fmt_brl(ticket_geral), "hint": "Por CT-e no período"},
+                {"label": "Top clientes no gráfico", "value": str(len(top_clientes)), "hint": "5 maiores faturamentos"},
+                {"label": "CT-es analisados", "value": str(len(df)), "hint": ""},
+                {
+                    "label": "Variação ticket #1",
+                    "value": _fmt_pct(variacao),
+                    "hint": str(top_clientes[0])[:35] if top_clientes else "—",
+                },
+            ],
+            "chart": {
+                "mode": "line_ticket",
+                "type": "line",
+                "labels": label_str,
+                "datasets": datasets,
+            },
+            "chart_title": "Ticket médio por cliente ao longo do tempo",
+        }
+
+    if analise_id == 4:
+        col = cv.get("nomecliente", "nomecliente")
+        grp = df.groupby(col)["receita"].sum().sort_values(ascending=False).reset_index()
+        grp.columns = ["cliente", "receita"]
+        total = grp["receita"].sum()
+        grp["pct"] = grp["receita"] / total * 100 if total > 0 else 0
+        grp["pct_acum"] = grp["pct"].cumsum()
+        top3 = grp.head(3)["pct"].sum()
+        top5 = grp.head(5)["pct"].sum()
+        return {
+            "analise": meta,
+            "kpis": [
+                {"label": "Clientes ativos", "value": str(len(grp)), "hint": ""},
+                {"label": "Top 3 concentram", "value": _fmt_pct(top3), "hint": "do faturamento"},
+                {"label": "Top 5 concentram", "value": _fmt_pct(top5), "hint": "do faturamento"},
+                {
+                    "label": "Cliente #1",
+                    "value": _fmt_pct(float(grp.iloc[0]["pct"])),
+                    "hint": str(grp.iloc[0]["cliente"])[:40],
+                },
+            ],
+            "chart": _chart_pareto(grp, "cliente"),
+            "chart_title": "Pareto — concentração de receita por cliente",
+        }
+
+    if analise_id == 5:
+        col_tf = cv.get("tipofrete", "tipofrete")
+        df = df.copy()
+        df["tipo_operacao"] = df[col_tf].map(
+            {"P": "Frota própria", "A": "Agenciamento", "T": "Terceiro"}
+        ).fillna("Outros")
+        grp = _alocar_custo_proporcional(df, "tipo_operacao", custo_total)
+        melhor = grp.sort_values("margem_pct", ascending=False).iloc[0] if not grp.empty else None
+        maior_rec = grp.sort_values("receita", ascending=False).iloc[0] if not grp.empty else None
+        return {
+            "analise": meta,
+            "kpis": [
+                {"label": "Tipos de operação", "value": str(len(grp)), "hint": ""},
+                {
+                    "label": "Maior receita",
+                    "value": str(maior_rec["tipo_operacao"]) if maior_rec is not None else "—",
+                    "hint": _fmt_brl(float(maior_rec["receita"])) if maior_rec is not None else "",
+                },
+                {
+                    "label": "Melhor margem",
+                    "value": _fmt_pct(float(melhor["margem_pct"])) if melhor is not None else "—",
+                    "hint": str(melhor["tipo_operacao"]) if melhor is not None else "",
+                },
+                {
+                    "label": "Lucro estimado total",
+                    "value": _fmt_brl(float(grp["lucro"].sum())) if not grp.empty else "—",
+                    "hint": "Receita − custo alocado",
+                },
+            ],
+            "chart": _chart_receita_custo_bar(grp, "tipo_operacao"),
+            "chart_title": "Receita vs custo por tipo de operação",
+        }
+
+    if analise_id == 6:
+        col_mot = cv.get("nomemotorista", "nomemotorista")
+        col_fm = cv.get("fretemotorista", "fretemotorista")
+        df = df.copy()
+        if col_fm in df.columns:
+            df["spread"] = df["receita"] - _num(df[col_fm])
+        else:
+            cf = dm._get_case_insensitive_column_map(filtered["df_fat_filtrado"].columns)
+            if "fretemotorista" in cf:
+                df = pd.merge(
+                    df,
+                    filtered["df_fat_filtrado"][[cf["numero"], cf["fretemotorista"]]],
+                    on=cv.get("numero", "numero"),
+                    how="left",
+                )
+                df["spread"] = df["receita"] - _num(df[cf["fretemotorista"]])
+            else:
+                df["spread"] = df["receita"]
+        grp = (
+            df.groupby(col_mot, dropna=False)
+            .agg(
+                receita=("receita", "sum"),
+                spread=("spread", "sum"),
+                viagens=("receita", "count"),
+            )
+            .reset_index()
+        )
+        grp[col_mot] = grp[col_mot].fillna("(sem motorista)").astype(str)
+        grp["spread_medio"] = np.where(grp["viagens"] > 0, grp["spread"] / grp["viagens"], 0)
+        grp = grp.sort_values("receita", ascending=False).head(12)
+        spread_medio = df["spread"].sum() / max(len(df), 1)
+        neg_spread = int((grp["spread"] < 0).sum())
+        pior = grp.sort_values("spread").iloc[0] if not grp.empty else None
+        return {
+            "analise": meta,
+            "kpis": [
+                {"label": "Spread médio / CT-e", "value": _fmt_brl(spread_medio), "hint": "freteempresa - fretemotorista"},
+                {"label": "Motoristas no top", "value": str(len(grp)), "hint": f"{neg_spread} com spread negativo"},
+                {"label": "Spread total período", "value": _fmt_brl(float(df["spread"].sum())), "hint": ""},
+                {
+                    "label": "Menor spread",
+                    "value": _fmt_brl(float(pior["spread"])) if pior is not None else "—",
+                    "hint": str(pior[col_mot])[:35] if pior is not None else "",
+                },
+            ],
+            "chart": _chart_spread_hbar(grp, col_mot),
+            "chart_title": "Spread frete empresa menos motorista (top motoristas)",
+        }
+
+    return {"error": "Análise não implementada"}

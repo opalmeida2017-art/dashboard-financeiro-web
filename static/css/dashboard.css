@@ -616,6 +616,141 @@ body.biweb-app main.container {
     text-decoration: underline;
 }
 
+/* Visão comercial */
+.gc-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.gc-menu-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 1rem 1.1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.gc-menu-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+    transform: translateY(-1px);
+}
+
+.gc-menu-num {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--accent);
+    min-width: 1.25rem;
+}
+
+.gc-menu-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.gc-menu-text strong {
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.gc-menu-text span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.gc-menu-arrow {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.gc-pergunta-banner {
+    background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+    border: 1px solid #93c5fd;
+    border-left: 5px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.35rem;
+    margin-bottom: 1.25rem;
+    box-shadow: var(--shadow);
+}
+
+.gc-pergunta-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #1d4ed8;
+    margin-bottom: 0.4rem;
+}
+
+.gc-pergunta-text {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: #0f172a;
+}
+
+.gc-analise-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 0.25rem;
+}
+
+.gc-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.gc-kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+    box-shadow: var(--shadow);
+}
+
+.gc-kpi-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.gc-kpi-value {
+    font-size: 1.35rem;
+    font-weight: 800;
+    margin-top: 0.25rem;
+    color: var(--text);
+}
+
+.gc-kpi-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+
+.gc-kpi-skeleton {
+    grid-column: 1 / -1;
+    color: var(--text-muted);
+    padding: 0.5rem;
+}
+
 .dashboard-layout {
     display: flex;
     flex-direction: column;
