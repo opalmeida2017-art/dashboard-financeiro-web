@@ -1,0 +1,242 @@
+{% extends "layout.html" %}
+
+{% block title %}Painel — BIWEB Transporte{% endblock %}
+
+{% block content %}
+<div class="dash-page">
+    <header class="dash-header">
+        <div>
+            <h1>Painel de gestão</h1>
+            <p class="subtitle">Receita, custos e resultado das viagens — visão executiva para transportadoras.</p>
+        </div>
+        {% if selected_start_date and selected_end_date %}
+        <div class="dash-period-badge">
+            Período: <strong>{{ selected_start_date }}</strong> até <strong>{{ selected_end_date }}</strong>
+        </div>
+        {% endif %}
+    </header>
+
+    <section class="dash-filters">
+        <form method="GET" action="/">
+            <div class="filter-field">
+                <label for="start_date">Início</label>
+                <input type="date" id="start_date" name="start_date" value="{{ selected_start_date or '' }}">
+            </div>
+            <div class="filter-field">
+                <label for="end_date">Fim</label>
+                <input type="date" id="end_date" name="end_date" value="{{ selected_end_date or '' }}">
+            </div>
+            <div class="filter-field">
+                <label for="placa">Placa</label>
+                <select name="placa" id="placa">
+                    <option value="Todos" {% if 'Todos' == selected_placa %}selected{% endif %}>Todas</option>
+                    {% for item in placas %}
+                    <option value="{{ item.placa }}" class="placa-{{ item.tipo | lower }}" {% if item.placa == selected_placa %}selected{% endif %}>
+                        {{ item.placa }} ({{ item.tipo }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="tipo_negocio">Negócio</label>
+                <select name="tipo_negocio" id="tipo_negocio">
+                    <option value="Todos" {% if 'Todos' == selected_tipo_negocio %}selected{% endif %}>Todos</option>
+                    {% for tipo in tipos_negocio %}
+                    <option value="{{ tipo }}" {% if tipo == selected_tipo_negocio %}selected{% endif %}>{{ tipo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="filial-multiselect-btn">Filial</label>
+                <div class="multiselect" id="filial-multiselect">
+                    <button type="button" class="multiselect-btn" id="filial-multiselect-btn">Filiais</button>
+                    <div class="multiselect-dropdown" id="filial-dropdown">
+                        {% for filial in filiais %}
+                        {% if filial != "Todos" %}
+                        <div class="multiselect-item">
+                            <input type="checkbox" name="filial" value="{{ filial }}" id="filial-{{ loop.index }}" {% if filial in selected_filial %}checked{% endif %}>
+                            <label for="filial-{{ loop.index }}">{{ filial }}</label>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <button type="submit" class="btn-apply">Aplicar</button>
+            <div class="dash-toolbar">
+                {% if is_admin_in_context() %}
+                <button type="button" id="btn-iniciar-coleta" class="tb-btn tb-btn-primary">↻ Atualizar banco SATI</button>
+                {% endif %}
+                <button type="button" id="openModalBtn" class="tb-btn">Grupos</button>
+                <a href="{{ url_for('main.configuracao') }}" class="tb-btn">Robô</a>
+                {% if is_admin_in_context() %}
+                <a href="{{ url_for('main.gerenciar_usuarios') }}" class="tb-btn">Usuários</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+
+    {% if summary %}
+    {% set custo_operacional = summary.custo_total_viagem + summary.total_despesas_gerais + summary.total_despesas_tipo_d %}
+    {% set num_ctes = summary.faturamento_conhecimentos | length if summary.faturamento_conhecimentos else 0 %}
+
+    <section class="kpi-hero">
+        <div class="kpi-card kpi-receita">
+            <button type="button" class="audit-btn" data-audit-metric="receita_frete" title="Auditar CT-es desta receita">⊕</button>
+            <div class="kpi-label">Receita de frete</div>
+            <div class="kpi-value" style="color: var(--accent);">{{ summary.faturamento_total_viagens | currency }}</div>
+            <div class="kpi-hint">{{ num_ctes }} viagem(ns) no período</div>
+        </div>
+        <div class="kpi-card kpi-custo">
+            <button type="button" class="audit-btn" data-audit-metric="custo_operacional" title="Auditar composição dos custos">⊕</button>
+            <div class="kpi-label">Custos operacionais</div>
+            <div class="kpi-value" style="color: var(--warning);">{{ custo_operacional | currency }}</div>
+            <div class="kpi-hint">Prévia CT-e + notas + tipo D</div>
+        </div>
+        <div class="kpi-card kpi-resultado">
+            <button type="button" class="audit-btn" data-audit-metric="resultado_liquido" title="Auditar composição do resultado">⊕</button>
+            <div class="kpi-label">Resultado líquido</div>
+            <div class="kpi-value" style="color: {% if summary.saldo_geral >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+                {{ summary.saldo_geral | currency }}
+            </div>
+            <div class="kpi-hint">Receita − custos</div>
+        </div>
+        <div class="kpi-card kpi-margem">
+            <button type="button" class="audit-btn" data-audit-metric="margem_frete" title="Auditar margem">⊕</button>
+            <div class="kpi-label">Margem sobre frete</div>
+            <div class="kpi-value" style="color: {% if summary.margem_frete >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+                {{ summary.margem_frete | percentage }}
+            </div>
+            <div class="kpi-hint">Lucro / receita</div>
+        </div>
+    </section>
+
+    <section class="kpi-secondary">
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="custo_viagem" title="Auditar custo de viagem">⊕</button>
+            <span>Custo de viagem</span>
+            <strong style="color: var(--warning);">{{ summary.custo_total_viagem | currency }}</strong>
+            <small class="kpi-mini-hint">Prévia CT-e {{ summary.custo_previa_conhecimento | currency }} + notas {{ summary.custo_nota_itemnota | currency }}</small>
+        </div>
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="despesas_gerais" title="Auditar despesas gerais">⊕</button>
+            <span>Despesas gerais</span>
+            <strong style="color: var(--danger);">{{ summary.total_despesas_gerais | currency }}</strong>
+            <small class="kpi-mini-hint">Somente notas com despesa=S</small>
+        </div>
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="despesas_tipo_d" title="Auditar despesas tipo D">⊕</button>
+            <span>{% if placa_filtrada %}Tipo D (rateado){% else %}Despesas tipo D{% endif %}</span>
+            <strong style="color: var(--purple);">{{ summary.total_despesas_tipo_d | currency }}</strong>
+        </div>
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="receita_comercio" title="Auditar receita comércio">⊕</button>
+            <span>Receita comércio</span>
+            <strong style="color: var(--accent);">{{ summary.receita_comercio | currency }}</strong>
+            <small class="kpi-mini-hint">COMERCIO · despesa=N · tiponfe=0 · tipo=0</small>
+        </div>
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="despesa_comercio" title="Auditar despesa comércio">⊕</button>
+            <span>Despesa comércio</span>
+            <strong style="color: var(--danger);">{{ summary.despesa_comercio | currency }}</strong>
+            <small class="kpi-mini-hint">COMERCIO · despesa=S · tiponfe=0</small>
+        </div>
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="investimento" title="Auditar investimentos">⊕</button>
+            <span>Investimento</span>
+            <strong style="color: #0d9488;">{{ summary.total_investimento | currency }}</strong>
+            <small class="kpi-mini-hint">Item investimento=S · já compõe custos operacionais</small>
+        </div>
+        <div class="kpi-mini">
+            <button type="button" class="audit-btn-mini" data-audit-metric="investimento_estoque" title="Auditar investimento em estoque">⊕</button>
+            <span>Investimento estoque</span>
+            <strong style="color: #0891b2;">{{ summary.total_investimento_estoque | currency }}</strong>
+            <small class="kpi-mini-hint">Saldo × custo · posição atual · não entra na despesa</small>
+        </div>
+    </section>
+
+    <div class="dash-main-grid">
+        <section class="dash-chart-card chart-pro" id="secao-grafico">
+            <div class="chart-pro-head">
+                <div>
+                    <h2>Receita vs. despesas</h2>
+                    <p class="chart-desc">Comparativo do período filtrado — mesma base dos KPIs.</p>
+                </div>
+                <div class="chart-legend-pills" id="dashboard-chart-audit-pills">
+                    <button type="button" class="chart-pill audit-chart-pill receita" data-audit-metric="receita_frete" title="Auditar receita"><span class="audit-chart-icon">⊕</span>Receita</button>
+                    <button type="button" class="chart-pill audit-chart-pill custo" data-audit-metric="custo_viagem" title="Auditar custo viagem"><span class="audit-chart-icon">⊕</span>Custo viagem</button>
+                    <button type="button" class="chart-pill audit-chart-pill geral" data-audit-metric="despesas_gerais" title="Auditar despesa geral"><span class="audit-chart-icon">⊕</span>Despesa geral</button>
+                    <button type="button" class="chart-pill audit-chart-pill tipod" data-audit-metric="despesas_tipo_d" title="Auditar tipo D"><span class="audit-chart-icon">⊕</span>Tipo D</button>
+                </div>
+                <p class="chart-audit-hint">Clique na legenda ou em uma barra do gráfico para auditar os lançamentos.</p>
+            </div>
+            <div class="chart-wrap chart-wrap-lg">
+                <canvas id="faturamentoDespesasChart"></canvas>
+            </div>
+        </section>
+
+        <aside class="dash-side-panel">
+            <div class="side-card">
+                <h3>Análises</h3>
+                <a class="side-link" href="{{ url_for('main.visao_comercial') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon purple">💼</span>
+                    <span>Visão comercial</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='financeira') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon red">💰</span>
+                    <span>Visão financeira</span>
+                </a>
+            </div>
+            <div class="side-card">
+                <h3>Exploratório</h3>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='volume') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon blue">📈</span>
+                    <span>Visão volume</span>
+                </a>
+                <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='custos') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon red">📉</span>
+                    <span>Estrutura de custos</span>
+                </a>
+            </div>
+            <div class="side-card">
+                <h3>Financeiro</h3>
+                <div class="kpi-mini" style="margin-bottom:0.5rem;box-shadow:none;">
+                    <button type="button" class="audit-btn-mini" data-audit-metric="contas_pagar" title="Auditar contas a pagar">⊕</button>
+                    <span>A pagar</span>
+                    <strong style="color:var(--danger);">{{ summary.saldo_contas_a_pagar_pendentes | currency }}</strong>
+                    <small class="kpi-mini-hint">Sem transação confirmada</small>
+                </div>
+                <div class="kpi-mini" style="margin-bottom:0.5rem;box-shadow:none;">
+                    <button type="button" class="audit-btn-mini" data-audit-metric="contas_receber" title="Auditar contas a receber">⊕</button>
+                    <span>A receber</span>
+                    <strong style="color:var(--accent);">{{ summary.saldo_contas_a_receber_pendentes | currency }}</strong>
+                    <small class="kpi-mini-hint">Sem transação confirmada</small>
+                </div>
+                <button type="button" id="btn-auditoria-despesas" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                    <span class="icon red">🔍</span>
+                    <span>Auditoria de despesas</span>
+                </button>
+            </div>
+            <div class="side-card">
+                <h3>Viagens</h3>
+                <a class="side-link" href="{{ url_for('main.fluxo_viagem') }}?{{ request.query_string.decode('utf-8') }}">
+                    <span class="icon purple">🛣️</span>
+                    <span>Fluxo de viagem</span>
+                </a>
+                <button type="button" id="btn-ctes-relatorios" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                    <span class="icon green">🚚</span>
+                    <span>Ver CT-es e relatórios</span>
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    {% else %}
+    <div class="dash-empty">
+        <p>Não há dados para o período selecionado.</p>
+        <p class="small">Ajuste os filtros ou atualize os dados do SATI.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+

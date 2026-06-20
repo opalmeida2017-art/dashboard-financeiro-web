@@ -1,0 +1,535 @@
+schema: c3332
+total: 531
+
+pos	coluna	tipo
+  1	numero	USER-DEFINED
+  2	numeropedido	USER-DEFINED
+  3	codcliente	USER-DEFINED
+  4	coddestinatario	USER-DEFINED
+  5	codremetente	USER-DEFINED
+  6	codveiculo	USER-DEFINED
+  7	codmotorista	USER-DEFINED
+  8	codmercadoria	USER-DEFINED
+  9	codfilial	USER-DEFINED
+ 10	codembarcador	USER-DEFINED
+ 11	codfaturasaldo	USER-DEFINED
+ 12	codfaturaadiantamento	USER-DEFINED
+ 13	codfaturaclassificacao	USER-DEFINED
+ 14	codfaturaicms	USER-DEFINED
+ 15	data	timestamp without time zone
+ 16	datadigitacao	timestamp without time zone
+ 17	pesosaida	USER-DEFINED
+ 18	pesochegada	USER-DEFINED
+ 19	precotonempresa	USER-DEFINED
+ 20	freteempresa	USER-DEFINED
+ 21	adiantamentoempresa	USER-DEFINED
+ 22	precotonmotorista	USER-DEFINED
+ 23	fretemotorista	USER-DEFINED
+ 24	adiantamentomotorista	USER-DEFINED
+ 25	comissao	USER-DEFINED
+ 26	numeroclassificacao	character varying
+ 27	valorclassificacao	USER-DEFINED
+ 28	valormercadoria	USER-DEFINED
+ 29	codfornecedoradiant	USER-DEFINED
+ 30	datavencadiant	timestamp without time zone
+ 31	acertoadiant	numeric
+ 32	codfornecedorsaldo	USER-DEFINED
+ 33	dtvencsaldo	timestamp without time zone
+ 34	acertosaldo	numeric
+ 35	taxaquebra	USER-DEFINED
+ 36	quantidadequebra	USER-DEFINED
+ 37	tipodesconto	character
+ 38	tipotolerancia	character
+ 39	valorquebra	USER-DEFINED
+ 40	pagaicms	character
+ 41	baseicms	USER-DEFINED
+ 42	porcicms	USER-DEFINED
+ 43	valoricms	USER-DEFINED
+ 44	horacarregamento	timestamp without time zone
+ 45	horaprogramada	timestamp without time zone
+ 46	horaprevista	timestamp without time zone
+ 47	obs1	character varying
+ 48	obs2	character varying
+ 49	dtvencclassificacao	timestamp without time zone
+ 50	codfornecedorclassificacao	USER-DEFINED
+ 51	codfornecedoricms	USER-DEFINED
+ 52	dtvencicms	timestamp without time zone
+ 53	horasaida	timestamp without time zone
+ 54	horachegada	timestamp without time zone
+ 55	horafimdescarga	timestamp without time zone
+ 56	sacacarregamento	integer
+ 57	sacatransporte	integer
+ 58	sacadescarga	integer
+ 59	kmrodado	USER-DEFINED
+ 60	reclamacao	character
+ 61	tipofrete	character
+ 62	numeroconhecimento	USER-DEFINED
+ 63	numeroprogramacao	USER-DEFINED
+ 64	tempo	integer
+ 65	valorestadia	USER-DEFINED
+ 66	icmsembutido	USER-DEFINED
+ 67	pagar	USER-DEFINED
+ 68	codfornecedorestadia	USER-DEFINED
+ 69	dtvencestadia	timestamp without time zone
+ 70	despesaextra	USER-DEFINED
+ 71	contrato	character varying
+ 72	dataatual	timestamp without time zone
+ 73	serie	character varying
+ 74	quantmercadoria	USER-DEFINED
+ 75	especiemercadoria	character varying
+ 76	fretecombinado	USER-DEFINED
+ 77	impresso	USER-DEFINED
+ 78	chegouadiantamento	USER-DEFINED
+ 79	chegousaldo	USER-DEFINED
+ 80	chegouclassificacao	USER-DEFINED
+ 81	chegouicms	USER-DEFINED
+ 82	taxaseguro	USER-DEFINED
+ 83	premioseguro	USER-DEFINED
+ 84	fretepago	USER-DEFINED
+ 85	codfornecedorpedagio	USER-DEFINED
+ 86	datavencpedagio	timestamp without time zone
+ 87	valorpedagio	USER-DEFINED
+ 88	cargadescarga	USER-DEFINED
+ 89	valorabonoquebra	USER-DEFINED
+ 90	obsquebra	USER-DEFINED
+ 91	codfaturapedagio	USER-DEFINED
+ 92	pedagioembutidofrete	USER-DEFINED
+ 93	mercadoriapaga	USER-DEFINED
+ 94	acertoicms	numeric
+ 95	codfornecedorbalsa	USER-DEFINED
+ 96	datavencbalsa	timestamp without time zone
+ 97	valorbalsa	USER-DEFINED
+ 98	codcarreta	USER-DEFINED
+ 99	tributaimpostos	USER-DEFINED
+100	precotonfiscal	USER-DEFINED
+101	valorfretefiscal	USER-DEFINED
+102	datapedido	timestamp without time zone
+103	sacacarrvalvula	integer
+104	sacacarrpapel	integer
+105	sacacarrestouro	integer
+106	sacatranvalvula	integer
+107	sacatranpapel	integer
+108	sacatranestouro	integer
+109	sacadescvalvula	integer
+110	sacadescpapel	integer
+111	sacadescestouro	integer
+112	codfaturaestadia	USER-DEFINED
+113	horachegpedtransp	timestamp without time zone
+114	descdiffrete	USER-DEFINED
+115	descsegurosaldo	USER-DEFINED
+116	prepago	USER-DEFINED
+117	outrosdescontos	numeric
+118	codcoleta	USER-DEFINED
+119	codentrega	USER-DEFINED
+120	pesosaidamotorista	USER-DEFINED
+121	pedidofrete	character varying
+122	pedidotransf	character varying
+123	umidade	USER-DEFINED
+124	impureza	USER-DEFINED
+125	avariado	USER-DEFINED
+126	valoriss	USER-DEFINED
+127	issembutido	USER-DEFINED
+128	codunidadeembarque	USER-DEFINED
+129	dataviagemmotorista	timestamp without time zone
+130	obs3	USER-DEFINED
+131	obs4	USER-DEFINED
+132	obs5	USER-DEFINED
+133	dtpagtomercadoria	timestamp without time zone
+134	dataexportacao	timestamp without time zone
+135	percredvlicms	USER-DEFINED
+136	codcidadeorigem	USER-DEFINED
+137	codcidadedestino	USER-DEFINED
+138	flag	USER-DEFINED
+139	numeronotafiscal	character varying
+140	toleranciaestadia	USER-DEFINED
+141	valorhoraestadia	USER-DEFINED
+142	cancelado	USER-DEFINED
+143	valorinss	numeric
+144	valorirrf	numeric
+145	freteempresasai	USER-DEFINED
+146	fretemotoristasai	USER-DEFINED
+147	descontainsssaldo	USER-DEFINED
+148	descontainsssaldomot	USER-DEFINED
+149	chegoubalsa	USER-DEFINED
+150	descquebrasaldoemp	USER-DEFINED
+151	faturapesochegada	USER-DEFINED
+152	cpmf	USER-DEFINED
+153	pis	USER-DEFINED
+154	cofins	USER-DEFINED
+155	faturaicmsfinal	USER-DEFINED
+156	descontaicmssaldoempresa	USER-DEFINED
+157	calculainss	USER-DEFINED
+158	natureza	character varying
+159	descsegurosaldomot	USER-DEFINED
+160	codacertomotorista	USER-DEFINED
+161	percredbaseicms	USER-DEFINED
+162	historico	text
+163	estadiapesochegada	USER-DEFINED
+164	calculairrf	USER-DEFINED
+165	calculasestsenat	USER-DEFINED
+166	taxasestsenat	USER-DEFINED
+167	valorsestsenat	USER-DEFINED
+168	chegoucontabil	USER-DEFINED
+169	kmini	USER-DEFINED
+170	kmfim	USER-DEFINED
+171	precotonpedagio	USER-DEFINED
+172	acertoestadia	numeric
+173	percfreteagregado	USER-DEFINED
+174	codfaturacompra	USER-DEFINED
+175	comissaodefault	USER-DEFINED
+176	pedagioembfretemot	USER-DEFINED
+177	codconsignatario	USER-DEFINED
+178	numeroicms	character varying
+179	motoristaregistradopf	USER-DEFINED
+180	valorinssempresa	USER-DEFINED
+181	codadiantamento	USER-DEFINED
+182	codadiantamentosaldo	USER-DEFINED
+183	caixaarquivo	character varying
+184	permitefaturar	USER-DEFINED
+185	obs6	USER-DEFINED
+186	obs7	USER-DEFINED
+187	usuarioins	character varying
+188	usuarioalt	character varying
+189	chegoucomprovante	USER-DEFINED
+190	pedagiocalceixo	USER-DEFINED
+191	caixaarquivosaldo	character varying
+192	numeropedagio	character varying
+193	taxaiss	USER-DEFINED
+194	numeroseguro	character varying
+195	taxaadiantempresa	USER-DEFINED
+196	taxamercfrete	USER-DEFINED
+197	codpropredespacho	USER-DEFINED
+198	valorseccat	USER-DEFINED
+199	seccatembutidofrete	USER-DEFINED
+200	quebrasegurada	USER-DEFINED
+201	numerobalsa	character varying
+202	pedagioembffiscal	USER-DEFINED
+203	seloicms	character varying
+204	multaicms	USER-DEFINED
+205	jurosicms	USER-DEFINED
+206	tseicms	USER-DEFINED
+207	toleranciapesocheg	USER-DEFINED
+208	numeroctrcbase	USER-DEFINED
+209	diasfaturamento	USER-DEFINED
+210	codordemcar	USER-DEFINED
+211	codprodutor	USER-DEFINED
+212	outrosdescontosmot	USER-DEFINED
+213	codtiporastreamento	USER-DEFINED
+214	codagrupador	USER-DEFINED
+215	liberacaomotorista	character varying
+216	vlbasecomissao	USER-DEFINED
+217	valorrastreamento	USER-DEFINED
+218	descontaisssaldoemp	USER-DEFINED
+219	codproprietario	USER-DEFINED
+220	codcidaderef	USER-DEFINED
+221	numtransporte	character varying
+222	veiccontratado	character varying
+223	baseicmsdireta	USER-DEFINED
+224	baseissdireta	USER-DEFINED
+225	baseiss	USER-DEFINED
+226	csll	USER-DEFINED
+227	vlcsll	USER-DEFINED
+228	vlpis	USER-DEFINED
+229	vlcofins	USER-DEFINED
+230	descpissaldoemp	USER-DEFINED
+231	desccofinssaldoemp	USER-DEFINED
+232	desccsllsaldoemp	USER-DEFINED
+233	somarissfatsaldo	USER-DEFINED
+234	calculainssempresa	USER-DEFINED
+235	taxainssempresa	USER-DEFINED
+236	tipofreteempresa	USER-DEFINED
+237	pesocubado	USER-DEFINED
+238	auxiliocarga	USER-DEFINED
+239	auxiliodescarga	USER-DEFINED
+240	segurorctrc	USER-DEFINED
+241	segurorcfdc	USER-DEFINED
+242	porcadvalor	USER-DEFINED
+243	advalor	USER-DEFINED
+244	valorpedagiomot	USER-DEFINED
+245	valorentrega	USER-DEFINED
+246	codgerrisco	USER-DEFINED
+247	libgerriscomot	character varying
+248	libgerriscoprop	character varying
+249	codfrete	USER-DEFINED
+250	valoricmsantec	USER-DEFINED
+251	codfornicmsantec	USER-DEFINED
+252	dtvencicmsantec	timestamp without time zone
+253	valorinssoutrastransp	USER-DEFINED
+254	aidf	character varying
+255	acertopedagio	USER-DEFINED
+256	codrota	USER-DEFINED
+257	descsestsenatsaldoemp	USER-DEFINED
+258	descirrfsaldoemp	USER-DEFINED
+259	codfaturaentrega	USER-DEFINED
+260	contatocliente	character varying
+261	expseguro	USER-DEFINED
+262	codfaturaentadto	USER-DEFINED
+263	codfaturaentsaldo	USER-DEFINED
+264	classificacaoembfreteemp	USER-DEFINED
+265	dataexpseguro	timestamp without time zone
+266	dataicmsantec	timestamp without time zone
+267	chegoucliente	USER-DEFINED
+268	codfatpagadiant	USER-DEFINED
+269	codfatpagsaldo	USER-DEFINED
+270	codfatpagpedagio	USER-DEFINED
+271	codfatpagicms	USER-DEFINED
+272	codfatpagestadia	USER-DEFINED
+273	codfatpagbalsa	USER-DEFINED
+274	codfatpagclassif	USER-DEFINED
+275	codfatpagicmsantec	USER-DEFINED
+276	codobsfiscal	USER-DEFINED
+277	adiantamentoemp2	USER-DEFINED
+278	codfaturaadiantemp2	USER-DEFINED
+279	precotonempcomp	USER-DEFINED
+280	freteempresacomp	USER-DEFINED
+281	codfaturasaldocomp	USER-DEFINED
+282	uschegousaldo	character varying
+283	datachegousaldo	timestamp without time zone
+284	cteloteenv	character varying
+285	ctedataloteenv	timestamp without time zone
+286	ctereciboenv	character varying
+287	ctedatareciboenv	timestamp without time zone
+288	ctechave	character varying
+289	cteprot	character varying
+290	ctestatus	character varying
+291	obscanc	character varying
+292	ctedatacanc	timestamp without time zone
+293	cteprotcanc	character varying
+294	datacancelado	timestamp without time zone
+295	taxaseguro2	USER-DEFINED
+296	descseguro2saldo	USER-DEFINED
+297	descseguro2saldomot	USER-DEFINED
+298	premioseguro2	USER-DEFINED
+299	lacres	character varying
+300	comissaoembarcador	USER-DEFINED
+301	precometrocubico	USER-DEFINED
+302	datasaidanf	timestamp without time zone
+303	dataemissaonf	timestamp without time zone
+304	codviatransporte	USER-DEFINED
+305	permitepagarsaldofrota	USER-DEFINED
+306	outrosdescontosmot2	USER-DEFINED
+307	usuariopsaldo	character varying
+308	usuariopadiant	character varying
+309	usuarioppedagio	character varying
+310	usuariopbalsa	character varying
+311	usuariopicms	character varying
+312	usuariopestadia	character varying
+313	usuariopclassif	character varying
+314	datadigpsaldo	timestamp without time zone
+315	datadigpadiant	timestamp without time zone
+316	datadigppedagio	timestamp without time zone
+317	datadigpbalsa	timestamp without time zone
+318	datadigpicms	timestamp without time zone
+319	datadigpestadia	timestamp without time zone
+320	datadigpclassif	timestamp without time zone
+321	codfaturaquebrasegurada	USER-DEFINED
+322	codemonitor	USER-DEFINED
+323	codemonitorcanc	USER-DEFINED
+324	ctemsgret	character varying
+325	emonitorstatus	USER-DEFINED
+326	estadiaembutidafrete	USER-DEFINED
+327	numeroformulario	USER-DEFINED
+328	uschegouadiant	character varying
+329	datachegouadiant	timestamp without time zone
+330	codtransadiant	USER-DEFINED
+331	codtranssaldo	USER-DEFINED
+332	codtranspedagio	USER-DEFINED
+333	codtransestadia	USER-DEFINED
+334	codtransicms	USER-DEFINED
+335	codfatpagsestsenat	USER-DEFINED
+336	codfatpagirrf	USER-DEFINED
+337	codfatpaginss	USER-DEFINED
+338	faturaautomatica	character
+339	numeroconta	character varying
+340	codfatpaginssemp	USER-DEFINED
+341	datacaixaarq	timestamp without time zone
+342	usuariocaixaarq	character varying
+343	datacaixaarqsaldo	timestamp without time zone
+344	usuariocaixaarqsaldo	character varying
+345	valormercsegurada	USER-DEFINED
+346	usuarioviacliente	character varying
+347	dataviacliente	timestamp without time zone
+348	modoemissao	character
+349	selecionado	character
+350	codfatpagquebra	USER-DEFINED
+351	usuarioautcte	character varying
+352	usuariocanccte	character varying
+353	usuarioinutcte	character varying
+354	arqxmlass	text
+355	codunidadeembentrega	USER-DEFINED
+356	codtipopagto	USER-DEFINED
+357	precokgmerc	USER-DEFINED
+358	precokgmercquebra	USER-DEFINED
+359	codfatpagiss	USER-DEFINED
+360	codmotcontingencia	USER-DEFINED
+361	datainicontingencia	timestamp without time zone
+362	obscontingencia	character varying
+363	adtomot2	USER-DEFINED
+364	codfornecedoradto2	USER-DEFINED
+365	dtvencadto2	timestamp without time zone
+366	codfatpagadto2	USER-DEFINED
+367	usuariopadto2	character varying
+368	datadigpadto2	timestamp without time zone
+369	obsinut	character varying
+370	ctedatainut	timestamp without time zone
+371	cteprotinut	character varying
+372	cartafrete	USER-DEFINED
+373	codemonitorinut	USER-DEFINED
+374	nomeseguradora	character varying
+375	numeroapolice	character varying
+376	respseguro	character
+377	tipocte	character
+378	horainiestadia	timestamp without time zone
+379	horafimestadia	timestamp without time zone
+380	chegouadto2	character
+381	tiposinistro	character
+382	resppedagio	character
+383	tipopedagio	character
+384	codfornecedor	USER-DEFINED
+385	venccontrpedagio	timestamp without time zone
+386	numerocartaopedagio	character varying
+387	clientepagasaldomotorista	character
+388	codadiantamento2	USER-DEFINED
+389	codunidademedida	USER-DEFINED
+390	codfaturaquebraseg	USER-DEFINED
+391	pedidocliente2	character varying
+392	nfedevchave	character varying
+393	nfdevcnpj	character varying
+394	nfdevmod	character varying
+395	nfdevserie	character varying
+396	nfdevvalor	USER-DEFINED
+397	nfdevdata	timestamp without time zone
+398	codmoeda	USER-DEFINED
+399	descpedagiobasemot	character
+400	desccargadescargabasemot	character
+401	descicmsbasemot	character
+402	horacoleta	character varying
+403	emailcte	character varying
+404	tpamb	USER-DEFINED
+405	percmargem	USER-DEFINED
+406	percmargemps	USER-DEFINED
+407	codobsfiscal2	USER-DEFINED
+408	mostrafatfrota	USER-DEFINED
+409	caixaarqfat	character varying
+410	usuarioarqfat	character varying
+411	dataarqfat	timestamp without time zone
+412	codespeciemerc	USER-DEFINED
+413	ctrb	character varying
+414	obsestadia	text
+415	pedagioembbaseicms	character
+416	caixaviaarquivo	character varying
+417	caixacomprfilial	character varying
+418	comissaoestadia	USER-DEFINED
+419	entradasaida	USER-DEFINED
+420	chegouviaarquivo	USER-DEFINED
+421	datacaixaarqviaarquivo	timestamp without time zone
+422	usuariocaixaarqviaarquivo	character varying
+423	chegouviafilial	USER-DEFINED
+424	datacaixaarqviafilial	timestamp without time zone
+425	usuariocaixaarqviafilial	character varying
+426	ciot	character varying
+427	cobrasegurocliente	USER-DEFINED
+428	numviagopcartao	character varying
+429	dataprevdescarga	timestamp without time zone
+430	prazodescarga	USER-DEFINED
+431	versaocte	character varying
+432	cnd	character varying
+433	precotonicms	USER-DEFINED
+434	precotonclassificacao	USER-DEFINED
+435	cndtransp	character varying
+436	impressocf	USER-DEFINED
+437	valorhoraestadiamot	USER-DEFINED
+438	acertoadiant2	USER-DEFINED
+439	numautgerrisco	character varying
+440	retroagirestadia	USER-DEFINED
+441	caixaarqtiket	character varying
+442	usuariocaixaarqtiket	character varying
+443	datacaixaarqtiket	timestamp without time zone
+444	codacertoproprietario	USER-DEFINED
+445	tpemis	character
+446	chegouviaticket	character
+447	valorcontainer	USER-DEFINED
+448	respcontainer	USER-DEFINED
+449	datadigiestadia	timestamp without time zone
+450	usuariodigestadia	character varying
+451	acertoclassificacao	USER-DEFINED
+452	versaomodal	character varying
+453	percadmercsegurada	USER-DEFINED
+454	codgerriscoop	USER-DEFINED
+455	codgerriscoseg	USER-DEFINED
+456	numeroviagant	USER-DEFINED
+457	tpambop	character
+458	vlsaldomot	USER-DEFINED
+459	vlsaldoemp	USER-DEFINED
+460	vlfatfrota	USER-DEFINED
+461	vlfatfrete	USER-DEFINED
+462	vlcomemb	USER-DEFINED
+463	vlmargem	USER-DEFINED
+464	vlmargemps	USER-DEFINED
+465	vlmargembruta	USER-DEFINED
+466	vlfatempbr	USER-DEFINED
+467	vlfatempbrps	USER-DEFINED
+468	vlfatempliq	USER-DEFINED
+469	vloutros	USER-DEFINED
+470	pagaiss	character
+471	chegouestadia	USER-DEFINED
+472	caixaarqestadia	character varying
+473	codcolenttrocanota	USER-DEFINED
+474	estadiastatuscli	USER-DEFINED
+475	enventregacte	USER-DEFINED
+476	envcoletacte	USER-DEFINED
+477	codmotorista2	USER-DEFINED
+478	fusohorario	character varying
+479	cnpjseguradora	USER-DEFINED
+480	indglobalizado	character
+481	listacompprest	character varying
+482	fvalorareceber	character varying
+483	ftotalprest	character varying
+484	fbaseicms	character varying
+485	fsaldoemp	character varying
+486	codcontrato	USER-DEFINED
+487	codrotamanif	USER-DEFINED
+488	codcoletasetor	USER-DEFINED
+489	codentregasetor	USER-DEFINED
+490	precotonmotoristabr	USER-DEFINED
+491	tpmodal	character varying
+492	enviadoccf	USER-DEFINED
+493	idcsrt	character varying
+494	hashcsrt	character varying
+495	respteccnpj	USER-DEFINED
+496	respteccontato	character varying
+497	resptecemail	USER-DEFINED
+498	resptecfone	USER-DEFINED
+499	qrcodcte	USER-DEFINED
+500	codtipotransporteantt	USER-DEFINED
+501	vafrmm	USER-DEFINED
+502	codgerriscoped	USER-DEFINED
+503	codgerriscor	USER-DEFINED
+504	pagooperadora	character varying
+505	ordemcli	character varying
+506	dataenvioseguro	timestamp without time zone
+507	tipotributacaoprop	character varying
+508	precotonempresabr	USER-DEFINED
+509	codfatpagseg2	USER-DEFINED
+510	descmercnf	character varying
+511	checklist	character varying
+512	indaltodesemp	character varying
+513	tpvalepedagio	character varying
+514	percfrota	USER-DEFINED
+515	fchecklistcte	character varying
+516	codverifcfad	character varying
+517	codverifcfsd	character varying
+518	codverifcfad2	character varying
+519	percadiantmotorista	USER-DEFINED
+520	checklistpagto	character varying
+521	ctecrt	character varying
+522	codcarreta2	USER-DEFINED
+523	codcarreta3	USER-DEFINED
+524	codcarreta4	USER-DEFINED
+525	codagrupadorcte	integer
+526	codfaturaiva	USER-DEFINED
+527	faturaiva	USER-DEFINED
+528	codfatpagiva	USER-DEFINED
+529	pagaiva	USER-DEFINED
+530	freteciot	USER-DEFINED
+531	codverifcfest	character varying

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atualização do banco SATI — BIWEB</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .tab-content {
+            padding: 2rem 1.5rem;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 .375rem .375rem;
+            background-color: #fff;
+        }
+        #log-table-container {
+            background-color: #212529;
+            border-radius: 5px;
+            height: 600px;
+            overflow-y: auto;
+            margin-top: 1rem;
+            border: 1px solid #495057;
+        }
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85em;
+        }
+        .log-table th, .log-table td {
+            padding: 8px 12px;
+            text-align: left;
+            color: #ced4da;
+            vertical-align: top;
+            border-bottom: 1px solid #343a40;
+        }
+        .log-table th {
+            background-color: #343a40;
+            position: sticky;
+            top: 0;
+            color: #fff;
+        }
+        .log-table td:first-child {
+            white-space: nowrap;
+            color: #8495a6;
+            width: 180px;
+        }
+        .log-table tr.separator-row td {
+            text-align: center;
+            font-weight: bold;
+            color: #0d6efd;
+            background-color: #2c3136;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container my-4">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <div>
+                <h1 class="h2 mb-1">Configurações do Robô</h1>
+                <p class="text-muted small mb-0">Dados do <strong>PostgreSQL (SATI)</strong>. Atualização via backup no site SATI (sem exportação de planilhas).</p>
+            </div>
+            <div class="btn-toolbar mb-2 mb-md-0 gap-2">
+                <button type="button" id="btn-atualizar-bd-config" class="btn btn-danger btn-sm">↻ Atualizar banco SATI</button>
+                <a href="{{ url_for('main.fluxo_viagem') }}" class="btn btn-outline-primary btn-sm">Fluxo de viagem (comprovantes)</a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-secondary btn-sm">Voltar ao painel</a>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} mt-3">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('main.configuracao') }}" class="border rounded bg-white p-4">
+            <div class="form-group mb-3">
+                <label for="nome_transportadora">Nome da transportadora (esta instalação)</label>
+                <input type="text" class="form-control" id="nome_transportadora" name="nome_transportadora"
+                       value="{{ transportadora.get('nome_empresa', transportadora_nome) }}">
+            </div>
+            <p class="alert alert-info py-2 small mb-3">Credenciais do SATI para login e <em>Envio de banco de dados</em> (backup ZIP → PostgreSQL).</p>
+            <div class="form-group mb-3"><label for="URL_LOGIN">Link do Site (URL)</label><input type="url" class="form-control" id="URL_LOGIN" name="URL_LOGIN" value="{{ configs.get('URL_LOGIN', '') }}" placeholder="https://sat1.intersite.com.br/c3332" required></div>
+            <p class="form-text text-muted small">Use <code>https://</code> no início. Sem isso o robô falha com &quot;invalid argument&quot;.</p>
+            <div class="form-group mb-3"><label for="USUARIO_ROBO">Usuário</label><input type="text" class="form-control" id="USUARIO_ROBO" name="USUARIO_ROBO" value="{{ configs.get('USUARIO_ROBO', '') }}" required></div>
+            <div class="form-group mb-3"><label for="SENHA_ROBO">Senha</label><input type="password" class="form-control" id="SENHA_ROBO" name="SENHA_ROBO" value="{{ configs.get('SENHA_ROBO', '') }}" required></div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="live_monitoring_enabled" name="live_monitoring_enabled"
+                       {% if configs.get('live_monitoring_enabled') in ('True', 'true', '1', 'yes', 'on') %}checked{% endif %}>
+                <label class="form-check-label" for="live_monitoring_enabled">
+                    Atualização automática diária do banco SATI (worker às 18h).
+                    Com <code>BIWEB_IDLE_MONITOR=true</code>, após alguns minutos sem uso
+                    o sistema também atualiza o BD e busca comprovantes da lista salva no fluxo.
+                </label>
+            </div>
+
+            <div class="d-flex justify-content-end mt-4">
+                <button type="submit" class="btn btn-success">Salvar Configurações</button>
+            </div>
+        </form>
+
+        <div class="card mt-5">
+            <div class="card-header h5">Logs — atualização do banco SATI</div>
+            <div class="card-body">
+                <div class="log-actions">
+                    <button id="loadLogsBtn" type="button" class="btn btn-primary">
+                        <span id="btn-text-load">Carregar Logs</span>
+                    </button>
+                    <button id="clearLogsBtn" type="button" class="btn btn-danger">
+                        <span id="btn-text-clear">Limpar Logs</span>
+                    </button>
+                </div>
+                <div id="log-table-container">
+                    <table class="log-table">
+                        <thead>
+                            <tr><th>Horário</th><th>Mensagem</th></tr>
+                        </thead>
+                        <tbody id="logs-body">
+                            <tr><td colspan="2" style="text-align:center; color: #888;">{% if auto_logs %}Carregando logs…{% else %}Clique em "Carregar Logs" ou inicie a atualização do banco.{% endif %}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const loadLogsBtn = document.getElementById('loadLogsBtn');
+            const clearLogsBtn = document.getElementById('clearLogsBtn');
+            const logsBody = document.getElementById('logs-body');
+            const logTableContainer = document.getElementById('log-table-container');
+            const btnTextLoad = document.getElementById('btn-text-load');
+            const btnTextClear = document.getElementById('btn-text-clear');
+            let logInterval = null;
+            let lastLogCount = 0;
+
+            function fetchAndRenderLogs() {
+                fetch("{{ url_for('api.api_get_robot_logs') }}")
+                    .then(response => response.ok ? response.json() : Promise.reject('Erro de rede'))
+                    .then(logs => {
+                        if (!Array.isArray(logs)) {
+                            return;
+                        }
+                        if (logs.length === 0 && lastLogCount > 0) {
+                            return;
+                        }
+                        lastLogCount = logs.length;
+                        logsBody.innerHTML = '';
+                        if (logs.length === 0) {
+                            logsBody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: #888;">Nenhum log encontrado.</td></tr>`;
+                            return;
+                        }
+                        logs.forEach((log, index) => {
+                            if (log.mensagem.includes('--- INICIANDO') && index > 0 && index < logs.length -1) {
+                                const sepRow = logsBody.insertRow();
+                                sepRow.className = 'separator-row';
+                                const sepCell = sepRow.insertCell();
+                                sepCell.colSpan = 2;
+                                sepCell.textContent = `--- Nova Execução ---`;
+                            }
+                            const logRow = logsBody.insertRow();
+                            const timeCell = logRow.insertCell();
+                            const msgCell = logRow.insertCell();
+                            timeCell.textContent = log.timestamp;
+                            msgCell.innerHTML = log.mensagem.includes('--- INICIANDO') ? `<strong>${log.mensagem}</strong>` : log.mensagem;
+                        });
+                        logTableContainer.scrollTop = logTableContainer.scrollHeight;
+                    })
+                    .catch(error => {
+                        console.error('Erro ao buscar logs:', error);
+                        logsBody.innerHTML = `<tr><td colspan="2" style="color: #dc3545;">Falha ao carregar logs.</td></tr>`;
+                        stopLogPolling();
+                    });
+            }
+
+            function stopLogPolling() {
+                if (logInterval) {
+                    clearInterval(logInterval);
+                    logInterval = null;
+                    btnTextLoad.textContent = 'Carregar Logs';
+                    loadLogsBtn.classList.remove('btn-danger');
+                    loadLogsBtn.classList.add('btn-primary');
+                }
+            }
+            
+            loadLogsBtn.addEventListener('click', function () {
+                if (logInterval) {
+                    stopLogPolling();
+                } else {
+                    startLogPolling();
+                }
+            });
+
+            function startLogPolling() {
+                if (logInterval) return;
+                btnTextLoad.textContent = 'Parar Atualização';
+                loadLogsBtn.classList.remove('btn-primary');
+                loadLogsBtn.classList.add('btn-danger');
+                fetchAndRenderLogs();
+                logInterval = setInterval(fetchAndRenderLogs, 3000);
+            }
+
+            const btnBdConfig = document.getElementById('btn-atualizar-bd-config');
+            if (btnBdConfig) {
+                btnBdConfig.addEventListener('click', function () {
+                    if (!confirm('Gerar backup no SATI, baixar ZIP e restaurar PostgreSQL? Acompanhe o progresso nos logs.')) return;
+                    btnBdConfig.disabled = true;
+                    startLogPolling();
+                    fetch("{{ url_for('main.iniciar_coleta_endpoint') }}", { method: 'POST' })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.status !== 'sucesso' && !data.redirect) {
+                                alert(data.mensagem);
+                            }
+                            fetchAndRenderLogs();
+                        })
+                        .catch(() => alert('Erro ao iniciar atualização do banco.'))
+                        .finally(() => { btnBdConfig.disabled = false; });
+                });
+            }
+
+            {% if auto_logs %}
+            startLogPolling();
+            {% endif %}
+
+            clearLogsBtn.addEventListener('click', function() {
+                if (!confirm('Tem certeza? Esta ação apagará TODOS os logs.')) return;
+                stopLogPolling();
+                btnTextClear.textContent = 'Limpando...';
+                clearLogsBtn.disabled = true;
+                
+                // ALTERAÇÃO 4
+                fetch("{{ url_for('api.api_clear_robot_logs') }}", { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            logsBody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: #28a745;">Logs limpos com sucesso!</td></tr>`;
+                        } else {
+                            alert(`Erro ao limpar os logs: ${data.message}`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro ao limpar logs:', error);
+                        alert('Falha ao comunicar com o servidor.');
+                    })
+                    .finally(() => {
+                        btnTextClear.textContent = 'Limpar Logs';
+                        clearLogsBtn.disabled = false;
+                    });
+            });
+        });
+    </script>
+</body>
+</html>

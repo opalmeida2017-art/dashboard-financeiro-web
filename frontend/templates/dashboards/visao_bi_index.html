@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ visao_titulo }} — BIWEB{% endblock %}
+
+{% block content %}
+<div class="dash-detail-page">
+    <header class="dash-detail-header">
+        <div>
+            <h1>{{ visao_titulo }}</h1>
+            <p class="subtitle" style="margin:0.35rem 0 0;color:var(--text-muted);font-size:0.95rem;">
+                {{ visao_subtitulo }}
+            </p>
+        </div>
+        <a href="{{ painel_home_url(request.query_string.decode('utf-8')) }}" class="dash-back-link">&larr; Voltar ao painel</a>
+    </header>
+
+    <div class="gc-menu-grid">
+        {% for a in analises %}
+        <a class="gc-menu-card" href="{{ url_for('main.visao_bi_analise', visao_key=visao_key, analise_id=a.id) }}?{{ request.query_string.decode('utf-8') }}">
+            <span class="gc-menu-num">{{ a.id }}</span>
+            <span class="side-link icon {{ a.icone }}" style="width:2.5rem;height:2.5rem;font-size:1.25rem;border-radius:10px;">{{ a.emoji }}</span>
+            <div class="gc-menu-text">
+                <strong>{{ a.titulo }}</strong>
+                <span>{{ a.subtitulo }}</span>
+            </div>
+            <span class="gc-menu-arrow">→</span>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

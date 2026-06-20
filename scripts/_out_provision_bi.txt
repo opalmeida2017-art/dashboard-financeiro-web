@@ -1,0 +1,1237 @@
+﻿
+### FILE deploy/provision_bi_tenant.py
+
+
+
+def _schema_from_url_login(url: str) -> str:
+    u = str(url or "").strip().rstrip("/")
+    m = re.search(r"/(c\d+)$", u, re.IGNORECASE) or re.search(r"(c\d+)", u, re.IGNORECASE)
+    return m.group(1).lower() if m else ""
+
+
+def garantir_schema_sati_tenant(schema: str) -> None:
+    """Cria schema vazio em sat1_sati_is via sati_db_restore do BI."""
+    schema = (schema or "").strip().lower()
+    if not schema or not re.match(r"^c\d+$", schema):
+        return
+    bi_root = os.getenv("BIWEB_ROOT", "/home/oitamar/dashboard-financeiro-web")
+    py = os.path.join(bi_root, "venv", "bin", "python3")
+    if not os.path.isfile(py):
+        py = "python3"
+    import subprocess
+    script = (
+        "import os\n"
+        "os.chdir(%r)\n"
+        "for line in open('.env'):\n"
+        "    line = line.strip()\n"
+        "    if line and not line.startswith('#') and '=' in line:\n"
+        "        k, v = line.split('=', 1)\n"
+        "        os.environ.setdefault(k.strip(), v.strip().strip(chr(34)).strip(chr(39)))\n"
+        "import sati_db_restore as sr\n"
+        "sr.garantir_schema_sati_vazio(%r, None)\n"
+        "print('schema ok', %r)\n"
+    ) % (bi_root, schema, schema)
+    proc = subprocess.run([py, "-c", script], capture_output=True, text=True, timeout=120)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "garantir_schema falhou")[:2000])
+
+
+
+
+def _schema_from_tenant_slug(slug: str) -> str:
+    import re
+    s = re.sub(r"[^a-zA-Z0-9_]", "_", str(slug or "").strip().lower())
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "tenant"
+
+def _slugify(texto: str) -> str:
+
+    import unicodedata
+
+
+
+    t = unicodedata.normalize("NFKD", str(texto or ""))
+
+    t = t.encode("ascii", "ignore").decode("ascii")
+
+    t = re.sub(r"[^a-zA-Z0-9]+", "-", t.lower()).strip("-")
+
+    return (t[:40] or "empresa").strip("-")
+
+
+
+
+
+def _bi_public_url(slug: str) -> str:
+
+    try:
+
+        import public_urls as pu
+
+        return pu.bi_url_lan(slug)
+
+    except ImportError:
+
+        host = os.getenv("BI_PUBLIC_HOST", os.getenv("NFE_PUBLIC_HOST", "192.168.100.12"))
+
+        return f"http://{host}/acesso/{slug}"
+
+
+
+
+
+def _criar_banco(pg_database: str):
+
+    import database_connection as dc
+
+    import psycopg2
+
+
+
+    conn = psycopg2.connect(**{**dc._dsn(), "dbname": "postgres"})
+
+    conn.autocommit = True
+
+    cur = conn.cursor()
+
+    cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (pg_database,))
+
+    if not cur.fetchone():
+
+        cur.execute(f'CREATE DATABASE "{pg_database}"')
+
+    cur.close()
+
+    conn.close()
+
+
+
+
+
+def _drop_banco(pg_database: str):
+
+    import database_connection as dc
+
+    import psycopg2
+
+
+
+    conn = psycopg2.connect(**{**dc._dsn(), "dbname": "postgres"})
+
+    conn.autocommit = True
+
+    cur = conn.cursor()
+
+    cur.execute(
+
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+
+        "WHERE datname = %s AND pid <> pg_backend_pid()",
+
+        (pg_database,),
+
+    )
+
+    cur.execute(f'DROP DATABASE IF EXISTS "{pg_database}"')
+
+    cur.close()
+
+    conn.close()
+
+
+
+
+
+def _clonar_schema_de_template(pg_database: str, template_db: str = "dashboard_db"):
+
+    """Copia estrutura do template (sem dados)."""
+
+    import database_connection as dc
+
+
+
+    dsn = dc._dsn()
+
+    host, port, user, password = dsn["host"], dsn.get("port", 5432), dsn["user"], dsn["password"]
+
+    env = os.environ.copy()
+
+    env["PGPASSWORD"] = password
+
+    import subprocess
+
+
+
+    dump = subprocess.run(
+
+        [
+
+            "pg_dump",
+
+            "-h",
+
+            str(host),
+
+            "-p",
+
+            str(port),
+
+            "-U",
+
+            user,
+
+            "-s",
+
+            "--no-owner",
+
+            "--no-privileges",
+
+            template_db,
+
+        ],
+
+        capture_output=True,
+
+        text=True,
+
+        env=env,
+
+        check=False,
+
+    )
+
+    if dump.returncode != 0:
+
+        raise RuntimeError(f"pg_dump falhou: {dump.stderr[:500]}")
+
+    restore = subprocess.run(
+
+        ["psql", "-h", str(host), "-p", str(port), "-U", user, "-d", pg_database, "-v", "ON_ERROR_STOP=1"],
+
+        input=dump.stdout,
+
+        capture_output=True,
+
+        text=True,
+
+        env=env,
+
+        check=False,
+
+    )
+
+    if restore.returncode != 0:
+
+        raise RuntimeError(f"psql schema falhou: {restore.stderr[:500]}")
+
+
+
+
+
+def _tenant_dir(slug: str) -> Path:
+
+    return TENANTS_ROOT / _slugify(slug)
+
+
+
+
+
+def _recriar_banco_limpo(pg_database: str, template_db: str = "dashboard_db"):
+
+    """Recria banco dedicado s├│ com estrutura (sem dados de outro tenant)."""
+
+    protegidos = {"postgres", "template0", "template1", "dashboard_db", "nfe_web"}
+
+    if pg_database in protegidos:
+
+        raise ValueError(f"N├úo ├® permitido recriar o banco {pg_database}.")
+
+    try:
+
+        _drop_banco(pg_database)
+
+    except Exception as exc:
+
+        print(f"[BI] Aviso ao remover banco {pg_database}: {exc}")
+
+    _criar_banco(pg_database)
+
+    _clonar_schema_de_template(pg_database, template_db)
+
+
+
+
+
+def _garantir_pasta_tenants():
+
+    import subprocess
+
+
+
+    root = TENANTS_ROOT
+
+    if root.is_dir():
+
+        return
+
+    try:
+
+        root.mkdir(parents=True, exist_ok=True)
+
+    except PermissionError:
+
+        subprocess.run(
+
+            ["sudo", "mkdir", "-p", str(root)],
+
+            check=True,
+
+            capture_output=True,
+
+        )
+
+        subprocess.run(
+
+            ["sudo", "chown", "-R", "nfe-web:nfe-web", str(root)],
+
+            check=False,
+
+            capture_output=True,
+
+        )
+
+        subprocess.run(["sudo", "chmod", "-R", "775", str(root)], check=False, capture_output=True)
+
+
+
+
+
+def _criar_pasta_tenant(slug: str, razao: str, pg_database: str) -> Path:
+
+    _garantir_pasta_tenants()
+
+    pasta = _tenant_dir(slug)
+
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    (pasta / "downloads").mkdir(exist_ok=True)
+
+    (pasta / "logs").mkdir(exist_ok=True)
+
+    cfg = pasta / "tenant.env"
+
+    if not cfg.exists():
+
+        cfg.write_text(
+
+            f"BI_TENANT_SLUG={slug}\nBI_PG_DATABASE={pg_database}\nRAZAO_SOCIAL={razao}\n",
+
+            encoding="utf-8",
+
+        )
+
+    return pasta
+
+
+
+
+
+def _inicializar_empresa(pg_database: str, razao_social: str, slug: str, url_login: str = ""):
+
+    """Um ├║nico registro por banco ÔÇö sem multi-apartamento."""
+
+    import bi_database as bi_db
+
+
+
+    slug = _slugify(slug)
+
+    razao = str(razao_social or "").strip()
+
+    venc = (datetime.now() + timedelta(days=3650)).strftime("%Y-%m-%d")
+
+    conn = bi_db.connect_bi(pg_database)
+
+    try:
+
+        conn.autocommit = False
+
+        cur = conn.cursor()
+
+        cur.execute("SELECT id FROM apartamentos ORDER BY id LIMIT 1")
+
+        row = cur.fetchone()
+
+        if row:
+
+            cur.execute(
+
+                "UPDATE apartamentos SET nome_empresa=%s, slug=%s, status='ativo' WHERE id=%s",
+
+                (razao, slug, row[0]),
+
+            )
+
+            apt_id = row[0]
+
+        else:
+
+            cur.execute(
+
+                """
+
+                INSERT INTO apartamentos (nome_empresa, slug, status, data_criacao, data_vencimento)
+
+                VALUES (%s, %s, 'ativo', NOW(), %s) RETURNING id
+
+                """,
+
+                (razao, slug, venc),
+
+            )
+
+            apt_id = cur.fetchone()[0]
+        cur.execute(
+            "DELETE FROM configuracoes_robo WHERE apartamento_id=%s AND chave='USE_SATI_SOURCE'",
+            (apt_id,),
+        )
+        cur.execute(
+            "INSERT INTO configuracoes_robo (apartamento_id, chave, valor) VALUES (%s, %s, %s)",
+            (apt_id, "USE_SATI_SOURCE", "false"),
+        )
+
+        url = str(url_login or "").strip()
+        if url:
+            cur.execute(
+                "DELETE FROM configuracoes_robo WHERE apartamento_id=%s AND chave='URL_LOGIN'",
+                (apt_id,),
+            )
+            cur.execute(
+                "INSERT INTO configuracoes_robo (apartamento_id, chave, valor) VALUES (%s, %s, %s)",
+                (apt_id, "URL_LOGIN", url),
+            )
+
+        pg_schema = _schema_from_tenant_slug(slug)
+        cur.execute(
+            "DELETE FROM configuracoes_robo WHERE apartamento_id=%s AND chave='SATI_PG_SCHEMA'",
+            (apt_id,),
+        )
+        cur.execute(
+            "INSERT INTO configuracoes_robo (apartamento_id, chave, valor) VALUES (%s, %s, %s)",
+            (apt_id, "SATI_PG_SCHEMA", pg_schema),
+        )
+
+
+
+        conn.commit()
+
+        return apt_id
+
+    except Exception:
+
+        conn.rollback()
+
+        raise
+
+    finally:
+
+        conn.close()
+
+
+
+
+
+def criar_instancia_bi(razao_social: str, slug: str | None = None, url_login: str = "") -> dict:
+
+    import bi_tenant_registry as registry
+
+
+
+    slug_norm = registry.slugify(slug or razao_social)
+
+    pg_db = registry.db_name_for_slug(slug_norm)
+
+    item = registry.get_tenant(slug_norm)
+
+    if item:
+
+        pg_db = item.get("pg_database") or pg_db
+
+    else:
+
+        item = registry.register_tenant(razao_social, slug_norm, _bi_public_url(slug_norm), None, pg_db)
+
+
+
+    _recriar_banco_limpo(pg_db)
+
+    _criar_pasta_tenant(slug_norm, razao_social, pg_db)
+
+    _inicializar_empresa(pg_db, razao_social, slug_norm, url_login=url_login or "")
+
+    schema = _schema_from_tenant_slug(slug_norm)
+    if schema:
+        garantir_schema_sati_tenant(schema)
+
+    return {
+
+        **item,
+
+        "pg_database": pg_db,
+
+        "tenant_dir": str(_tenant_dir(slug_norm)),
+
+        "url": item.get("url") or _bi_public_url(slug_norm),
+
+    }
+
+
+
+
+
+def remover_instancia_bi(slug: str, drop_database: bool = True) -> dict:
+
+    import bi_tenant_registry as registry
+
+
+
+    item = registry.get_tenant(slug)
+
+    if not item:
+
+        raise ValueError(f"Inst├óncia BI '{slug}' n├úo encontrada.")
+
+    if str(slug).lower() == BRASIL_SLUG:
+
+        raise ValueError("Transportes Brasil ├® a inst├óncia de refer├¬ncia e n├úo pode ser removida.")
+
+    pg_db = item.get("pg_database") or registry.db_name_for_slug(slug)
+
+    registry.remove_tenant(slug)
+
+    if drop_database and pg_db and pg_db != "dashboard_db":
+
+        _drop_banco(pg_db)
+
+    pasta = _tenant_dir(slug)
+
+    if pasta.is_dir():
+
+        import shutil
+
+        shutil.rmtree(pasta, ignore_errors=True)
+
+    return item
+
+
+
+
+
+def sync_apartamentos_existentes():
+
+    """Desativado ÔÇö n├úo importar mais apartamentos do banco compartilhado."""
+
+    return 0
+
+
+
+
+
+def main():
+
+    import argparse
+
+
+
+    parser = argparse.ArgumentParser(description="Provisiona tenant BI isolado")
+
+    parser.add_argument("razao_social", nargs="?", default="")
+
+    parser.add_argument("--slug", default="")
+
+    args = parser.parse_args()
+
+    if not args.razao_social:
+
+        parser.error("Informe razao_social")
+
+    item = criar_instancia_bi(args.razao_social, args.slug or None)
+
+    print(f"OK slug={item['slug']}")
+
+    print(f"Banco: {item['pg_database']}")
+
+    print(f"URL: {item['url']}")
+
+
+
+
+
+if __name__ == "__main__":
+
+    main()
+
+
+
+### FILE bi_store.py
+"""Registro central de tenants BI ÔÇö PostgreSQL (compartilhado painel Windows + Web)."""
+import json
+import os
+from pathlib import Path
+
+WEB_ROOT = Path(__file__).resolve().parent
+REGISTRY_PATH = Path(os.getenv("NFE_BI_TENANTS_FILE", WEB_ROOT / "bi_tenants.json"))
+
+
+def _central_db_name():
+    return os.getenv("NFE_PAINEL_DATABASE") or os.getenv("PG_DATABASE", "nfe_web")
+
+
+def _connect_central():
+    import database_connection as dc
+    import psycopg2
+
+    return psycopg2.connect(**{**dc._dsn(), "dbname": _central_db_name()})
+
+
+def ensure_schema():
+    conn = _connect_central()
+    conn.autocommit = True
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS painel_bi_tenant (
+            id SERIAL PRIMARY KEY,
+            slug VARCHAR(40) UNIQUE NOT NULL,
+            razao_social TEXT NOT NULL DEFAULT '',
+            pg_database VARCHAR(63) NOT NULL DEFAULT 'dashboard_db',
+            apartamento_id INTEGER,
+            url TEXT DEFAULT '',
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS painel_bi_meta (
+            chave TEXT PRIMARY KEY,
+            valor TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    cur.close()
+    conn.close()
+
+
+def _row_to_item(row):
+    slug, razao, pg_db, apt_id, url, ativo, created = row
+    return {
+        "slug": slug,
+        "razao_social": razao,
+        "pg_database": pg_db or "dashboard_db",
+        "apartamento_id": apt_id,
+        "url": url or "",
+        "ativo": bool(ativo),
+        "created_at": created.strftime("%Y-%m-%d %H:%M:%S") if created else "",
+    }
+
+
+def list_tenants() -> list:
+    ensure_schema()
+    conn = _connect_central()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT slug, razao_social, pg_database, apartamento_id, url, ativo, created_at
+            FROM painel_bi_tenant ORDER BY created_at DESC
+            """
+        )
+        return [_row_to_item(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_tenant(slug: str):
+    slug = str(slug or "").strip().lower()
+    for item in list_tenants():
+        if str(item.get("slug") or "").lower() == slug:
+            return item
+    return None
+
+
+def get_base_url() -> str:
+    ensure_schema()
+    conn = _connect_central()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT valor FROM painel_bi_meta WHERE chave = 'base_url'")
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].rstrip("/")
+    finally:
+        conn.close()
+    base = os.getenv("BI_PUBLIC_BASE_URL", "").rstrip("/")
+    if base:
+        return base
+    host = os.getenv("BI_PUBLIC_HOST", os.getenv("NFE_PUBLIC_HOST", "192.168.100.12"))
+    return f"http://{host}"
+
+
+def set_base_url(url: str):
+    ensure_schema()
+    conn = _connect_central()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO painel_bi_meta (chave, valor) VALUES ('base_url', %s)
+            ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor
+            """,
+            (url.rstrip("/"),),
+        )
+    finally:
+        conn.close()
+
+
+def get_external_base_url() -> str:
+    ensure_schema()
+    conn = _connect_central()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT valor FROM painel_bi_meta WHERE chave = 'external_base_url'")
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].rstrip("/")
+    finally:
+        conn.close()
+    return os.getenv("BI_PUBLIC_EXTERNAL_URL", "").rstrip("/")
+
+
+def set_external_base_url(url: str):
+    ensure_schema()
+    conn = _connect_central()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO painel_bi_meta (chave, valor) VALUES ('external_base_url', %s)
+            ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor
+            """,
+            (url.rstrip("/"),),
+        )
+    finally:
+        conn.close()
+
+
+def register_tenant(
+    razao_social: str,
+    slug: str,
+    url: str,
+    apartamento_id=None,
+    pg_database: str | None = None,
+) -> dict:
+    ensure_schema()
+    import bi_tenant_registry as reg
+
+    slug = reg.slugify(slug)
+    razao = str(razao_social or "").strip()
+    if not razao:
+        raise ValueError("Informe o nome da transportadora.")
+    if get_tenant(slug):
+        raise ValueError(f"J├í existe inst├óncia BI com slug '{slug}'.")
+
+    pg_db = pg_database or reg.db_name_for_slug(slug)
+    conn = _connect_central()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO painel_bi_tenant
+                (slug, razao_social, pg_database, apartamento_id, url, ativo)
+            VALUES (%s, %s, %s, %s, %s, TRUE)
+            RETURNING slug, razao_social, pg_database, apartamento_id, url, ativo, created_at
+            """,
+            (slug, razao, pg_db, None, url),
+        )
+        return _row_to_item(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def set_tenant_ativo(slug: str, ativo: bool) -> dict:
+    ensure_schema()
+    slug = str(slug or "").strip().lower()
+    conn = _connect_central()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE painel_bi_tenant SET ativo = %s, updated_at = NOW()
+            WHERE LOWER(slug) = %s
+            RETURNING slug, razao_social, pg_database, apartamento_id, url, ativo, created_at
+            """,
+            (bool(ativo), slug),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"Inst├óncia BI '{slug}' n├úo encontrada.")
+        return _row_to_item(row)
+    finally:
+        conn.close()
+
+
+def sync_status_apartamento(slug: str, ativo: bool):
+    """Atualiza status no dashboard_db.apartamentos."""
+    status = "ativo" if ativo else "inativo"
+    try:
+        import bi_database as bi_db
+
+        conn = bi_db.connect_bi()
+        try:
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE apartamentos SET status=%s WHERE LOWER(slug)=%s",
+                (status, slug.lower()),
+            )
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"[BI] Aviso: n├úo atualizou apartamento {slug}: {exc}")
+
+
+def remove_tenant(slug: str) -> dict:
+    ensure_schema()
+    slug = str(slug or "").strip().lower()
+    item = get_tenant(slug)
+    if not item:
+        raise ValueError(f"Inst├óncia BI '{slug}' n├úo encontrada.")
+    conn = _connect_central()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM painel_bi_tenant WHERE LOWER(slug) = %s", (slug,))
+    finally:
+        conn.close()
+    return item
+
+
+def normalize_bi_urls():
+    """Atualiza URLs externas dos tenants BI no painel."""
+    import bi_tenant_registry as reg
+
+    ensure_schema()
+    conn = _connect_central()
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        for item in list_tenants():
+            slug = str(item.get("slug") or "").strip()
+            if not slug:
+                continue
+            razao = str(item.get("razao_social") or "").strip()
+            url = str(item.get("url") or "").strip()
+            try:
+                import public_urls as pu
+                correto = pu.bi_url_externo(razao, slug)
+            except ImportError:
+                correto = reg.external_url(slug)
+            if url != correto:
+                cur.execute(
+                    """
+                    UPDATE painel_bi_tenant SET url = %s, updated_at = NOW()
+                    WHERE LOWER(slug) = %s
+                    """,
+                    (correto, slug.lower()),
+                )
+    finally:
+        conn.close()
+
+
+def load_registry_dict() -> dict:
+    return {
+        "tenants": list_tenants(),
+        "base_url": get_base_url(),
+        "external_base_url": get_external_base_url(),
+    }
+
+
+def export_json_backup():
+    data = load_registry_dict()
+    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REGISTRY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def sync_json_to_pg():
+    if not REGISTRY_PATH.is_file():
+        return
+    ensure_schema()
+    if list_tenants():
+        return
+    try:
+        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    base = (data.get("base_url") or "").strip()
+    if base:
+        set_base_url(base)
+    for item in data.get("tenants") or []:
+        slug = item.get("slug")
+        if not slug:
+            continue
+        try:
+            register_tenant(
+                item.get("razao_social") or slug,
+                slug,
+                item.get("url") or "",
+                item.get("apartamento_id"),
+                item.get("pg_database") or "dashboard_db",
+            )
+            if item.get("ativo") is False:
+                set_tenant_ativo(slug, False)
+        except ValueError:
+            pass
+
+
+### FILE bi_tenant_registry.py
+"""Registro de inst├óncias BI Web (painel + apartamentos dashboard_db)."""
+import json
+import os
+import re
+import unicodedata
+from datetime import datetime
+from pathlib import Path
+
+WEB_ROOT = Path(__file__).resolve().parent
+REGISTRY_PATH = Path(os.getenv("NFE_BI_TENANTS_FILE", WEB_ROOT / "bi_tenants.json"))
+_USE_PG = os.getenv("NFE_PAINEL_USE_PG", "1").strip().lower() not in ("0", "false", "no")
+
+
+def slugify(texto: str) -> str:
+    texto = unicodedata.normalize("NFKD", str(texto or ""))
+    texto = texto.encode("ascii", "ignore").decode("ascii")
+    texto = re.sub(r"[^a-zA-Z0-9]+", "-", texto.lower()).strip("-")
+    return (texto[:40] or "empresa").strip("-")
+
+
+def _store():
+    import bi_store as bs
+    return bs
+
+
+def load_registry() -> dict:
+    if _USE_PG:
+        try:
+            return _store().load_registry_dict()
+        except Exception:
+            pass
+    if not REGISTRY_PATH.is_file():
+        return {"tenants": [], "base_url": os.getenv("BI_PUBLIC_BASE_URL", "")}
+    try:
+        return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"tenants": [], "base_url": ""}
+
+
+def list_tenants() -> list:
+    if _USE_PG:
+        try:
+            return _store().list_tenants()
+        except Exception:
+            pass
+    return load_registry().get("tenants") or []
+
+
+def get_tenant(slug: str):
+    slug = str(slug or "").strip().lower()
+    for item in list_tenants():
+        if str(item.get("slug") or "").lower() == slug:
+            return item
+    return None
+
+
+def tenant_exists(slug: str) -> bool:
+    return get_tenant(slug) is not None
+
+
+def public_url(slug: str) -> str:
+    base = _store().get_base_url() if _USE_PG else load_registry().get("base_url", "")
+    base = (base or os.getenv("BI_PUBLIC_BASE_URL", "")).rstrip("/")
+    if not base:
+        host = os.getenv("BI_PUBLIC_HOST", os.getenv("NFE_PUBLIC_HOST", "192.168.100.12"))
+        base = f"http://{host}"
+    return f"{base}/acesso/{slugify(slug)}"
+
+
+def external_base_url() -> str:
+    ext = os.getenv("BI_PUBLIC_EXTERNAL_URL", "").strip().rstrip("/")
+    if ext:
+        return ext
+    if _USE_PG:
+        try:
+            return _store().get_external_base_url() or ""
+        except Exception:
+            pass
+    return (load_registry().get("external_base_url") or "").rstrip("/")
+
+
+def external_url(slug: str, razao_social: str = "") -> str:
+    try:
+        import public_urls as pu
+        item = get_tenant(slug) if slug else None
+        razao = razao_social or (item.get("razao_social") if item else "")
+        return pu.bi_url_externo(razao, slug)
+    except ImportError:
+        base = external_base_url()
+        return f"{base}/biweb/{slug}/" if base and slug else base
+
+
+def biweb_path(slug: str, razao_social: str = "") -> str:
+    try:
+        import public_urls as pu
+        item = get_tenant(slug) if slug else None
+        razao = razao_social or (item.get("razao_social") if item else "")
+        return pu.biweb_path_name(razao, slug)
+    except ImportError:
+        return slug.replace("-", "_").title()
+
+
+def db_name_for_slug(slug: str) -> str:
+    import bi_database as bi_db
+    return bi_db.db_name_for_slug(slug)
+
+
+def enrich_tenant(item: dict) -> dict:
+    out = dict(item)
+    slug = out.get("slug") or ""
+    razao = out.get("razao_social") or ""
+    out["url_externa"] = external_url(slug, razao) if slug else ""
+    out["biweb_path"] = biweb_path(slug, razao) if slug else ""
+    out["nome_acesso"] = razao or slug
+    out["pg_database"] = out.get("pg_database") or db_name_for_slug(slug)
+    return out
+
+
+def set_tenant_ativo(slug: str, ativo: bool) -> dict:
+    if _USE_PG:
+        item = _store().set_tenant_ativo(slug, ativo)
+        _store().export_json_backup()
+        return item
+    slug = str(slug or "").strip().lower()
+    data = load_registry()
+    for item in data.get("tenants") or []:
+        if str(item.get("slug") or "").lower() == slug:
+            item["ativo"] = bool(ativo)
+            REGISTRY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            return item
+    raise ValueError(f"Inst├óncia BI '{slug}' n├úo encontrada.")
+
+
+def remove_tenant(slug: str) -> dict:
+    if _USE_PG:
+        item = _store().remove_tenant(slug)
+        _store().export_json_backup()
+        return item
+    slug = str(slug or "").strip().lower()
+    data = load_registry()
+    tenants = data.get("tenants") or []
+    for i, item in enumerate(tenants):
+        if str(item.get("slug") or "").lower() == slug:
+            removido = tenants.pop(i)
+            data["tenants"] = tenants
+            REGISTRY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            return removido
+    raise ValueError(f"Inst├óncia BI '{slug}' n├úo encontrada.")
+
+
+def register_tenant(
+    razao_social: str,
+    slug: str,
+    url: str = "",
+    apartamento_id=None,
+    pg_database: str | None = None,
+) -> dict:
+    razao = str(razao_social or "").strip()
+    slug = slugify(slug)
+    if not razao:
+        raise ValueError("Informe o nome da transportadora.")
+    if tenant_exists(slug):
+        raise ValueError(f"J├í existe inst├óncia BI com slug '{slug}'.")
+
+    url = url or public_url(slug)
+    pg_db = pg_database or db_name_for_slug(slug)
+    item = {
+        "slug": slug,
+        "razao_social": razao,
+        "pg_database": pg_db,
+        "apartamento_id": None,
+        "url": url,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ativo": True,
+    }
+
+    if _USE_PG:
+        item = _store().register_tenant(razao, slug, url, None, pg_db)
+        _store().export_json_backup()
+        return item
+
+    data = load_registry()
+    data.setdefault("tenants", []).append(item)
+    if not data.get("base_url"):
+        data["base_url"] = url.rsplit("/acesso/", 1)[0]
+    REGISTRY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return item
+
+
+### painel.py bi routes
+
+
+class BiProvisionBody(BaseModel):
+    razao_social: str
+    slug: str = ""
+    url_login: str = ""
+
+
+@router.get("/bi/tenants")
+def listar_bi_tenants(x_admin_secret: str = Header(default="")):
+    _check_admin(x_admin_secret)
+    import bi_tenant_registry as registry
+    tenants = [registry.enrich_tenant(t) for t in registry.list_tenants()]
+    reg = registry.load_registry()
+    return {
+        "ok": True,
+        "tenants": tenants,
+        "base_url": reg.get("base_url", ""),
+        "external_base_url": registry.external_base_url(),
+    }
+
+
+@router.post("/bi/tenants/provision")
+def provisionar_bi_tenant(body: BiProvisionBody, x_admin_secret: str = Header(default="")):
+    _check_admin(x_admin_secret)
+    from deploy.provision_bi_tenant import criar_instancia_bi
+    import bi_store as bs
+    try:
+        item = criar_instancia_bi(body.razao_social, body.slug or None, url_login=body.url_login or "")
+        bs.export_json_backup()
+        import bi_tenant_registry as registry
+        return {"ok": True, "tenant": registry.enrich_tenant(item)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@router.patch("/bi/tenants/{slug}")
+def alterar_bi_tenant(slug: str, body: AtivoTenantBody, x_admin_secret: str = Header(default="")):
+    _check_admin(x_admin_secret)
+    import bi_tenant_registry as registry
+    import bi_store as bs
+    try:
+        item = registry.set_tenant_ativo(slug, body.ativo)
+        bs.export_json_backup()
+        return {"ok": True, "tenant": item}
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.delete("/bi/tenants/{slug}")
+def remover_bi_tenant(slug: str, x_admin_secret: str = Header(default="")):
+    _check_admin(x_admin_secret)
+    from deploy.provision_bi_tenant import remover_instancia_bi
+    import bi_store as bs
+    try:
+        item = remover_instancia_bi(slug, drop_database=True)
+        bs.export_json_backup()
+        return {"ok": True, "tenant": item}
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@router.post("/bi/sync")
+def sincronizar_bi(x_admin_secret: str = Header(default="")):
+    _check_admin(x_admin_secret)
+    import bi_store as bs
+    import bi_tenant_registry as registry
+    base_bi = os.getenv("BI_PUBLIC_BASE_URL", "").strip()
+    if base_bi:
+        bs.set_base_url(base_bi.rstrip("/"))
+    ext_bi = os.getenv("BI_PUBLIC_EXTERNAL_URL", "").strip()
+    if ext_bi:
+        bs.set_external_base_url(ext_bi.rstrip("/"))
+    ext_nfe = os.getenv("NFE_PUBLIC_EXTERNAL_URL", "").strip()
+    if ext_nfe:
+        import painel_store as ps
+        conn = ps._connect_central()
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO painel_meta (chave, valor) VALUES ('external_base_url', %s)
+            ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor
+            """,
+            (ext_nfe.rstrip("/"),),
+        )
+        conn.close()
+    bs.normalize_bi_urls()
+    bs.export_json_backup()
+    tenants = [registry.enrich_tenant(t) for t in registry.list_tenants()]
+    return {"ok": True, "tenants": tenants}
+
+
+### painel.js bi section
+63:let biBaseUrl = "http://192.168.100.12";
+64:let biExternalUrl = "https://dadosfrete.duckdns.org:8443";
+68:  biBaseUrl = (info.bi_base_url || biBaseUrl).replace(/\/$/, "");
+69:  biExternalUrl = (info.bi_external_base_url || biExternalUrl).replace(/\/$/, "");
+70:  externalDomain = (info.external_domain || externalDomain || biExternalUrl).replace(/\/$/, "");
+71:  const biEl = document.getElementById("bi-base-url");
+72:  if (biEl) biEl.textContent = biBaseUrl;
+73:  const biExtEl = document.getElementById("bi-external-url");
+74:  if (biExtEl) biExtEl.textContent = biExternalUrl;
+105:          <div class="data">${lic.data_exibicao || lic.data_registro || "ÔÇö"}</div>
+247:  const st = document.getElementById("status-bi");
+248:  const box = document.getElementById("lista-bi");
+252:    const r = await api("GET", "/api/painel/bi/tenants");
+253:    if (r.base_url) biBaseUrl = r.base_url.replace(/\/$/, "");
+258:      const urlExt = t.url_externa || biExternalUrl || "";
+259:      const biPath = t.biweb_path || t.razao_social;
+264:          ${urlExt ? `<div class="url" style="color:#b8f5c3">Externo: ${urlExt} ÔÇö ${biPath}</div>` : ""}
+277:      ac.appendChild(btn("Remover BI", "gray small", () => removerBi(t.slug, t.razao_social)));
+280:    st.textContent = `${r.tenants.length} inst├óncia(s) BI.`;
+288:  const msg = ativo ? "ATIVAR link BI?" : "DESATIVAR link BI?\n\nO painel ficar├í inacess├¡vel para este slug.";
+291:    await api("PATCH", `/api/painel/bi/tenants/${slug}`, { ativo });
+297:  if (!confirm(`Remover apartamento BI?\n\n${razao}\nSlug: ${slug}`)) return;
+299:    await api("DELETE", `/api/painel/bi/tenants/${slug}`);
+306:  const razao = document.getElementById("bi-razao").value.trim();
+308:  let slug = document.getElementById("bi-slug").value.trim();
+310:  if (!confirm(`Criar inst├óncia BI para:\n\n${razao}`)) return;
+312:    const r = await api("POST", "/api/painel/bi/tenants/provision", { razao_social: razao, slug });
+313:    alert(`BI criado!\n\nLAN: ${r.tenant.url}${r.tenant.url_externa ? "\nExterno: " + r.tenant.url_externa : ""}`);
+320:    await api("POST", "/api/painel/bi/sync", {});
+321:    alert("Importado do BI existente.");
+331:  document.getElementById("tab-bi").classList.toggle("hidden", name !== "bi");
+334:  if (name === "bi") carregarBi();
+366:  document.getElementById("btn-atualizar-bi").onclick = carregarBi;
+367:  document.getElementById("btn-criar-bi").onclick = criarBi;
+368:  document.getElementById("btn-sync-bi").onclick = syncBi;
+378:  document.getElementById("bi-razao").oninput = () => {
+379:    const razao = document.getElementById("bi-razao").value.trim();
+380:    const slug = document.getElementById("bi-slug").value.trim();
+382:      document.getElementById("bi-preview").textContent = `Pr?via externa: ${previewExterno(`/biweb/${slugPreview(razao)}/`)}`;
+
+
+### bi instances dirs
+/home/oitamar/dashboard-financeiro-web/.env
+
+/home/oitamar/dashboard-financeiro-web/.env
+

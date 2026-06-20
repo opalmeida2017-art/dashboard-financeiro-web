@@ -1,0 +1,10 @@
+import paramiko
+c=paramiko.SSHClient(); c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+c.connect('192.168.100.12',username='oitamar',password='oitapere',timeout=20)
+_,o,_=c.exec_command('tail -8 /home/oitamar/dashboard-financeiro-web/restore_final2.log',timeout=30)
+print(o.read().decode())
+_,o,_=c.exec_command('curl -s -o /dev/null -w "%{http_code}" -H "X-BI-Tenant-Slug: w-carlos" http://127.0.0.1:8000/',timeout=15)
+print('http bi', o.read().decode())
+_,o,_=c.exec_command('systemctl is-active nfe-web; ss -tlnp | grep -E "5000|8080" | head -5',timeout=15)
+print(o.read().decode())
+c.close()

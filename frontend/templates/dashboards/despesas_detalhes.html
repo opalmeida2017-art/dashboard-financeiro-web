@@ -1,0 +1,122 @@
+{% extends "layout.html" %}
+
+
+
+{% block title %}Despesas detalhadas — BIWEB{% endblock %}
+
+
+
+{% block content %}
+
+<div class="dash-detail-page">
+
+    <header class="dash-detail-header">
+
+        <h1>Análise de despesas</h1>
+
+        <a href="{{ painel_home_url(request.query_string.decode('utf-8')) }}" class="dash-back-link">&larr; Voltar ao painel</a>
+
+    </header>
+
+
+
+    <div class="charts-studio dashboard-layout">
+
+        <section class="charts-hero" id="featured-chart-container">
+
+            <div class="charts-hero-toolbar">
+
+                <div class="charts-hero-head">
+
+                    <span class="charts-badge despesa">Despesas</span>
+
+                    <h2 id="featured-chart-title">Carregando gráfico…</h2>
+
+                    <p class="charts-hero-sub">Selecione um indicador abaixo para ampliar a visualização.</p>
+
+                </div>
+
+            </div>
+
+            <div class="charts-hero-canvas chart-canvas-wrapper featured">
+
+                <canvas id="featuredChart"></canvas>
+
+            </div>
+
+        </section>
+
+
+
+        <section class="charts-gallery">
+
+            <h3 class="charts-gallery-title">Indicadores de despesas</h3>
+
+            <div id="thumbnail-grid" class="charts-grid">
+
+                <button type="button" class="chart-card" data-chart-id="composicaoFilial">
+
+                    <span class="chart-card-label">Composição por filial</span>
+
+                    <div class="chart-card-preview"><canvas id="despesaComposicaoFilialChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="despesaGrupo">
+
+                    <span class="chart-card-label">Despesas por grupo</span>
+
+                    <div class="chart-card-preview"><canvas id="superGrupoChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="despesaFilial">
+
+                    <span class="chart-card-label">Despesas por filial</span>
+
+                    <div class="chart-card-preview"><canvas id="despesaFilialChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="manutencaoVeiculo">
+
+                    <span class="chart-card-label">Manutenção por veículo</span>
+
+                    <div class="chart-card-preview"><canvas id="manutencaoVeiculoChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="gastoCombustivelItem">
+
+                    <span class="chart-card-label">Combustível por tipo</span>
+
+                    <div class="chart-card-preview"><canvas id="gastosPorCombustivelChart"></canvas></div>
+
+                </button>
+
+                <button type="button" class="chart-card" data-chart-id="gastoCombustivelVeiculo">
+
+                    <span class="chart-card-label">Combustível por veículo</span>
+
+                    <div class="chart-card-preview"><canvas id="combustivelPorVeiculoChart"></canvas></div>
+
+                </button>
+
+            </div>
+
+        </section>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+
+{% block scripts %}
+
+    <script src="{{ url_for('static', filename='js/despesasDetalhes.js') }}"></script>
+
+{% endblock %}
+

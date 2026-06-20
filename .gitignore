@@ -19,3 +19,10 @@ dump_toc.txt
 
 # Outros
 .DS_Store
+.cursor/
+scripts/_tmp_*
+scripts/_*_out.txt
+scripts/_nginx*.tmp
+scripts/_painel_index.html
+scripts/_server_*.js
+scripts/_server_*.py
