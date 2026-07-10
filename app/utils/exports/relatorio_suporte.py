@@ -1,9 +1,9 @@
 from datetime import datetime
 from pathlib import Path
 import html
+import os
 import tempfile
 
-import database_setup as db
 import log_service
 from agendamento_email import EMAIL_SUPORTE_LOG, enviar_mensagem_smtp
 
@@ -30,9 +30,32 @@ def _periodo_texto(inicio, fim):
 
 
 def _obter_razao_social():
-    inst = db.carregar_instalacao_licenca() or {}
-    razao = str(inst.get('razao_social') or '').strip()
-    return razao or 'Transportadora nao informada'
+    try:
+        from infra.tenant_licensing.bi_tenant_context import _lookup_registry, get_slug
+
+        slug = get_slug()
+        if slug:
+            reg = _lookup_registry(slug) or {}
+            razao = str(reg.get("razao_social") or "").strip()
+            if razao:
+                return razao
+    except Exception:
+        pass
+    return os.getenv("BI_TENANT_RAZAO", "").strip() or "Transportadora nao informada"
+
+
+def _normalizar_placa_painel(valor):
+    return "" if valor is None else str(valor).strip().upper()
+
+
+def _normalizar_km_painel(valor):
+    return "" if valor is None else str(valor).strip()
+
+
+def _listar_notas_por_data_insercao(dt_ini, dt_fim):
+    ini = datetime.strptime(dt_ini, "%Y-%m-%d")
+    fim = datetime.strptime(dt_fim, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+    return [], ini, fim
 
 
 def _html_base(titulo, corpo):
@@ -73,6 +96,8 @@ pre.logs {{
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
+    overflow: visible;
+    max-height: none;
     background: #0f172a;
     color: #e2e8f0;
     border-radius: 8px;
@@ -99,11 +124,38 @@ tr:nth-child(even) {{
     background: #f9fafb;
 }}
 @media print {{
-    body {{ margin: 0; }}
+    html, body {{
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        height: auto !important;
+        width: auto !important;
+    }}
+    .meta, .filtros {{
+        break-inside: avoid;
+    }}
     pre.logs {{
-        background: white;
-        color: black;
-        border: 1px solid #999;
+        display: block !important;
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+        page-break-inside: auto;
+        background: white !important;
+        color: black !important;
+        border: 1px solid #999 !important;
+        box-shadow: none !important;
+    }}
+    table {{
+        page-break-inside: auto;
+    }}
+    tr {{
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }}
+    thead {{
+        display: table-header-group;
     }}
 }}
 </style>
@@ -153,8 +205,8 @@ def _linha_nota(nota):
         limpa(nota.get('status')),
         limpa(nota.get('fornecedor')),
         limpa(nota.get('num_nota')),
-        db.normalizar_placa_painel(nota.get('painel_placa')),
-        db.normalizar_km_painel(nota.get('painel_km')),
+        _normalizar_placa_painel(nota.get('painel_placa')),
+        _normalizar_km_painel(nota.get('painel_km')),
         limpa(nota.get('data_em')),
         limpa(nota.get('valor')),
         limpa(nota.get('sit_nfe')),
@@ -167,7 +219,7 @@ def _linha_nota(nota):
 
 
 def gerar_arquivo_notas_suporte(dt_ini, dt_fim):
-    notas, inicio, fim = db.listar_notas_por_data_insercao(dt_ini, dt_fim)
+    notas, inicio, fim = _listar_notas_por_data_insercao(dt_ini, dt_fim)
     cabecalhos = [
         "Inserção", "Cód. Interno", "Status", "Fornecedor", "No.Nota",
         "Placa", "KM", "Data Em.", "Valor", "Sit. NFe", "Chave NFe",

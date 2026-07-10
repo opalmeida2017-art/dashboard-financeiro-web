@@ -9,11 +9,15 @@ import pandas as pd
 from app.data import data_manager as dm
 from app.core import dre_viagem as dre
 from app.core.gestao_comercial import _base_viagens_fat
+from app.utils.dre_tenant_config import obter_dre_opts
 
 METRICAS: dict[str, dict[str, str]] = {
     "receita_frete": {
         "titulo": "Receita de frete",
-        "formula": "freteempresa quando permitefaturar = S (regras DRE do conhecimento).",
+        "formula": (
+            "freteempresa quando permitefaturar = S; com codProprietario no painel, "
+            "usa fretemotorista (regras DRE do conhecimento)."
+        ),
         "listagem": "cte",
     },
     "custo_operacional": {
@@ -31,7 +35,10 @@ METRICAS: dict[str, dict[str, str]] = {
     },
     "custo_previa_conhecimento": {
         "titulo": "Custo prévia CT-e",
-        "formula": "Motorista, ICMS embutido, seguro e quebra quando pagarConhecimento = S.",
+        "formula": (
+            "Frota: vlcomissao do acerto; Frete (agenc./terceiro): frete mot. − quebra − descontos − "
+            "pedágio − seguro mot.; + ICMS embutido + seguro empresa, quando pagarConhecimento = S."
+        ),
         "listagem": "cte",
     },
     "custo_nota_itemnota": {
@@ -54,12 +61,12 @@ METRICAS: dict[str, dict[str, str]] = {
     },
     "receita_comercio": {
         "titulo": "Receita comércio",
-        "formula": "Ramo COMERCIO + nota despesa=N + tiponfe=0 + tipo=0 (venda).",
+        "formula": "Ramo COMERCIO + nota despesa=N + (tiponfe=0 ou série RQ) + tipo=0 (venda). VED=D não exclui.",
         "listagem": "nota",
     },
     "despesa_comercio": {
         "titulo": "Despesa comércio",
-        "formula": "Ramo COMERCIO + nota despesa=S + tiponfe=0 (compra/despesa NF-e).",
+        "formula": "Ramo COMERCIO + nota despesa=S + (tiponfe=0 ou série RQ). VED=D não exclui.",
         "listagem": "nota",
     },
     "investimento": {
@@ -88,17 +95,67 @@ METRICAS: dict[str, dict[str, str]] = {
         "formula": "Resultado líquido ÷ receita de frete × 100.",
         "listagem": "resumo",
     },
+    "margem_cliente": {
+        "titulo": "Composição da margem por cliente",
+        "formula": "Receita, custo prévia e margem por CT-e do cliente no período.",
+        "listagem": "misto",
+    },
     "contas_pagar": {
         "titulo": "Contas a pagar pendentes",
-        "formula": "Duplicatas AP sem codtransacao e sem datapagamento (liquido itemnota).",
+        "formula": (
+            "Duplicatas AP sem codtransacao e sem datapagamento; "
+            "vencimento de 01/01/2000 até ontem. Valores com vencimento futuro "
+            "aparecem em «A vencer»."
+        ),
         "listagem": "financeiro",
     },
     "contas_receber": {
         "titulo": "Contas a receber pendentes",
-        "formula": "Duplicatas AR sem codtransacao e sem datapagamento.",
+        "formula": (
+            "Duplicatas AR sem codtransacao e sem datapagamento; "
+            "vencimento de 01/01/2000 até ontem. Valores com vencimento futuro "
+            "aparecem em «A vencer»."
+        ),
         "listagem": "financeiro",
     },
 }
+
+
+def narrow_dates_by_periodo_label(
+    periodo_label: str | None,
+    start_date,
+    end_date,
+):
+    """Restringe o intervalo ao mês/dia clicado no gráfico (ex.: Jun/2026)."""
+    if not periodo_label or not str(periodo_label).strip():
+        return start_date, end_date
+    label = str(periodo_label).strip()
+    ref_year = pd.Timestamp(end_date).year if end_date is not None else pd.Timestamp.now().year
+
+    parsed = pd.to_datetime(label, format="%b/%Y", errors="coerce")
+    parts = label.split("/")
+    is_month = pd.notna(parsed) or (len(parts) == 2 and not parts[0].strip().isdigit())
+    if not pd.notna(parsed):
+        parsed = pd.to_datetime(label, format="%d/%m/%Y", errors="coerce")
+    if not pd.notna(parsed):
+        parsed = pd.to_datetime(f"{label}/{ref_year}", format="%d/%m/%Y", errors="coerce")
+    if not pd.notna(parsed):
+        parsed = pd.to_datetime(label, dayfirst=True, errors="coerce")
+    if not pd.notna(parsed):
+        return start_date, end_date
+
+    parsed = pd.Timestamp(parsed).normalize()
+    if is_month:
+        pstart = parsed.to_period("M").start_time.normalize()
+        pend = parsed.to_period("M").end_time.normalize()
+    else:
+        pstart = pend = parsed
+
+    if start_date is not None:
+        pstart = max(pstart, pd.Timestamp(start_date).normalize())
+    if end_date is not None:
+        pend = min(pend, pd.Timestamp(end_date).normalize())
+    return pstart.to_pydatetime(), pend.to_pydatetime()
 
 
 def _display_cte(numero: Any, num_conhec: Any = None) -> str:
@@ -136,6 +193,39 @@ def _merge_num_conhec(df: pd.DataFrame, df_fat: pd.DataFrame) -> pd.DataFrame:
     return df.merge(nc, on="numero", how="left")
 
 
+def _linhas_margem_cliente(df_dre: pd.DataFrame, cv: dict) -> list[dict[str, Any]]:
+    if df_dre.empty:
+        return []
+    col_num = cv.get("numero", "numero")
+    col_cli = cv.get("nomecliente")
+    col_dt = cv.get("dataviagemmotorista")
+    linhas: list[dict[str, Any]] = []
+    for _, row in df_dre.iterrows():
+        receita = float(row.get("receita", 0) or 0)
+        custo = float(row.get("custo_previa_conhecimento", 0) or 0)
+        lucro = receita - custo
+        margem = (lucro / receita * 100) if receita > 0 else 0.0
+        numero = row.get(col_num)
+        try:
+            numero_int = int(numero)
+        except (TypeError, ValueError):
+            numero_int = numero
+        linhas.append(
+            {
+                "numero": numero_int,
+                "display": _display_cte(numero, row.get("_num_conhec")),
+                "cliente": str(row[col_cli]).strip() if col_cli and pd.notna(row.get(col_cli)) else "",
+                "data_viagem": _fmt_data(row.get(col_dt) if col_dt else None),
+                "receita": round(receita, 2),
+                "custo_previa": round(custo, 2),
+                "lucro": round(lucro, 2),
+                "margem_pct": round(margem, 1),
+            }
+        )
+    linhas.sort(key=lambda x: (x.get("margem_pct", 0), -x.get("receita", 0)))
+    return linhas
+
+
 def _linhas_cte(df_dre: pd.DataFrame, cv: dict, metric: str) -> list[dict[str, Any]]:
     if df_dre.empty:
         return []
@@ -150,7 +240,7 @@ def _linhas_cte(df_dre: pd.DataFrame, cv: dict, metric: str) -> list[dict[str, A
         frete_bruto = float(row.get("frete_empresa_bruto", 0) or 0)
         custo_pot = float(row.get("custo_previa_potencial", 0) or 0)
 
-        if metric == "receita_frete" and frete_bruto <= 0:
+        if metric == "receita_frete" and receita <= 0:
             continue
         if metric in ("custo_previa", "custo_previa_conhecimento") and custo_pot <= 0 and custo_previa <= 0:
             continue
@@ -195,6 +285,7 @@ def _linhas_itemnota(df: pd.DataFrame) -> list[dict[str, Any]]:
     col_codnota = cm.get("codnota")
     col_coditem = cm.get("coditemnota")
     col_numnota = cm.get("numnota") or cm.get("numeronota")
+    col_forn = cm.get("nomefornecedor")
 
     linhas: list[dict[str, Any]] = []
     for _, row in df.iterrows():
@@ -221,6 +312,7 @@ def _linhas_itemnota(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "item": str(row[col_item]).strip() if col_item and pd.notna(row.get(col_item)) else "",
                 "ved": str(row[col_ved]).strip().upper() if col_ved and pd.notna(row.get(col_ved)) else "",
                 "placa": str(row[col_placa]).strip() if col_placa and pd.notna(row.get(col_placa)) else "",
+                "fornecedor": str(row[col_forn]).strip() if col_forn and pd.notna(row.get(col_forn)) else "",
                 "valor": round(valor, 2),
             }
         )
@@ -257,11 +349,27 @@ def _linhas_investimento_estoque(df: pd.DataFrame) -> list[dict[str, Any]]:
     return linhas
 
 
+def _status_vencimento_financeiro(data_venc) -> str:
+    if data_venc is None or (isinstance(data_venc, float) and pd.isna(data_venc)):
+        return "Sem data"
+    try:
+        venc = pd.Timestamp(data_venc).normalize()
+    except Exception:
+        return "Sem data"
+    hoje = pd.Timestamp.now().normalize()
+    ontem = hoje - pd.Timedelta(days=1)
+    if venc < hoje:
+        return "Vencido"
+    if venc > ontem:
+        return "A vencer"
+    return "No prazo"
+
+
 def _linhas_financeiro_pagar(df: pd.DataFrame) -> list[dict[str, Any]]:
     if df.empty:
         return []
     cm = dm._get_case_insensitive_column_map(df.columns)
-    df_ab = dm._filtrar_financeiro_aberto(df, "pagar")
+    df_ab = dm._filtrar_financeiro_linhas_periodo(df, "pagar")
     if df_ab.empty:
         return []
     linhas = []
@@ -269,12 +377,16 @@ def _linhas_financeiro_pagar(df: pd.DataFrame) -> list[dict[str, Any]]:
         val = float(pd.to_numeric(row.get(cm.get("liquidoitemnota", "liquidoitemnota")), errors="coerce") or 0)
         if val == 0:
             continue
+        venc_raw = row.get(cm.get("datavenc", "datavenc"))
+        status = _status_vencimento_financeiro(venc_raw)
         linhas.append(
             {
                 "documento": f"NF {row.get(cm.get('numnota', 'numnota'), '—')}/{row.get(cm.get('serie', 'serie'), '')}".strip("/"),
                 "codnota": row.get(cm.get("codnota")),
-                "vencimento": _fmt_data(row.get(cm.get("datavenc", "datavenc"))),
+                "vencimento": _fmt_data(venc_raw),
                 "filial": str(row.get(cm.get("nomefilial", "nomefilial"), "")).strip(),
+                "fornecedor": str(row.get(cm.get("nomefornecedor", "nomefornecedor"), "")).strip(),
+                "status": status,
                 "valor": round(val, 2),
                 "tipo": "AP",
             }
@@ -287,7 +399,7 @@ def _linhas_financeiro_receber(df: pd.DataFrame) -> list[dict[str, Any]]:
     if df.empty:
         return []
     cm = dm._get_case_insensitive_column_map(df.columns)
-    df_ab = dm._filtrar_financeiro_aberto(df, "receber")
+    df_ab = dm._filtrar_financeiro_linhas_periodo(df, "receber")
     if df_ab.empty:
         return []
     linhas = []
@@ -295,12 +407,16 @@ def _linhas_financeiro_receber(df: pd.DataFrame) -> list[dict[str, Any]]:
         val = float(pd.to_numeric(row.get(cm.get("valorvenc", "valorvenc")), errors="coerce") or 0)
         if val == 0:
             continue
+        venc_raw = row.get(cm.get("datavenc", "datavenc"))
+        status = _status_vencimento_financeiro(venc_raw)
         linhas.append(
             {
                 "documento": f"Dup. {row.get(cm.get('codduplicatareceber', 'codduplicatareceber'), '—')}",
                 "codnota": row.get(cm.get("codfatura")),
-                "vencimento": _fmt_data(row.get(cm.get("datavenc", "datavenc"))),
+                "vencimento": _fmt_data(venc_raw),
                 "filial": "",
+                "cliente": str(row.get(cm.get("nomecliente", "nomecliente"), "")).strip(),
+                "status": status,
                 "valor": round(val, 2),
                 "tipo": "AR",
             }
@@ -369,7 +485,18 @@ def _resumo_resultado(
     unidade_embarque_filter: list | None = None,
 ) -> list[dict[str, Any]]:
     df_base = _base_viagens_fat(filtered)
-    receita = float(df_base["receita"].sum()) if not df_base.empty else 0.0
+    if df_base.empty:
+        receita = 0.0
+    else:
+        cv = dm._get_case_insensitive_column_map(df_base.columns)
+        if "receita" in cv:
+            receita = float(pd.to_numeric(df_base[cv["receita"]], errors="coerce").fillna(0).sum())
+        elif cv.get("freteempresa"):
+            receita = float(
+                pd.to_numeric(df_base[cv["freteempresa"]], errors="coerce").fillna(0).sum()
+            )
+        else:
+            receita = 0.0
     custos = _resumo_custo_operacional(
         filtered,
         apartamento_id,
@@ -391,16 +518,49 @@ def _resumo_resultado(
     ]
 
 
-def _dre_filtrado(filtered: dict, cliente: Optional[str], rota: Optional[str]) -> tuple[pd.DataFrame, dict]:
-    df_base = _base_viagens_fat(filtered)
-    if df_base.empty:
-        return pd.DataFrame(), {}
-    cv = dm._get_case_insensitive_column_map(df_base.columns)
-    df_dre = dre.aplicar_dre_em_dataframe(df_base, filtered.get("df_acerto_motorista_raw"))
+def _dre_filtrado(
+    filtered: dict,
+    cliente: Optional[str],
+    rota: Optional[str],
+    numero_cte: Optional[str] = None,
+    apartamento_id: int | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    aid = apartamento_id or 0
+    df_dre = dm._df_viagens_com_receita(
+        filtered.get("df_viagens_cliente", pd.DataFrame()),
+        aid,
+        filtered.get("df_acerto_motorista_raw"),
+    )
+    if df_dre.empty:
+        df_base = _base_viagens_fat(filtered)
+        if df_base.empty:
+            return pd.DataFrame(), {}
+        df_dre = dre.aplicar_dre_em_dataframe(
+            df_base,
+            filtered.get("df_acerto_motorista_raw"),
+            dre_opts=obter_dre_opts(aid),
+        )
+    cv = dm._get_case_insensitive_column_map(df_dre.columns)
     df_dre = _merge_num_conhec(df_dre, filtered.get("df_fat_filtrado"))
 
+    if numero_cte:
+        col_num = cv.get("numero")
+        if col_num:
+            try:
+                n_alvo = int(str(numero_cte).strip())
+                nums = pd.to_numeric(df_dre[col_num], errors="coerce")
+                df_dre = df_dre[nums == n_alvo]
+            except (TypeError, ValueError):
+                pass
+
     if cliente and cv.get("nomecliente"):
-        df_dre = df_dre[df_dre[cv["nomecliente"]].astype(str).str.strip() == cliente.strip()]
+        col = cv["nomecliente"]
+        serie = df_dre[col].astype(str).str.strip()
+        mask = serie.str.upper() == cliente.strip().upper()
+        if not mask.any():
+            prefix = cliente.strip().upper()[:40]
+            mask = serie.str.upper().str.startswith(prefix)
+        df_dre = df_dre[mask]
 
     if rota:
         orig = cv.get("cidorigemformat")
@@ -427,6 +587,8 @@ def get_bi_audit_data(
     tipo_negocio_filter: str,
     cliente: Optional[str] = None,
     rota: Optional[str] = None,
+    periodo_label: Optional[str] = None,
+    numero_cte: Optional[str] = None,
     unidade_embarque_filter: list | None = None,
     embarcador_filter: str = "Todos",
 ) -> dict[str, Any]:
@@ -436,6 +598,8 @@ def get_bi_audit_data(
 
     dm.sync_expense_groups_if_needed(apartamento_id)
     start_date, end_date = dm.resolver_intervalo_consulta(apartamento_id, start_date, end_date)
+    if periodo_label:
+        start_date, end_date = narrow_dates_by_periodo_label(periodo_label, start_date, end_date)
     filtered = dm._obter_dados_filtrados_mestre(
         apartamento_id,
         start_date,
@@ -448,9 +612,11 @@ def get_bi_audit_data(
     )
 
     meta = METRICAS[metric]
+    from app.utils.helpers import format_date_br
+
     filtros = {
-        "start_date": start_date.strftime("%Y-%m-%d") if start_date else "",
-        "end_date": end_date.strftime("%Y-%m-%d") if end_date else "",
+        "start_date": format_date_br(start_date) if start_date else "",
+        "end_date": format_date_br(end_date) if end_date else "",
         "placa": placa_filter,
         "filial": filial_filter or [],
         "unidade_embarque": unidade_embarque_filter or [],
@@ -461,9 +627,13 @@ def get_bi_audit_data(
         filtros["cliente"] = cliente
     if rota:
         filtros["rota"] = rota
+    if periodo_label:
+        filtros["periodo"] = periodo_label
+    if numero_cte:
+        filtros["numero_cte"] = numero_cte
 
     expense_data = _expense_data(filtered)
-    df_dre, cv = _dre_filtrado(filtered, cliente, rota)
+    df_dre, cv = _dre_filtrado(filtered, cliente, rota, numero_cte, apartamento_id)
 
     linhas: list[dict[str, Any]] = []
     linhas_notas: list[dict[str, Any]] = []
@@ -599,6 +769,23 @@ def get_bi_audit_data(
             unidade_embarque_filter,
         )
         total_calculado = next((r["valor"] for r in resumo if "Margem" in r["label"]), 0.0)
+
+    elif metric == "margem_cliente":
+        if not cliente:
+            return {"error": "Informe o cliente (clique na barra do gráfico)."}
+        linhas = _linhas_margem_cliente(df_dre, cv)
+        rec = sum(x["receita"] for x in linhas)
+        custo = sum(x["custo_previa"] for x in linhas)
+        lucro = rec - custo
+        margem = (lucro / rec * 100) if rec > 0 else 0.0
+        resumo = [
+            {"label": f"Cliente — {cliente}", "valor": 0},
+            {"label": "Receita total", "valor": round(rec, 2)},
+            {"label": "Custo prévia total", "valor": round(custo, 2)},
+            {"label": "Lucro estimado", "valor": round(lucro, 2)},
+            {"label": "Margem %", "valor": round(margem, 2)},
+        ]
+        total_calculado = round(margem, 2)
 
     elif metric == "contas_pagar":
         linhas_notas = _linhas_financeiro_pagar(filtered["df_contas_pagar_raw"])

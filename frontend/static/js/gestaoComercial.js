@@ -218,8 +218,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     chartInstance = new Chart(ctx, config);
     const chartMetrics = buildChartAuditMap(chart);
-    if (window.BIWEB_bindChartSegmentAudit && chartMetrics) {
-      window.BIWEB_bindChartSegmentAudit(chartInstance, chartMetrics);
+    if (window.BIWEB_bindChartDrill && chartMetrics) {
+        window.BIWEB_bindChartDrill(chartInstance, {
+            metrics: chartMetrics,
+            drill: chart.audit_drill || {},
+            labelValues: chart.label_values || chart.labels || [],
+        });
     }
   }
 
@@ -232,7 +236,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (label.includes("receita") && label.includes("comércio")) map[ds.label] = "receita_comercio";
       else if (label.includes("despesa") && label.includes("comércio")) map[ds.label] = "despesa_comercio";
       else if (label.includes("receita") || label.includes("lucro") || label.includes("spread") || label.includes("faturamento")) map[ds.label] = "receita_frete";
-      else if (label.includes("custo")) map[ds.label] = "custo_operacional";
+      else if (label.includes("custo")) map[ds.label] = "custo_previa_conhecimento";
       else map[ds.label] = defaultMetric;
     });
     return Object.keys(map).length ? map : null;
@@ -268,4 +272,11 @@ document.addEventListener("DOMContentLoaded", function () {
     .catch((e) => {
       kpiRow.innerHTML = `<div class="gc-kpi-card"><span class="gc-kpi-label">Erro: ${e.message}</span></div>`;
     });
+
+  window.addEventListener("pagehide", function () {
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+  });
 });

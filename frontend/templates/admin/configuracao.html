@@ -64,12 +64,16 @@
         <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
             <div>
                 <h1 class="h2 mb-1">Configurações do Robô</h1>
-                <p class="text-muted small mb-0">Dados do <strong>PostgreSQL (SATI)</strong>. Atualização via backup no site SATI (sem exportação de planilhas).</p>
+                <p class="text-muted small mb-0">
+                    Dados do <strong>PostgreSQL (SATI)</strong> — tenant
+                    <strong>{{ transportadora_nome or '—' }}</strong>
+                    (apartamento {{ transportadora_id }}).
+                </p>
             </div>
             <div class="btn-toolbar mb-2 mb-md-0 gap-2">
                 <button type="button" id="btn-atualizar-bd-config" class="btn btn-danger btn-sm">↻ Atualizar banco SATI</button>
                 <a href="{{ url_for('main.fluxo_viagem') }}" class="btn btn-outline-primary btn-sm">Fluxo de viagem (comprovantes)</a>
-                <a href="{{ url_for('main.index') }}" class="btn btn-secondary btn-sm">Voltar ao painel</a>
+                <a href="{{ painel_home_url() }}" class="btn btn-secondary btn-sm">Voltar ao painel</a>
             </div>
         </div>
 
@@ -100,6 +104,27 @@
                     Com <code>BIWEB_IDLE_MONITOR=true</code>, após alguns minutos sem uso
                     o sistema também atualiza o BD e busca comprovantes da lista salva no fluxo.
                 </label>
+            </div>
+
+            <hr class="my-4">
+            <h2 class="h5 mb-3">Metas do painel BI</h2>
+            <p class="text-muted small mb-3">
+                Usadas no painel (margem vs meta) e na visão estratégica de frota (R$/km).
+                Deixe em branco para manter o padrão (margem 15%, R$/km 4,00).
+            </p>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="BI_META_MARGEM_PCT" class="form-label">Meta de margem sobre frete (%)</label>
+                    <input type="text" class="form-control" id="BI_META_MARGEM_PCT" name="BI_META_MARGEM_PCT"
+                           value="{{ configs.get('BI_META_MARGEM_PCT', '15') }}"
+                           placeholder="15" inputmode="decimal">
+                </div>
+                <div class="col-md-6">
+                    <label for="BI_META_R_KM" class="form-label">Meta de custo R$/km</label>
+                    <input type="text" class="form-control" id="BI_META_R_KM" name="BI_META_R_KM"
+                           value="{{ configs.get('BI_META_R_KM', '4') }}"
+                           placeholder="4,00" inputmode="decimal">
+                </div>
             </div>
 
             <div class="d-flex justify-content-end mt-4">

@@ -22,12 +22,20 @@ from sati_integration.db.sati_source import (
     resolve_cod_filial,
     sati_enabled_for_apartment,
 )
-from sati_integration.db.sati_queries import query_fluxo_viagem, query_investimento_estoque
+from sati_integration.db.sati_queries import (
+    query_fluxo_viagem,
+    query_investimento_estoque,
+    query_nfe_pendentes_cte,
+)
 from app.core import dre_viagem as dre
+from app.utils.dre_tenant_config import obter_dre_opts
+from app.utils.bi_metas import formatar_delta_pct, obter_metas_bi, status_vs_meta
 
 # Cache em memória dos DataFrames SATI (evita recarregar 6 tabelas a cada requisição)
 _DF_CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
 _DF_CACHE_TTL = int(os.environ.get("BIWEB_CACHE_TTL", "300"))
+_FILTER_OPTS_CACHE: dict[tuple, tuple[float, object]] = {}
+_FILTER_OPTS_TTL = int(os.environ.get("BIWEB_FILTER_OPTS_TTL", "3600"))
 _SYNC_GROUPS_AT: dict[int, float] = {}
 _SYNC_GROUPS_TTL = int(os.environ.get("BIWEB_SYNC_GROUPS_TTL", "600"))
 
@@ -42,21 +50,47 @@ def _df_cache_scope() -> str:
     )
 
 
-def _df_cache_key(apartamento_id: int, table_name: str) -> tuple:
-    return (_df_cache_scope(), apartamento_id, table_name)
+def _df_cache_key(
+    apartamento_id: int,
+    table_name: str,
+    start_date=None,
+    end_date=None,
+) -> tuple:
+    sd = ed = ""
+    if start_date is not None:
+        sd = start_date.date().isoformat() if hasattr(start_date, "date") else str(start_date)
+    if end_date is not None:
+        ed = end_date.date().isoformat() if hasattr(end_date, "date") else str(end_date)
+    return (_df_cache_scope(), apartamento_id, table_name, sd, ed)
 
 
 def clear_data_cache(apartamento_id: int | None = None):
     """Limpa cache após upload/coleta SATI ou troca de tenant."""
-    global _DF_CACHE, _SYNC_GROUPS_AT
+    global _DF_CACHE, _SYNC_GROUPS_AT, _FILTER_OPTS_CACHE
     if apartamento_id is None:
         _DF_CACHE.clear()
         _SYNC_GROUPS_AT.clear()
+        _FILTER_OPTS_CACHE.clear()
         return
     keys = [k for k in _DF_CACHE if len(k) >= 2 and k[1] == apartamento_id]
     for k in keys:
         del _DF_CACHE[k]
+    opt_keys = [k for k in _FILTER_OPTS_CACHE if len(k) >= 2 and k[1] == apartamento_id]
+    for k in opt_keys:
+        del _FILTER_OPTS_CACHE[k]
     _SYNC_GROUPS_AT.pop(apartamento_id, None)
+
+
+def _cached_filter_options(apartamento_id: int, cache_key: str, factory):
+    """Cache de listas de filtro (placa/filial/etc.) — independe do período."""
+    ck = (_df_cache_scope(), apartamento_id, cache_key)
+    now = time.time()
+    hit = _FILTER_OPTS_CACHE.get(ck)
+    if hit and (now - hit[0]) < _FILTER_OPTS_TTL:
+        return hit[1]
+    val = factory()
+    _FILTER_OPTS_CACHE[ck] = (now, val)
+    return val
 
 
 def _dict_get_ci(d: dict, *keys, default=None):
@@ -104,7 +138,7 @@ def _agregar_acerto_motorista(acerto: pd.DataFrame) -> dict:
 
 
 def _km_comissao_relatorio(viagem_data: dict, acerto_data: dict) -> dict:
-    """KM e comissão: acerto motorista, com fallback no conhecimento (viagem)."""
+    """KM e comissão — base e líquido via regra universal (dre.calcular_frete_motorista_liquido)."""
     km_ini = acerto_data.get("kmIni")
     if km_ini is None or (isinstance(km_ini, (int, float)) and km_ini == 0):
         km_ini = _dict_get_ci(viagem_data, "kmini", "kmIni", default=0)
@@ -121,23 +155,32 @@ def _km_comissao_relatorio(viagem_data: dict, acerto_data: dict) -> dict:
     if comissao is None or comissao == 0:
         comissao = _dict_get_ci(viagem_data, "comissao", default=0)
 
-    base = acerto_data.get("vlBaseComissaoCalc")
-    if base is None or base == 0:
-        base = _dict_get_ci(
+    dados = dre.extrair_dados_frete_motorista(viagem_data)
+    comissao_acerto = (
+        acerto_data.get("vlComissao")
+        or acerto_data.get("vlBaseComissaoCalc")
+        or _dict_get_ci(
             viagem_data,
-            "vlbasecomissao",
-            "vlbasecomissaocalc",
             "vlcomissao",
+            "vlbasecomissaocalc",
+            "vlbasecomissao",
             default=0,
         )
-    frete_m = _dict_get_ci(
-        viagem_data, "fretemotorista", "freteMotorista", default=0
+        or 0
     )
-    if (not base or base == 0) and comissao and frete_m:
-        try:
-            base = float(frete_m) * float(comissao) / 100.0
-        except (TypeError, ValueError):
-            pass
+    mot = dre.calcular_frete_motorista_liquido(
+        comissao_acerto=float(comissao_acerto or 0),
+        comissao_pct=dados["comissao_pct"],
+        **{k: dados[k] for k in (
+            "fretemotorista", "valor_quebra", "tipo_frete", "valor_pedagio_mot",
+            "pedagio_emb_mot", "valor_seguro", "valor_seguro2", "desc_seguro_mot",
+            "outros_descontos_mot",
+        )},
+    )
+    tf = dados["tipo_frete"]
+    base = mot["base_comissao"] if tf == "P" else dados["fretemotorista"]
+    valor_liquido = mot["liquido"]
+    valor_comissao = mot["comissao_valor"] if tf == "P" else valor_liquido
 
     return {
         "km_inicial": float(km_ini or 0),
@@ -145,7 +188,48 @@ def _km_comissao_relatorio(viagem_data: dict, acerto_data: dict) -> dict:
         "km_rodado": float(km_rod or 0),
         "comissao_perc": float(comissao or 0),
         "valor_base_comissao": float(base or 0),
+        "valor_comissao_calculada": float(valor_comissao or 0),
+        "frete_motorista_liquido": float(valor_liquido or 0),
     }
+
+
+def _janela_sugestao_despesas(
+    df_viagens: pd.DataFrame,
+    placa: str,
+    data_viagem_obj,
+    numero_atual: int,
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None, str | None]:
+    """
+    Da data da viagem atual até o dia anterior à próxima viagem da mesma placa.
+    """
+    if df_viagens is None or df_viagens.empty or not placa or pd.isna(data_viagem_obj):
+        return None, None, None
+    cm = _get_case_insensitive_column_map(df_viagens.columns)
+    col_placa = cm.get("placaveiculo")
+    col_data = cm.get("dataviagemmotorista")
+    col_num = cm.get("numero", "numero")
+    if not col_placa or not col_data or col_data not in df_viagens.columns:
+        return None, None, None
+
+    data_ini = pd.Timestamp(data_viagem_obj).normalize()
+    df_placa = df_viagens[df_viagens[col_placa].astype(str).str.upper() == str(placa).upper()].copy()
+    if df_placa.empty:
+        return data_ini, data_ini, None
+
+    df_placa["_dt"] = pd.to_datetime(df_placa[col_data], errors="coerce")
+    proximas = df_placa[
+        (df_placa[col_num] != numero_atual)
+        & (df_placa["_dt"] > data_ini)
+    ].sort_values("_dt")
+    if proximas.empty:
+        return data_ini, data_ini, None
+
+    proxima_dt = pd.Timestamp(proximas.iloc[0]["_dt"]).normalize()
+    data_fim = proxima_dt - pd.Timedelta(days=1)
+    if data_fim < data_ini:
+        data_fim = data_ini
+    proxima_fmt = proxima_dt.strftime("%d/%m/%Y")
+    return data_ini, data_fim, proxima_fmt
 
 
 def _sanitize_for_json(obj):
@@ -211,35 +295,95 @@ def _filtrar_financeiro_aberto(df: pd.DataFrame, tipo: str = "pagar") -> pd.Data
     return out
 
 
+FINANCEIRO_VENCIMENTO_MIN = datetime(2000, 1, 1)
+
+
+def _ontem_data() -> pd.Timestamp:
+    return pd.Timestamp.now().normalize() - pd.Timedelta(days=1)
+
+
+def _coluna_valor_financeiro(cm: dict, tipo: str) -> str | None:
+    if tipo == "pagar":
+        return cm.get("liquidoitemnota") or cm.get("valorvencimento")
+    return cm.get("valorvenc") or cm.get("valorvencimento")
+
+
+def _resumo_financeiro_pendente(df: pd.DataFrame, tipo: str = "pagar") -> dict:
+    """
+    KPI financeiro: em aberto (sem transação confirmada).
+    - total_periodo: vencimento de 01/01/2000 até ontem
+    - vencido: títulos em aberto com vencimento anterior a hoje
+    - futuro: títulos em aberto com vencimento após ontem
+    """
+    vazio = {
+        "total_periodo": 0.0,
+        "vencido": 0.0,
+        "futuro": 0.0,
+        "total_aberto": 0.0,
+    }
+    df_ab = _filtrar_financeiro_aberto(df, tipo)
+    if df_ab.empty:
+        return vazio
+    cm = _get_case_insensitive_column_map(df_ab.columns)
+    venc_col = cm.get("datavenc")
+    val_col = _coluna_valor_financeiro(cm, tipo)
+    if not val_col:
+        return vazio
+
+    valores = pd.to_numeric(df_ab[val_col], errors="coerce").fillna(0)
+    if venc_col and venc_col in df_ab.columns:
+        datas = pd.to_datetime(df_ab[venc_col], errors="coerce").dt.normalize()
+    else:
+        datas = pd.Series(pd.NaT, index=df_ab.index)
+
+    hoje = pd.Timestamp.now().normalize()
+    ontem = _ontem_data()
+    inicio = pd.Timestamp(FINANCEIRO_VENCIMENTO_MIN.date())
+
+    mask_valor = valores != 0
+    mask_com_data = datas.notna()
+    mask_periodo = mask_com_data & (datas >= inicio) & (datas <= ontem)
+    mask_futuro = mask_com_data & (datas > ontem)
+    mask_vencido = mask_com_data & (datas < hoje)
+    mask_sem_data = ~mask_com_data
+
+    total_periodo = float(valores[mask_valor & (mask_periodo | mask_sem_data)].sum())
+    vencido = float(valores[mask_valor & mask_vencido & (mask_periodo | mask_sem_data)].sum())
+    futuro = float(valores[mask_valor & mask_futuro].sum())
+    total_aberto = float(valores[mask_valor].sum())
+
+    return {
+        "total_periodo": total_periodo,
+        "vencido": vencido,
+        "futuro": futuro,
+        "total_aberto": total_aberto,
+    }
+
+
+def _filtrar_financeiro_linhas_periodo(df: pd.DataFrame, tipo: str) -> pd.DataFrame:
+    """Linhas em aberto com vencimento até ontem (ou sem data) — composição do KPI."""
+    df_ab = _filtrar_financeiro_aberto(df, tipo)
+    if df_ab.empty:
+        return df_ab
+    cm = _get_case_insensitive_column_map(df_ab.columns)
+    venc_col = cm.get("datavenc")
+    if not venc_col or venc_col not in df_ab.columns:
+        return df_ab
+    datas = pd.to_datetime(df_ab[venc_col], errors="coerce").dt.normalize()
+    ontem = _ontem_data()
+    inicio = pd.Timestamp(FINANCEIRO_VENCIMENTO_MIN.date())
+    mask = datas.isna() | ((datas >= inicio) & (datas <= ontem))
+    return df_ab[mask].copy()
+
+
 def _calcular_contas_pagar_pendentes(df_cp: pd.DataFrame) -> float:
-    """
-    SATI: pendente = duplicatapagar sem codtransacao (não confirmado na transacao)
-    e sem datapagamento. Soma liquido do itemnota vinculado.
-    """
-    if df_cp.empty:
-        return 0.0
-    cm = _get_case_insensitive_column_map(df_cp.columns)
-    liq_col = cm.get("liquidoitemnota")
-    if not liq_col:
-        return 0.0
-    df = _filtrar_financeiro_aberto(df_cp, "pagar")
-    if df.empty:
-        return 0.0
-    return float(pd.to_numeric(df[liq_col], errors="coerce").fillna(0).sum())
+    """SATI: em aberto, vencimento 01/01/2000 até ontem."""
+    return _resumo_financeiro_pendente(df_cp, "pagar")["total_periodo"]
 
 
 def _calcular_contas_receber_pendentes(df_cr: pd.DataFrame) -> float:
-    """SATI: pendente = duplicatareceber sem codtransacao e sem datapagamento."""
-    if df_cr.empty:
-        return 0.0
-    cm = _get_case_insensitive_column_map(df_cr.columns)
-    venc_col = cm.get("valorvenc")
-    if not venc_col:
-        return 0.0
-    df = _filtrar_financeiro_aberto(df_cr, "receber")
-    if df.empty:
-        return 0.0
-    return float(pd.to_numeric(df[venc_col], errors="coerce").fillna(0).sum())
+    """SATI: em aberto, vencimento 01/01/2000 até ontem."""
+    return _resumo_financeiro_pendente(df_cr, "receber")["total_periodo"]
 
 
 def _coluna_filial(col_map: dict) -> str | None:
@@ -287,15 +431,17 @@ def sync_expense_groups_if_needed(apartamento_id: int):
     _SYNC_GROUPS_AT[apartamento_id] = now
 
 
-def get_data_as_dataframe(table_name: str, apartamento_id: int) -> pd.DataFrame:
+def get_data_as_dataframe(
+    table_name: str,
+    apartamento_id: int,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> pd.DataFrame:
     """
-    Busca todos os dados de uma tabela para um apartamento específico e padroniza os nomes das colunas,
-    removendo espaços no início e no fim.
-
-    Com USE_SATI_SOURCE=true (ou DATABASE_URL apontando para sat1_sati_is), as tabelas relFil*
-    são lidas diretamente do schema SATI c3332 via sati_queries.py.
+    Busca dados de uma tabela para um apartamento.
+    Com SATI ativo, start_date/end_date aplicam filtro no SQL (tabelas operacionais).
     """
-    cache_key = _df_cache_key(apartamento_id, table_name)
+    cache_key = _df_cache_key(apartamento_id, table_name, start_date, end_date)
     now = time.time()
     cached = _DF_CACHE.get(cache_key)
     if cached and (now - cached[0]) < _DF_CACHE_TTL:
@@ -307,7 +453,9 @@ def get_data_as_dataframe(table_name: str, apartamento_id: int) -> pd.DataFrame:
 
     if is_sati_data_table(table_name, apartamento_id):
         try:
-            df = fetch_sati_dataframe(db.engine, table_name, apartamento_id)
+            df = fetch_sati_dataframe(
+                db.engine, table_name, apartamento_id, start_date, end_date
+            )
             df = _fix_invalid_dates(df, table_name)
             _DF_CACHE[cache_key] = (now, df)
             return df.copy()
@@ -344,6 +492,7 @@ def _get_case_insensitive_column_map(df_columns):
 TIPO_NEGOCIO_FROTA = "FROTA"
 TIPO_NEGOCIO_FRETE = "FRETE/AGENCIAMENTO"
 RAMO_NEGOCIO_COMERCIO = "COMERCIO"
+GRUPO_VENDA_MARCADOR = "VENDA"
 TIPOS_NEGOCIO_PADRAO = (TIPO_NEGOCIO_FROTA, TIPO_NEGOCIO_FRETE)
 
 # veiculo.veiculoproprio — cadastro SATI (placas e filtro Negócio por veículo)
@@ -522,23 +671,34 @@ def _incluirateio_sim(val) -> bool:
     return str(val or "").strip().upper() == "S"
 
 
-def _mapa_veiculos_sati(apartamento_id: int) -> dict[str, dict]:
+def _mapa_veiculos_sati(
+    apartamento_id: int,
+    cod_proprietario: int | None = None,
+) -> dict[str, dict]:
     """placa → metadados do cadastro SATI veiculo (veiculoproprio, incluirateio)."""
     if not sati_enabled_for_apartment(engine, apartamento_id):
         return {}
+    if cod_proprietario is None:
+        cod_proprietario = obter_cod_proprietario_filtro(apartamento_id)
     try:
         schema = get_sati_schema(apartamento_id)
         if not re.match(r"^c\d+$", schema, re.I):
             return {}
+        filtro_prop = ""
+        params: dict = {}
+        if cod_proprietario is not None:
+            filtro_prop = " AND codproprietario = :cod_proprietario"
+            params["cod_proprietario"] = cod_proprietario
         sql = text(
             f"""
             SELECT UPPER(TRIM(placa)) AS placa, veiculoproprio, incluirateio
             FROM {schema}.veiculo
             WHERE NULLIF(TRIM(placa), '') IS NOT NULL
+            {filtro_prop}
             """
         )
         with get_sati_engine().connect() as conn:
-            rows = conn.execute(sql).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         out: dict[str, dict] = {}
         for placa, vp, ir in rows:
             if not placa:
@@ -553,14 +713,17 @@ def _mapa_veiculos_sati(apartamento_id: int) -> dict[str, dict]:
         return out
     except Exception as exc:
         if "incluirateio" in str(exc).lower():
-            return _mapa_veiculos_sati_sem_rateio(apartamento_id)
+            return _mapa_veiculos_sati_sem_rateio(apartamento_id, cod_proprietario)
         print(f"Aviso mapa veiculos SATI: {exc}")
         return {}
 
 
-def _mapa_veiculos_sati_sem_rateio(apartamento_id: int) -> dict[str, dict]:
+def _mapa_veiculos_sati_sem_rateio(
+    apartamento_id: int,
+    cod_proprietario: int | None = None,
+) -> dict[str, dict]:
     """Fallback quando o schema SATI não possui incluirateio."""
-    mapa_vp = _mapa_placas_veiculo_sati_legacy(apartamento_id)
+    mapa_vp = _mapa_placas_veiculo_sati_legacy(apartamento_id, cod_proprietario)
     return {
         placa: {
             "veiculoproprio": cod,
@@ -571,22 +734,33 @@ def _mapa_veiculos_sati_sem_rateio(apartamento_id: int) -> dict[str, dict]:
     }
 
 
-def _mapa_placas_veiculo_sati_legacy(apartamento_id: int) -> dict[str, str]:
+def _mapa_placas_veiculo_sati_legacy(
+    apartamento_id: int,
+    cod_proprietario: int | None = None,
+) -> dict[str, str]:
     if not sati_enabled_for_apartment(engine, apartamento_id):
         return {}
+    if cod_proprietario is None:
+        cod_proprietario = obter_cod_proprietario_filtro(apartamento_id)
     try:
         schema = get_sati_schema(apartamento_id)
         if not re.match(r"^c\d+$", schema, re.I):
             return {}
+        filtro_prop = ""
+        params: dict = {}
+        if cod_proprietario is not None:
+            filtro_prop = " AND codproprietario = :cod_proprietario"
+            params["cod_proprietario"] = cod_proprietario
         sql = text(
             f"""
             SELECT UPPER(TRIM(placa)) AS placa, veiculoproprio
             FROM {schema}.veiculo
             WHERE NULLIF(TRIM(placa), '') IS NOT NULL
+            {filtro_prop}
             """
         )
         with get_sati_engine().connect() as conn:
-            rows = conn.execute(sql).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return {
             str(placa).strip().upper(): _normalizar_veiculoproprio(vp)
             for placa, vp in rows
@@ -695,29 +869,29 @@ def _serie_data_controle(df: pd.DataFrame, col_map: dict | None = None) -> pd.Se
 
 
 def get_default_date_range(apartamento_id: int) -> tuple[datetime, datetime]:
-    """
-    Sem filtro de data: usa o ano civil mais recente com viagens (ex.: só 2026).
-    Evita misturar 2025 com vencimentos futuros e alinha KPIs ao gráfico.
-    """
-    hoje = datetime.now()
-    fim_hoje = hoje.replace(hour=23, minute=59, second=59)
-    ano_ref = hoje.year
-    df_viagens = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
-    col_map = _get_case_insensitive_column_map(df_viagens.columns)
-    if not df_viagens.empty and "dataviagemmotorista" in col_map:
-        datas = pd.to_datetime(df_viagens[col_map["dataviagemmotorista"]], errors="coerce").dropna()
-        # Ignora datas futuras (ex.: 1 viagem em 2027 no SATI) para não inverter início/fim
-        datas = datas[datas <= pd.Timestamp(fim_hoje)]
-        if not datas.empty:
-            ano_ref = min(int(datas.dt.year.max()), hoje.year)
-    inicio = datetime(ano_ref, 1, 1)
-    fim = datetime(ano_ref, 12, 31, 23, 59, 59)
-    if ano_ref >= hoje.year:
-        fim = min(fim, fim_hoje)
-    if inicio > fim:
-        inicio = datetime(hoje.year, 1, 1)
-        fim = fim_hoje
-    return inicio, fim
+    """Sem filtro na URL: período definido no painel (configuracoes_robo.BI_PERIODO_PADRAO)."""
+    try:
+        from app.utils.periodo_padrao import (
+            CHAVE_CONFIG,
+            PERIODO_PADRAO_DEFAULT,
+            calcular_intervalo_periodo_padrao,
+            normalizar_periodo_padrao,
+        )
+    except ImportError:
+        from utils.periodo_padrao import (
+            CHAVE_CONFIG,
+            PERIODO_PADRAO_DEFAULT,
+            calcular_intervalo_periodo_padrao,
+            normalizar_periodo_padrao,
+        )
+
+    periodo = PERIODO_PADRAO_DEFAULT
+    try:
+        cfg = ler_configuracoes_robo(apartamento_id)
+        periodo = normalizar_periodo_padrao(cfg.get(CHAVE_CONFIG))
+    except Exception:
+        pass
+    return calcular_intervalo_periodo_padrao(periodo)
 
 
 def resolver_intervalo_consulta(
@@ -730,6 +904,303 @@ def resolver_intervalo_consulta(
             start_date, end_date = end_date, start_date
         return start_date, end_date
     return get_default_date_range(apartamento_id)
+
+
+def resolver_intervalo_fluxo(
+    apartamento_id: int,
+    start_date: datetime | None,
+    end_date: datetime | None,
+) -> tuple[datetime, datetime]:
+    """Período do fluxo operacional — só usa datas da própria tela (não o preset do painel BI)."""
+    _ = apartamento_id
+    hoje = datetime.now()
+    fim_padrao = hoje.replace(hour=23, minute=59, second=59, microsecond=0)
+    inicio_padrao = datetime(hoje.year, hoje.month, 1)
+    if start_date and end_date:
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+        if end_date.hour == 0 and end_date.minute == 0 and end_date.second == 0:
+            end_date = end_date.replace(hour=23, minute=59, second=59)
+        return start_date, end_date
+    if start_date and not end_date:
+        fim = start_date.replace(hour=23, minute=59, second=59)
+        return start_date, fim
+    if end_date and not start_date:
+        ini = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        return ini, end_date
+    return inicio_padrao, fim_padrao
+
+
+FLUXO_QUERY_KEYS = frozenset({
+    "start_date",
+    "end_date",
+    "comprovante",
+    "mdfe",
+    "historico",
+    "placa",
+    "sync",
+})
+
+FLUXO_PANEL_QUERY_KEYS = frozenset({
+    "filial",
+    "tipo_negocio",
+    "embarcador",
+    "unidade_embarque",
+})
+
+
+def url_tem_filtros_painel(args) -> bool:
+    """True se a URL ainda carrega filtros exclusivos do painel BI."""
+    if any(k in args for k in FLUXO_PANEL_QUERY_KEYS):
+        return True
+    if args.get("placa") and args.get("historico") != "1":
+        return True
+    return False
+
+
+def extrair_query_fluxo(args, *, ignorar_datas_painel: bool = False):
+    """Remove filtros do painel principal (filial, placa BI, tipo negócio, etc.)."""
+    from werkzeug.datastructures import ImmutableMultiDict
+
+    pairs: list[tuple[str, str]] = []
+    for key in FLUXO_QUERY_KEYS:
+        if ignorar_datas_painel and key in ("start_date", "end_date"):
+            continue
+        if key == "placa" and args.get("historico") != "1":
+            continue
+        if key not in args:
+            continue
+        for val in args.getlist(key):
+            if val is not None and str(val).strip() != "":
+                pairs.append((key, str(val).strip()))
+    return ImmutableMultiDict(pairs)
+
+
+def obter_cod_proprietario_filtro(apartamento_id: int) -> int | None:
+    """Código do proprietário no painel de licenças (vazio = sem filtro)."""
+    try:
+        from app.utils.proprietario_filtro import CHAVE_CONFIG, normalizar_cod_proprietario
+    except ImportError:
+        from utils.proprietario_filtro import CHAVE_CONFIG, normalizar_cod_proprietario
+    try:
+        cfg = ler_configuracoes_robo(apartamento_id)
+        return normalizar_cod_proprietario(cfg.get(CHAVE_CONFIG))
+    except Exception:
+        return None
+
+
+def _placas_cod_proprietario(
+    apartamento_id: int,
+    cod_prop: int | None = None,
+) -> set[str]:
+    """Placas do cadastro veiculo com codproprietario configurado no painel."""
+    if cod_prop is None:
+        cod_prop = obter_cod_proprietario_filtro(apartamento_id)
+    if cod_prop is None:
+        return set()
+    return set(_mapa_veiculos_sati(apartamento_id, cod_prop).keys())
+
+
+def _filtrar_df_placas_proprietario(
+    df: pd.DataFrame,
+    apartamento_id: int,
+    cod_prop: int | None = None,
+) -> pd.DataFrame:
+    """
+    Modo proprietário: mantém a lógica do BI por placa — somente veículos do cod_proprietario.
+    Sem cod_proprietario no painel, retorna o DataFrame sem alteração.
+    """
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    if cod_prop is None:
+        cod_prop = obter_cod_proprietario_filtro(apartamento_id)
+    if cod_prop is None:
+        return df
+    placas = _placas_cod_proprietario(apartamento_id, cod_prop)
+    if not placas:
+        return df.iloc[0:0].copy()
+    col_map = _get_case_insensitive_column_map(df.columns)
+    col_placa = col_map.get("placaveiculo")
+    if not col_placa:
+        return df.iloc[0:0].copy()
+    return df[
+        df[col_placa].astype(str).str.strip().str.upper().isin(placas)
+    ].copy()
+
+
+def _filtrar_df_cod_proprietario(
+    df: pd.DataFrame,
+    cod_prop: int,
+    apartamento_id: int | None = None,
+    incluir_placa_veiculo: bool = True,
+) -> pd.DataFrame:
+    if df is None or df.empty or cod_prop is None:
+        return df
+    col_map = _get_case_insensitive_column_map(df.columns)
+    col_p = col_map.get("codproprietario") or col_map.get("codprop")
+    mask = None
+    if col_p:
+        nums = pd.to_numeric(df[col_p], errors="coerce")
+        mask = nums == cod_prop
+    col_placa = col_map.get("placaveiculo")
+    if incluir_placa_veiculo and apartamento_id is not None and col_placa:
+        placas_prop = set(_mapa_veiculos_sati(apartamento_id, cod_prop).keys())
+        if placas_prop:
+            por_placa = (
+                df[col_placa].astype(str).str.strip().str.upper().isin(placas_prop)
+            )
+            mask = por_placa if mask is None else (mask | por_placa)
+    if mask is None:
+        return df
+    return df[mask].copy()
+
+
+def _acertos_de_despesas(df_despesas: pd.DataFrame) -> set[int]:
+    """Acertos de proprietário presentes nas despesas já filtradas por placa."""
+    if df_despesas is None or df_despesas.empty:
+        return set()
+    col_map = _get_case_insensitive_column_map(df_despesas.columns)
+    col_a = col_map.get("codacertoproprietario")
+    if not col_a:
+        return set()
+    vals = pd.to_numeric(df_despesas[col_a], errors="coerce").dropna()
+    return {int(v) for v in vals if int(v) > 0}
+
+
+def _acertos_proprietario_de_despesas(df_despesas: pd.DataFrame, cod_prop: int) -> set[int]:
+    if df_despesas is None or df_despesas.empty or cod_prop is None:
+        return set()
+    col_map = _get_case_insensitive_column_map(df_despesas.columns)
+    col_p = col_map.get("codproprietario")
+    col_a = col_map.get("codacertoproprietario")
+    if not col_p:
+        return set()
+    mask = pd.to_numeric(df_despesas[col_p], errors="coerce") == cod_prop
+    if not mask.any():
+        return set()
+    acertos: set[int] = set()
+    if col_a:
+        vals = pd.to_numeric(df_despesas.loc[mask, col_a], errors="coerce").dropna()
+        acertos = {int(v) for v in vals}
+    return acertos
+
+
+def _filtrar_df_cod_acerto_proprietario(df: pd.DataFrame, acertos: set[int]) -> pd.DataFrame:
+    if df is None or df.empty or not acertos:
+        return df if df is not None else pd.DataFrame()
+    col_map = _get_case_insensitive_column_map(df.columns)
+    col_a = col_map.get("codacertoproprietario")
+    if not col_a:
+        return df
+    nums = pd.to_numeric(df[col_a], errors="coerce")
+    return df[nums.isin(acertos)].copy()
+
+
+def _numeros_viagens_cod_proprietario(
+    apartamento_id: int,
+    start_date: datetime,
+    end_date: datetime,
+    cod_prop: int,
+) -> set[int]:
+    df = get_data_as_dataframe(
+        "relFilViagensCliente", apartamento_id, start_date, end_date
+    )
+    df = _filtrar_df_placas_proprietario(df, apartamento_id, cod_prop)
+    col_map = _get_case_insensitive_column_map(df.columns)
+    col_num = col_map.get("numero")
+    if not col_num or df.empty:
+        return set()
+    vals = pd.to_numeric(df[col_num], errors="coerce").dropna()
+    return {int(v) for v in vals}
+
+
+def _refiltrar_fat_acerto_por_viagens(pacote: dict) -> dict:
+    df_viagens = pacote.get("df_viagens_cliente")
+    if df_viagens is None or df_viagens.empty:
+        pacote["df_fat_filtrado"] = pd.DataFrame()
+        pacote["df_acerto_motorista_raw"] = pd.DataFrame()
+        return pacote
+    col_viag = _get_case_insensitive_column_map(df_viagens.columns)
+    col_num_viag = col_viag.get("numero")
+    if not col_num_viag:
+        return pacote
+    viagens_ids = df_viagens[col_num_viag].unique()
+
+    df_fat_raw = pacote.get("df_fat_filtrado")
+    if df_fat_raw is not None and not df_fat_raw.empty:
+        col_fat = _get_case_insensitive_column_map(df_fat_raw.columns)
+        col_num_fat = col_fat.get("numero")
+        if col_num_fat:
+            pacote["df_fat_filtrado"] = df_fat_raw[
+                df_fat_raw[col_num_fat].isin(viagens_ids)
+            ].copy()
+
+    df_acerto = pacote.get("df_acerto_motorista_raw")
+    if df_acerto is not None and not df_acerto.empty:
+        col_acerto = _get_case_insensitive_column_map(df_acerto.columns)
+        col_num_acerto = col_acerto.get("numero")
+        if col_num_acerto:
+            pacote["df_acerto_motorista_raw"] = df_acerto[
+                df_acerto[col_num_acerto].isin(viagens_ids)
+            ].copy()
+    return pacote
+
+
+def _aplicar_filtro_cod_proprietario_mestre(
+    pacote: dict,
+    apartamento_id: int,
+    start_date: datetime,
+    end_date: datetime,
+    usar_snapshot: bool = False,
+) -> dict:
+    cod_prop = obter_cod_proprietario_filtro(apartamento_id)
+    if cod_prop is None:
+        return pacote
+
+    df_desp_raw = pacote.get("df_despesas_raw")
+    pacote["df_despesas_raw"] = _filtrar_df_placas_proprietario(
+        df_desp_raw, apartamento_id, cod_prop
+    )
+    acertos = _acertos_de_despesas(pacote["df_despesas_raw"])
+
+    pacote["df_despesas_filtrado"] = _filtrar_df_placas_proprietario(
+        pacote.get("df_despesas_filtrado"), apartamento_id, cod_prop
+    )
+
+    if acertos:
+        pacote["df_contas_pagar_raw"] = _filtrar_df_cod_acerto_proprietario(
+            pacote.get("df_contas_pagar_raw"), acertos
+        )
+        pacote["df_contas_receber_raw"] = _filtrar_df_cod_acerto_proprietario(
+            pacote.get("df_contas_receber_raw"), acertos
+        )
+    # Sem acerto nas despesas por placa: mantém contas do SQL (acertoproprietario).
+
+    df_viagens = pacote.get("df_viagens_cliente")
+    if usar_snapshot:
+        numeros = _numeros_viagens_cod_proprietario(
+            apartamento_id, start_date, end_date, cod_prop
+        )
+        if df_viagens is not None and not df_viagens.empty:
+            col_viag = _get_case_insensitive_column_map(df_viagens.columns)
+            col_num = col_viag.get("numero")
+            if col_num and numeros:
+                nums = pd.to_numeric(df_viagens[col_num], errors="coerce")
+                pacote["df_viagens_cliente"] = df_viagens[nums.isin(numeros)].copy()
+            elif col_num:
+                pacote["df_viagens_cliente"] = df_viagens.iloc[0:0].copy()
+        try:
+            from app.data import bi_snapshot as bi_snap
+        except ImportError:
+            import bi_snapshot as bi_snap  # type: ignore
+        pacote["df_fat_filtrado"] = bi_snap._fat_from_viagens(pacote["df_viagens_cliente"])
+    else:
+        pacote["df_viagens_cliente"] = _filtrar_df_placas_proprietario(
+            df_viagens, apartamento_id, cod_prop
+        )
+
+    pacote = _refiltrar_fat_acerto_por_viagens(pacote)
+    return pacote
 
 
 def _filtrar_periodos_para_grafico(monthly_df: pd.DataFrame) -> pd.DataFrame:
@@ -801,7 +1272,9 @@ def _dataframe_tipo_d_grupos_marcados(
     df_src = _valor_calculado_itemnota_df(df_src, cm)
     cm = _get_case_insensitive_column_map(df_src.columns)
     merged = _merge_flags_itemnota(df_src, df_flags, cm)
-    return merged[merged["incluir_em_tipo_d"]].copy()
+    return _excluir_itens_comercio_operacional(
+        merged[merged["incluir_em_tipo_d"]].copy(), cm
+    )
 
 
 def _calcular_df_tipo_d(
@@ -897,10 +1370,9 @@ def _filtrar_itens_receita_comercio(df: pd.DataFrame, col_map: dict) -> pd.DataF
 
 
 def _filtrar_itens_despesa_comercio(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
-    """Ramo COMERCIO + despesa=S + tiponfe=0 (compra/despesa do comércio)."""
+    """Ramo COMERCIO + despesa=S + tiponfe=0 ou série RQ (compra/saída estoque)."""
     df = _filtrar_ramo_comercio(df, col_map)
     df = _filtrar_nota_contabiliza_despesa(df, col_map)
-    df = _filtrar_tiponfe_venda(df, col_map)
     return df
 
 
@@ -912,15 +1384,73 @@ def _filtrar_ramo_comercio(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
     return df[desc == RAMO_NEGOCIO_COMERCIO].copy()
 
 
-def _filtrar_tiponfe_venda(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
-    """nota.tiponfe = 0 (Venda no SATI)."""
+def _normalizar_texto_grupo(series: pd.Series) -> pd.Series:
+    """Uppercase sem acento — comparação de descgrupod (ex.: VENDA, COMBUSTIVEL)."""
+    return (
+        series.astype(str)
+        .str.upper()
+        .str.normalize("NFKD")
+        .str.encode("ascii", errors="ignore")
+        .str.decode("ascii")
+        .str.strip()
+    )
+
+
+def _mask_grupo_contem_venda(df: pd.DataFrame, col_map: dict) -> pd.Series:
+    """Grupo do item (descgrupod) contém VENDA."""
+    if df.empty or "descgrupod" not in col_map:
+        return pd.Series(False, index=df.index)
+    grp = _normalizar_texto_grupo(df[col_map["descgrupod"]])
+    return grp.str.contains(GRUPO_VENDA_MARCADOR, na=False)
+
+
+def _mask_ramo_comercio(df: pd.DataFrame, col_map: dict) -> pd.Series:
+    if df.empty or "descnegocio" not in col_map:
+        return pd.Series(False, index=df.index)
+    desc = df[col_map["descnegocio"]].astype(str).str.upper().str.strip()
+    return desc == RAMO_NEGOCIO_COMERCIO
+
+
+def _mask_item_classificado_comercio(df: pd.DataFrame, col_map: dict) -> pd.Series:
+    """Comércio (grupo VENDA ou ramo COMERCIO) — não entra em despesa/custo comum."""
+    return _mask_grupo_contem_venda(df, col_map) | _mask_ramo_comercio(df, col_map)
+
+
+def _filtrar_grupo_venda(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+    """Itens cujo grupo de despesa contém VENDA."""
+    if df.empty:
+        return df.iloc[0:0].copy()
+    return df[_mask_grupo_contem_venda(df, col_map)].copy()
+
+
+def _excluir_itens_comercio_operacional(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+    """Remove itens classificados como comércio dos totais de despesa e custo."""
     if df.empty:
         return df
+    return df[~_mask_item_classificado_comercio(df, col_map)].copy()
+
+
+def _mask_tiponfe_venda_comercio(df: pd.DataFrame, col_map: dict) -> pd.Series:
+    """tiponfe=0 (NFe venda) ou série RQ com tiponfe vazio (saída estoque / venda SATI)."""
+    if df.empty:
+        return pd.Series(False, index=df.index)
     col = _col_tiponfe(col_map)
     if not col:
-        return df.iloc[0:0].copy()
+        return pd.Series(False, index=df.index)
     tiponfe = pd.to_numeric(df[col], errors="coerce")
-    return df[tiponfe == 0].copy()
+    mask = tiponfe == 0
+    serie_col = col_map.get("serie")
+    if serie_col:
+        rq = df[serie_col].astype(str).str.upper().str.strip() == "RQ"
+        mask = mask | (rq & tiponfe.isna())
+    return mask
+
+
+def _filtrar_tiponfe_venda(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
+    """nota.tiponfe = 0 ou saída RQ sem tiponfe (venda no SATI)."""
+    if df.empty:
+        return df
+    return df[_mask_tiponfe_venda_comercio(df, col_map)].copy()
 
 
 def _filtrar_tiponfe_nulo(df: pd.DataFrame, col_map: dict) -> pd.DataFrame:
@@ -944,8 +1474,8 @@ def _total_itens_comercio(
 ) -> float:
     """
     Soma itens de nota do ramo COMERCIO.
-    receita (venda): despesa=N + tiponfe=0 + tipo=0.
-    despesa (null): despesa=S + tiponfe=0.
+    receita (venda): despesa=N + (tiponfe=0 ou série RQ) + tipo=0.
+    despesa (null): despesa=S + (tiponfe=0 ou série RQ).
     """
     if df_raw.empty:
         return 0.0
@@ -959,7 +1489,6 @@ def _total_itens_comercio(
         df = _filtrar_itens_despesa_comercio(df, col_map)
     else:
         return 0.0
-    df = _excluir_ved_tipo_d(df, col_map)
     if df.empty:
         return 0.0
     df = _valor_calculado_itemnota_df(df, col_map)
@@ -1065,7 +1594,6 @@ def get_itens_comercio_df(
         df = _filtrar_itens_despesa_comercio(df, col_map)
     else:
         return pd.DataFrame()
-    df = _excluir_ved_tipo_d(df, col_map)
     if df.empty:
         return pd.DataFrame()
     return _valor_calculado_itemnota_df(df, col_map)
@@ -1083,9 +1611,6 @@ def get_comercio_mensal(
         return pd.DataFrame(columns=cols)
     df = apply_filters_to_df(df_raw, start_date, end_date, "Todos", filial_filter)
     col_map = _get_case_insensitive_column_map(df.columns)
-    df = _excluir_ved_tipo_d(df, col_map)
-    if df.empty:
-        return pd.DataFrame(columns=cols)
     col_dt = col_map.get("datacontrole") or col_map.get("dataemissao")
     if not col_dt:
         return pd.DataFrame(columns=cols)
@@ -1095,8 +1620,8 @@ def get_comercio_mensal(
     df = df.dropna(subset=["_dt"])
     if df.empty:
         return pd.DataFrame(columns=cols)
-    df_rec = _excluir_ved_tipo_d(_filtrar_itens_receita_comercio(df, col_map), col_map)
-    df_desp = _excluir_ved_tipo_d(_filtrar_itens_despesa_comercio(df, col_map), col_map)
+    df_rec = _filtrar_itens_receita_comercio(df, col_map)
+    df_desp = _filtrar_itens_despesa_comercio(df, col_map)
     df_rec["mes"] = df_rec["_dt"].dt.to_period("M")
     df_desp["mes"] = df_desp["_dt"].dt.to_period("M")
     rec = df_rec.groupby("mes")["valor_calculado"].sum()
@@ -1286,27 +1811,13 @@ def _prepare_final_cost_and_expense_dfs(df_viagens_cliente, df_despesas_filtrado
         filial_col_to_use = filial_col_found
 
     if not df_viagens_cliente_copy.empty and all(c in col_map_viagens_cli for c in ['tipofrete', 'fretemotorista', 'comissao', 'dataviagemmotorista']):
-        filtro_comissao = (df_viagens_cliente_copy[col_map_viagens_cli['tipofrete']].astype(str) == 'P') & (pd.to_numeric(df_viagens_cliente_copy[col_map_viagens_cli['fretemotorista']], errors='coerce') > 0)
-        df_comissao_base = df_viagens_cliente_copy[filtro_comissao].copy()
-        if not df_comissao_base.empty:
-            frete_motorista = pd.to_numeric(df_comissao_base[col_map_viagens_cli['fretemotorista']], errors='coerce').fillna(0)
-            percentual_comissao = pd.to_numeric(df_comissao_base[col_map_viagens_cli['comissao']], errors='coerce').fillna(0)
-            df_comissao_base.loc[:, 'valor_calculado'] = frete_motorista * (percentual_comissao / 100)
-            
-            comissao_df_data = df_comissao_base[[col_map_viagens_cli['dataviagemmotorista'], 'valor_calculado', filial_col_to_use]].rename(columns={col_map_viagens_cli['dataviagemmotorista']: 'datacontrole', filial_col_to_use: 'nomefil'})
-
-            if flags_dict.get('COMISSÃO DE MOTORISTA', {}).get('is_custo_viagem') == 'S':
-                df_custos = pd.concat([df_custos, comissao_df_data], ignore_index=True)
-            elif flags_dict.get('COMISSÃO DE MOTORISTA', {}).get('is_despesa') == 'S':
-                df_despesas_gerais = pd.concat([df_despesas_gerais, comissao_df_data], ignore_index=True)
+        # LEGADO — não usado no KPI atual (custo prévia vem de _dataframe_custo_previa_dre / DRE).
+        # Comissão e quebra do conhecimento NÃO são somadas aqui para evitar duplicidade e regra antiga
+        # (fretemotorista × % sem descontar quebra).
+        pass
 
     if not df_viagens_cliente_copy.empty and 'valorquebra' in col_map_viagens_cli:
-        quebra_df_data = df_viagens_cliente_copy[[col_map_viagens_cli['dataviagemmotorista'], col_map_viagens_cli['valorquebra'], filial_col_to_use]].rename(columns={col_map_viagens_cli['dataviagemmotorista']: 'datacontrole', col_map_viagens_cli['valorquebra']: 'valor_calculado', filial_col_to_use: 'nomefil'})
-        
-        if flags_dict.get('VALOR QUEBRA', {}).get('is_custo_viagem') == 'S':
-            df_custos = pd.concat([df_custos, quebra_df_data], ignore_index=True)
-        elif flags_dict.get('VALOR QUEBRA', {}).get('is_despesa') == 'S':
-            df_despesas_gerais = pd.concat([df_despesas_gerais, quebra_df_data], ignore_index=True)
+        pass
 
     return df_custos, df_despesas_gerais
 
@@ -1450,6 +1961,8 @@ def _dataframe_custo_despesa_ved_ve(
         sem_duplicar_dre = pd.Series(True, index=merged.index)
     custos = merged[(merged["is_custo_viagem"].astype(str).str.upper() == "S") & sem_duplicar_dre].copy()
     despesas = merged[merged["is_despesa"].astype(str).str.upper() == "S"].copy()
+    custos = _excluir_itens_comercio_operacional(custos, cm)
+    despesas = _excluir_itens_comercio_operacional(despesas, cm)
     return custos, despesas
 
 
@@ -1457,15 +1970,18 @@ def _dataframe_custo_previa_dre(
     df_viagens: pd.DataFrame, df_acerto: pd.DataFrame | None
 ) -> pd.DataFrame:
     """
-    Custo prévia do conhecimento (DRE): motorista, ICMS/seguro embutidos, quebra.
-    Respeita tipofrete (frota vs agenciamento), comissão e flag pagarConhecimento.
+    Custo prévia do conhecimento (DRE): frete motorista líquido + ICMS + seguro.
+    Líquido motorista via dre.calcular_frete_motorista_liquido (regra universal).
     """
     if df_viagens.empty:
         return pd.DataFrame()
     cv = _get_case_insensitive_column_map(df_viagens.columns)
-    df_dre = dre.aplicar_dre_em_dataframe(
-        df_viagens, df_acerto if df_acerto is not None else pd.DataFrame()
-    )
+    if "custo_previa_conhecimento" in cv:
+        df_dre = df_viagens
+    else:
+        df_dre = dre.aplicar_dre_em_dataframe(
+            df_viagens, df_acerto if df_acerto is not None else pd.DataFrame()
+        )
     col_dt = cv.get("dataviagemmotorista") or cv.get("dataemissao")
     col_fil = cv.get("nomefil") or cv.get("nomefilial")
     out = pd.DataFrame()
@@ -1527,14 +2043,99 @@ def _obter_dados_filtrados_mestre(
 ):
     """
     Função mestre que carrega todos os dados brutos necessários e aplica filtros.
+    Viagens: usa snapshot BI (DRE pré-calculado) quando disponível — filtros iguais ao SATI.
     """
-    # 1. Carrega todos os DataFrames brutos
-    df_viagens_raw = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
-    df_fat_raw = get_data_as_dataframe("relFilViagensFatCliente", apartamento_id)
-    df_despesas_raw = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    from app.data import bi_snapshot as bi_snap
+
+    df_flags = get_all_group_flags(apartamento_id)
+    usar_snapshot = bi_snap.snapshot_is_ready(apartamento_id) and not bi_snap.snapshot_is_building(
+        apartamento_id
+    )
+
+    if usar_snapshot:
+        df_snapshot_all = bi_snap.load_viagens_dre_dataframe(apartamento_id)
+        df_viagens_cliente = bi_snap.filtrar_viagens_snapshot(
+            df_snapshot_all,
+            start_date,
+            end_date,
+            placa_filter,
+            filial_filter,
+            tipo_negocio_filter,
+            unidade_embarque_filter,
+            embarcador_filter,
+        )
+        df_fat_filtrado = bi_snap._fat_from_viagens(df_viagens_cliente)
+
+        col_map_desp_raw = {}
+        df_despesas_raw = get_data_as_dataframe(
+            "relFilDespesasGerais", apartamento_id, start_date, end_date
+        )
+        col_map_desp_raw = _get_case_insensitive_column_map(df_despesas_raw.columns)
+        df_despesas_pre_filtrado = df_despesas_raw
+        if tipo_negocio_filter and tipo_negocio_filter != "Todos":
+            df_despesas_pre_filtrado = _filtrar_despesas_por_tipo_negocio(
+                df_despesas_raw, col_map_desp_raw, tipo_negocio_filter
+            )
+        df_despesas_filtrado = apply_filters_to_df(
+            df_despesas_pre_filtrado,
+            start_date,
+            end_date,
+            placa_filter,
+            filial_filter,
+            unidade_embarque_filter,
+        )
+
+        df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
+        df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
+        df_acerto_motorista_raw = get_data_as_dataframe(
+            "relFilAcertoMot", apartamento_id, start_date, end_date
+        )
+
+        col_viag = _get_case_insensitive_column_map(df_viagens_cliente.columns)
+        col_num_viag = col_viag.get("numero")
+        if col_num_viag and not df_viagens_cliente.empty:
+            viagens_filtradas_ids = df_viagens_cliente[col_num_viag].unique()
+        else:
+            viagens_filtradas_ids = []
+
+        col_acerto = _get_case_insensitive_column_map(df_acerto_motorista_raw.columns)
+        col_num_acerto = col_acerto.get("numero")
+        if col_num_acerto and not df_acerto_motorista_raw.empty and len(viagens_filtradas_ids) > 0:
+            df_acerto_motorista_filtrado = df_acerto_motorista_raw[
+                df_acerto_motorista_raw[col_num_acerto].isin(viagens_filtradas_ids)
+            ]
+        else:
+            df_acerto_motorista_filtrado = pd.DataFrame()
+
+        pacote = {
+            "df_viagens_cliente": df_viagens_cliente,
+            "df_despesas_filtrado": df_despesas_filtrado,
+            "df_fat_filtrado": df_fat_filtrado,
+            "df_contas_pagar_raw": df_contas_pagar_raw,
+            "df_contas_receber_raw": df_contas_receber_raw,
+            "df_flags": df_flags,
+            "df_despesas_raw": df_despesas_raw,
+            "df_acerto_motorista_raw": df_acerto_motorista_filtrado,
+        }
+        return _finalizar_pacote_mestre(
+            pacote, apartamento_id, start_date, end_date, usar_snapshot=True
+        )
+
+    # 1. Carrega DataFrames brutos (período no SQL quando SATI ativo)
+    df_viagens_raw = get_data_as_dataframe(
+        "relFilViagensCliente", apartamento_id, start_date, end_date
+    )
+    df_fat_raw = get_data_as_dataframe(
+        "relFilViagensFatCliente", apartamento_id, start_date, end_date
+    )
+    df_despesas_raw = get_data_as_dataframe(
+        "relFilDespesasGerais", apartamento_id, start_date, end_date
+    )
     df_contas_pagar_raw = get_data_as_dataframe("relFilContasPagarDet", apartamento_id)
     df_contas_receber_raw = get_data_as_dataframe("relFilContasReceber", apartamento_id)
-    df_acerto_motorista_raw = get_data_as_dataframe("relFilAcertoMot", apartamento_id)
+    df_acerto_motorista_raw = get_data_as_dataframe(
+        "relFilAcertoMot", apartamento_id, start_date, end_date
+    )
     df_flags = get_all_group_flags(apartamento_id)
 
     # 2. Pré-filtra por Tipo de Negócio (se aplicável)
@@ -1602,7 +2203,7 @@ def _obter_dados_filtrados_mestre(
         df_acerto_motorista_filtrado = pd.DataFrame()
 
     # 5. Retorna o dicionário completo com todos os DataFrames necessários
-    return {
+    pacote = {
         "df_viagens_cliente": df_viagens_cliente,
         "df_despesas_filtrado": df_despesas_filtrado,
         "df_fat_filtrado": df_fat_filtrado,
@@ -1610,8 +2211,121 @@ def _obter_dados_filtrados_mestre(
         "df_contas_receber_raw": df_contas_receber_raw,
         "df_flags": df_flags,
         "df_despesas_raw": df_despesas_raw,
-        "df_acerto_motorista_raw": df_acerto_motorista_filtrado
+        "df_acerto_motorista_raw": df_acerto_motorista_filtrado,
     }
+    return _finalizar_pacote_mestre(
+        pacote, apartamento_id, start_date, end_date, usar_snapshot=False
+    )
+
+
+def _finalizar_pacote_mestre(
+    pacote: dict,
+    apartamento_id: int,
+    start_date: datetime,
+    end_date: datetime,
+    usar_snapshot: bool,
+) -> dict:
+    pacote = _aplicar_filtro_cod_proprietario_mestre(
+        pacote, apartamento_id, start_date, end_date, usar_snapshot=usar_snapshot
+    )
+    pacote["df_viagens_cliente"] = _anexar_colunas_dre_viagens(
+        pacote.get("df_viagens_cliente"),
+        pacote.get("df_acerto_motorista_raw"),
+        apartamento_id,
+    )
+    return pacote
+
+
+def _anexar_colunas_dre_viagens(
+    df_viagens: pd.DataFrame,
+    df_acerto: pd.DataFrame | None,
+    apartamento_id: int,
+) -> pd.DataFrame:
+    """Colunas receita / custo prévia (regras por tenant, ex. jeremias)."""
+    if df_viagens is None or df_viagens.empty:
+        return df_viagens if df_viagens is not None else pd.DataFrame()
+    cv = _get_case_insensitive_column_map(df_viagens.columns)
+    num_col = cv.get("numero")
+    if not num_col:
+        return df_viagens
+    df_base = _viagens_base_dre(df_viagens)
+    if df_base.empty:
+        return df_viagens
+    df_dre = dre.aplicar_dre_em_dataframe(
+        df_base,
+        df_acerto if df_acerto is not None else pd.DataFrame(),
+        dre_opts=obter_dre_opts(apartamento_id),
+    )
+    cm_dre = {str(c).lower(): c for c in df_dre.columns}
+    dre_num = cm_dre.get("numero", num_col)
+    extras = [
+        cm_dre[k]
+        for k in (
+            "receita",
+            "custo_previa_conhecimento",
+            "custo_icms",
+            "custo_motorista",
+            "frete_empresa",
+            "fretemotorista_bruto",
+        )
+        if k in cm_dre
+    ]
+    dre_slim = df_dre[[dre_num] + extras].drop_duplicates(subset=[dre_num])
+    drop_dre = [
+        cv[k]
+        for k in (
+            "receita",
+            "custo_previa_conhecimento",
+            "custo_icms",
+            "custo_motorista",
+            "frete_empresa",
+            "fretemotorista_bruto",
+            "tipo_frete",
+        )
+        if k in cv
+    ]
+    base = df_viagens.drop(columns=drop_dre, errors="ignore")
+    out = base.merge(dre_slim, left_on=num_col, right_on=dre_num, how="left")
+    if dre_num != num_col and dre_num in out.columns:
+        out = out.drop(columns=[dre_num], errors="ignore")
+    return out
+
+
+def _df_viagens_com_receita(
+    df_viagens: pd.DataFrame,
+    apartamento_id: int,
+    df_acerto: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Viagens com receita DRE > 0 (campo configurável por tenant)."""
+    df_work = _anexar_colunas_dre_viagens(df_viagens, df_acerto, apartamento_id)
+    cv = _get_case_insensitive_column_map(df_work.columns)
+    col_rec = cv.get("receita")
+    if not col_rec:
+        return pd.DataFrame()
+    rec = pd.to_numeric(df_work[col_rec], errors="coerce").fillna(0)
+    return df_work[rec > 0].copy()
+
+
+def _serie_receita_por_periodo(
+    df_viagens: pd.DataFrame,
+    apartamento_id: int,
+    df_acerto: pd.DataFrame | None,
+    periodo_format: str,
+) -> pd.Series:
+    df_work = _anexar_colunas_dre_viagens(df_viagens, df_acerto, apartamento_id)
+    cv = _get_case_insensitive_column_map(df_work.columns)
+    col_dt = cv.get("dataviagemmotorista")
+    col_rec = cv.get("receita")
+    if not col_dt or not col_rec:
+        return pd.Series(dtype=float)
+    tmp = df_work[[col_dt, col_rec]].copy()
+    tmp["_rec"] = pd.to_numeric(tmp[col_rec], errors="coerce").fillna(0)
+    tmp = tmp[tmp["_rec"] > 0]
+    if tmp.empty:
+        return pd.Series(dtype=float)
+    tmp["Periodo"] = pd.to_datetime(tmp[col_dt], errors="coerce").dt.to_period(periodo_format)
+    tmp.dropna(subset=["Periodo"], inplace=True)
+    return tmp.groupby("Periodo")["_rec"].sum()
    
 def _viagens_base_dre(df_viagens_cliente: pd.DataFrame) -> pd.DataFrame:
     """Viagens com frete > 0 e colunas para DRE (mesma base da visão comercial)."""
@@ -1645,15 +2359,28 @@ def _viagens_base_dre(df_viagens_cliente: pd.DataFrame) -> pd.DataFrame:
             cols_v.append(cv[key])
     df = df_viagens_cliente[cols_v].drop_duplicates(subset=[cv["numero"]]).copy()
     fe_col = cv["freteempresa"]
-    df = df[pd.to_numeric(df[fe_col], errors="coerce").fillna(0) > 0]
+    fm_col = cv.get("fretemotorista")
+    mask = pd.to_numeric(df[fe_col], errors="coerce").fillna(0) > 0
+    if fm_col:
+        mask = mask | (pd.to_numeric(df[fm_col], errors="coerce").fillna(0) > 0)
+    df = df[mask]
     return df
 
 
-def _faturamento_dre_summary(df_viagens_cliente, df_fat_filtrado, df_acerto) -> tuple[float, list]:
-    df_base = _viagens_base_dre(df_viagens_cliente)
-    if df_base.empty:
+def _faturamento_dre_summary(
+    df_viagens_cliente, df_fat_filtrado, df_acerto, apartamento_id: int
+) -> tuple[float, list]:
+    cv_all = _get_case_insensitive_column_map(df_viagens_cliente.columns)
+    if "receita" in cv_all:
+        rec = pd.to_numeric(df_viagens_cliente[cv_all["receita"]], errors="coerce").fillna(0)
+        df_dre = df_viagens_cliente[rec > 0].copy()
+    else:
+        df_base = _viagens_base_dre(df_viagens_cliente)
+        if df_base.empty:
+            return 0.0, []
+        df_dre = dre.aplicar_dre_em_dataframe(df_base, df_acerto, dre_opts=obter_dre_opts(apartamento_id))
+    if df_dre.empty:
         return 0.0, []
-    df_dre = dre.aplicar_dre_em_dataframe(df_base, df_acerto)
     total = float(df_dre["receita"].sum())
     cv = _get_case_insensitive_column_map(df_dre.columns)
     col_num = cv.get("numero", "numero")
@@ -1719,7 +2446,7 @@ def get_dashboard_summary(
     summary = {}
     
     summary['faturamento_total_viagens'], summary['faturamento_conhecimentos'] = _faturamento_dre_summary(
-        df_viagens_cliente, df_fat_filtrado, df_acerto_motorista_raw
+        df_viagens_cliente, df_fat_filtrado, df_acerto_motorista_raw, apartamento_id
     )
 
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw)
@@ -1752,6 +2479,8 @@ def get_dashboard_summary(
 
     summary['saldo_contas_a_pagar_pendentes'] = _calcular_contas_pagar_pendentes(df_contas_pagar_raw)
     summary['saldo_contas_a_receber_pendentes'] = _calcular_contas_receber_pendentes(df_contas_receber_raw)
+    summary["financeiro_pagar"] = _resumo_financeiro_pendente(df_contas_pagar_raw, "pagar")
+    summary["financeiro_receber"] = _resumo_financeiro_pendente(df_contas_receber_raw, "receber")
 
     summary["receita_comercio"] = _total_itens_comercio(
         df_despesas_raw, start_date, end_date, filial_filter, "venda", unidade_embarque_filter
@@ -1767,8 +2496,132 @@ def get_dashboard_summary(
     custo_operacional_total = summary['custo_total_viagem'] + summary['total_despesas_gerais'] + summary['total_despesas_tipo_d']
     summary['saldo_geral'] = summary['faturamento_total_viagens'] - custo_operacional_total
     summary['margem_frete'] = (summary['saldo_geral'] / summary['faturamento_total_viagens'] * 100) if summary.get('faturamento_total_viagens', 0) > 0 else 0
-    
+
+    n_ctes = len(summary.get("faturamento_conhecimentos") or [])
+    summary["qtd_ctes"] = n_ctes
+    summary["custo_por_cte"] = (
+        float(custo_operacional_total) / n_ctes if n_ctes > 0 else 0.0
+    )
+    summary["ticket_medio"] = (
+        float(summary["faturamento_total_viagens"]) / n_ctes if n_ctes > 0 else 0.0
+    )
+
+    metas = obter_metas_bi(apartamento_id)
+    summary["meta_margem_pct"] = metas.get("meta_margem_pct")
+    summary["meta_r_km"] = metas.get("meta_r_km")
+    summary["meta_margem_status"] = status_vs_meta(
+        float(summary["margem_frete"]), metas.get("meta_margem_pct"), maior_melhor=True
+    )
+
+    # Comparativo MoM: período anterior de mesma duração (sem recursão)
+    if start_date is not None and end_date is not None:
+        try:
+            dur = end_date - start_date
+            prev_end = start_date - timedelta(microseconds=1)
+            prev_start = prev_end - dur
+            prev_summary = _dashboard_summary_core(
+                apartamento_id,
+                prev_start,
+                prev_end,
+                placa_filter,
+                filial_filter,
+                tipo_negocio_filter,
+                unidade_embarque_filter,
+                embarcador_filter,
+            )
+            summary["comparativo"] = {
+                "receita": formatar_delta_pct(
+                    summary["faturamento_total_viagens"],
+                    prev_summary.get("faturamento_total_viagens", 0),
+                ),
+                "custo": formatar_delta_pct(
+                    custo_operacional_total,
+                    prev_summary.get("custo_operacional", 0),
+                ),
+                "resultado": formatar_delta_pct(
+                    summary["saldo_geral"],
+                    prev_summary.get("saldo_geral", 0),
+                ),
+                "margem": formatar_delta_pct(
+                    summary["margem_frete"],
+                    prev_summary.get("margem_frete", 0),
+                ),
+                "custo_por_cte": formatar_delta_pct(
+                    summary["custo_por_cte"],
+                    prev_summary.get("custo_por_cte", 0),
+                ),
+                "periodo_anterior": {
+                    "inicio": prev_start.strftime("%Y-%m-%d"),
+                    "fim": prev_end.strftime("%Y-%m-%d"),
+                },
+            }
+        except Exception as e:
+            print(f"[BI] MoM comparativo falhou: {e}")
+            summary["comparativo"] = None
+    else:
+        summary["comparativo"] = None
+
     return summary
+
+
+def _dashboard_summary_core(
+    apartamento_id: int,
+    start_date: datetime = None,
+    end_date: datetime = None,
+    placa_filter: str = "Todos",
+    filial_filter: list = None,
+    tipo_negocio_filter: str = "Todos",
+    unidade_embarque_filter: list | None = None,
+    embarcador_filter: str = "Todos",
+) -> dict:
+    """KPIs do período sem MoM (usado no comparativo)."""
+    filtered_data = _obter_dados_filtrados_mestre(
+        apartamento_id,
+        start_date,
+        end_date,
+        placa_filter,
+        filial_filter,
+        tipo_negocio_filter,
+        unidade_embarque_filter,
+        embarcador_filter,
+    )
+    df_viagens_cliente = filtered_data["df_viagens_cliente"]
+    df_despesas_filtrado = filtered_data["df_despesas_filtrado"]
+    df_fat_filtrado = filtered_data["df_fat_filtrado"]
+    df_flags = filtered_data["df_flags"]
+    df_despesas_raw = filtered_data["df_despesas_raw"]
+    df_acerto_motorista_raw = filtered_data["df_acerto_motorista_raw"]
+
+    fat, ctes = _faturamento_dre_summary(
+        df_viagens_cliente, df_fat_filtrado, df_acerto_motorista_raw, apartamento_id
+    )
+    expense_data = _get_final_expense_dataframes(
+        df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw
+    )
+    df_custo_previa = expense_data.get("custo_previa", pd.DataFrame())
+    df_custo_nota = expense_data.get("custo_nota", pd.DataFrame())
+    df_despesas_gerais = expense_data["despesas"]
+    custo_previa = float(df_custo_previa["valor_calculado"].sum()) if not df_custo_previa.empty else 0.0
+    custo_nota = float(df_custo_nota["valor_calculado"].sum()) if not df_custo_nota.empty else 0.0
+    custo_viagem = custo_previa + custo_nota
+    desp_gerais = float(df_despesas_gerais["valor_calculado"].sum()) if not df_despesas_gerais.empty else 0.0
+    df_tipo_d = _calcular_df_tipo_d(
+        df_despesas_raw, df_flags, start_date, end_date, filial_filter, tipo_negocio_filter, unidade_embarque_filter
+    )
+    tipo_d = _total_tipo_d_com_rateio(df_tipo_d, placa_filter, apartamento_id)
+    custo_op = custo_viagem + desp_gerais + tipo_d
+    saldo = fat - custo_op
+    margem = (saldo / fat * 100) if fat > 0 else 0.0
+    n = len(ctes or [])
+    return {
+        "faturamento_total_viagens": fat,
+        "custo_operacional": custo_op,
+        "saldo_geral": saldo,
+        "margem_frete": margem,
+        "custo_por_cte": (custo_op / n) if n > 0 else 0.0,
+        "qtd_ctes": n,
+    }
+
 
 def get_monthly_summary(
     apartamento_id: int,
@@ -1805,14 +2658,9 @@ def get_monthly_summary(
     col_map_viagens_cli = _get_case_insensitive_column_map(df_viagens_cliente.columns)
     col_map_fat = _get_case_insensitive_column_map(df_fat_filtrado.columns)
     
-    faturamento = pd.Series(dtype=float)
-    if not df_viagens_cliente.empty and not df_fat_filtrado.empty and 'dataviagemmotorista' in col_map_viagens_cli and 'freteempresa' in col_map_fat:
-        df_viagens_essencial = df_viagens_cliente[[col_map_viagens_cli['numero'], col_map_viagens_cli['dataviagemmotorista']]]
-        df_fat_essencial = df_fat_filtrado[['numero', col_map_fat['freteempresa']]]
-        df_faturamento_para_grafico = pd.merge(df_viagens_essencial, df_fat_essencial, on='numero', how='inner')
-        df_faturamento_para_grafico['Periodo'] = pd.to_datetime(df_faturamento_para_grafico[col_map_viagens_cli['dataviagemmotorista']], errors='coerce').dt.to_period(periodo_format)
-        df_faturamento_para_grafico.dropna(subset=['Periodo'], inplace=True)
-        faturamento = df_faturamento_para_grafico.groupby('Periodo')[col_map_fat['freteempresa']].sum()
+    faturamento = _serie_receita_por_periodo(
+        df_viagens_cliente, apartamento_id, df_acerto_motorista_raw, periodo_format
+    )
     faturamento.name = 'Faturamento'
 
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw)
@@ -1849,56 +2697,74 @@ def get_monthly_summary(
 def sync_expense_groups(apartamento_id: int):
     """
     Sincroniza os grupos de despesa, adicionando novos grupos encontrados nos dados,
-    mas NUNCA removendo os existentes.
+    mas NUNCA removendo os existentes (exceto grupos DRE do conhecimento — ver abaixo).
     """
     print(f"Sincronizando grupos de despesa para o apartamento {apartamento_id}...")
-    
+    excluir_ui = {g.upper() for g in dre.GRUPOS_DRE_CONHECIMENTO}
+
     df_despesas = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
     col_map = _get_case_insensitive_column_map(df_despesas.columns)
-    
+
     grupos_dinamicos = set()
     grupos_com_diversos = set()
     if not df_despesas.empty and "descgrupod" in col_map:
         grp_col = col_map["descgrupod"]
         for grupo in df_despesas[grp_col].dropna().unique():
-            grupos_dinamicos.add(grupo)
+            if str(grupo).strip().upper() not in excluir_ui:
+                grupos_dinamicos.add(grupo)
         if "ved" in col_map:
             ved = _normalizar_ved_series(df_despesas[col_map["ved"]])
-            grupos_com_diversos = set(
-                df_despesas.loc[ved == VED_DIVERSOS, grp_col].dropna().unique()
-            )
+            grupos_com_diversos = {
+                g
+                for g in df_despesas.loc[ved == VED_DIVERSOS, grp_col].dropna().unique()
+                if str(g).strip().upper() not in excluir_ui
+            }
 
-    grupos_especiais = {"VALOR QUEBRA", "COMISSÃO DE MOTORISTA"}
-    todos_os_grupos_encontrados = grupos_dinamicos.union(grupos_especiais)
-
-    if not todos_os_grupos_encontrados:
-        print("Nenhum grupo de despesa para sincronizar.")
-        return
+    todos_os_grupos_encontrados = grupos_dinamicos
 
     try:
-        with engine.connect() as conn:
-            with conn.begin() as trans:
-                sql_insert = text("""
-                    INSERT INTO "static_expense_groups"
-                        (apartamento_id, group_name, is_despesa, is_custo_viagem, incluir_em_tipo_d)
-                    VALUES (:apt_id, :group_name, :is_despesa, 'N', :incluir_tipo_d)
-                    ON CONFLICT (apartamento_id, group_name) DO NOTHING
-                """)
-                for group_name in todos_os_grupos_encontrados:
-                    if not group_name:
-                        continue
-                    marcar_tipo_d = group_name in grupos_com_diversos
-                    conn.execute(
-                        sql_insert,
-                        {
-                            "apt_id": apartamento_id,
-                            "group_name": group_name,
-                            "is_despesa": "S",
-                            "incluir_tipo_d": marcar_tipo_d,
-                        },
-                    )
+        if todos_os_grupos_encontrados:
+            with engine.connect() as conn:
+                with conn.begin():
+                    sql_insert = text("""
+                        INSERT INTO "static_expense_groups"
+                            (apartamento_id, group_name, is_despesa, is_custo_viagem, incluir_em_tipo_d)
+                        VALUES (:apt_id, :group_name, :is_despesa, 'N', :incluir_tipo_d)
+                        ON CONFLICT (apartamento_id, group_name) DO NOTHING
+                    """)
+                    for group_name in todos_os_grupos_encontrados:
+                        if not group_name:
+                            continue
+                        marcar_tipo_d = group_name in grupos_com_diversos
+                        conn.execute(
+                            sql_insert,
+                            {
+                                "apt_id": apartamento_id,
+                                "group_name": group_name,
+                                "is_despesa": "S",
+                                "incluir_tipo_d": marcar_tipo_d,
+                            },
+                        )
+            print(
+                "Sincronização de grupos concluída: Novos grupos foram adicionados, "
+                "existentes foram preservados."
+            )
+        else:
+            print("Nenhum grupo de despesa novo para sincronizar.")
 
-        print("Sincronização de grupos concluída: Novos grupos foram adicionados, existentes foram preservados.")
+        with engine.connect() as conn:
+            with conn.begin():
+                for nome in excluir_ui:
+                    conn.execute(
+                        text(
+                            """
+                            DELETE FROM "static_expense_groups"
+                            WHERE apartamento_id = :apt_id
+                              AND UPPER(TRIM(group_name)) = :nome
+                            """
+                        ),
+                        {"apt_id": apartamento_id, "nome": nome},
+                    )
     except Exception as e:
         print(f"ERRO CRÍTICO durante a sincronização de grupos: {e}")
 
@@ -1908,6 +2774,11 @@ def get_all_group_flags(apartamento_id: int):
         with db.engine.connect() as conn:
             query = text('SELECT "group_name", "is_despesa", "is_custo_viagem", "incluir_em_tipo_d" FROM "static_expense_groups" WHERE "apartamento_id" = :apt_id')
             df = pd.read_sql(query, conn, params={"apt_id": apartamento_id})
+            if not df.empty:
+                excluir = {g.upper() for g in dre.GRUPOS_DRE_CONHECIMENTO}
+                df = df[
+                    ~df["group_name"].astype(str).str.upper().isin(excluir)
+                ].copy()
             return df
     except Exception as e:
         print(f"Erro ao buscar flags de grupo: {e}")
@@ -1951,6 +2822,38 @@ def update_all_group_flags(apartamento_id: int, update_data: dict):
 
 
 def get_unique_filiais(apartamento_id: int) -> list[str]:
+    return _cached_filter_options(
+        apartamento_id,
+        "filiais",
+        lambda: _get_unique_filiais_uncached(apartamento_id),
+    )
+
+
+def _get_unique_filiais_uncached(apartamento_id: int) -> list[str]:
+    if sati_enabled_for_apartment(engine, apartamento_id):
+        try:
+            schema = get_sati_schema(apartamento_id)
+            if re.match(r"^c\d+$", schema or "", re.I):
+                sql = text(
+                    f"""
+                    SELECT DISTINCT c.codfilial, TRIM(COALESCE(f.nome, '')) AS nome
+                    FROM {schema}.conhecimento c
+                    INNER JOIN {schema}.filial f ON f.codfilial = c.codfilial
+                    WHERE c.cancelado IS DISTINCT FROM 'S'
+                    ORDER BY c.codfilial
+                    """
+                )
+                with get_sati_engine().connect() as conn:
+                    rows = conn.execute(sql).fetchall()
+                labels = [
+                    _filial_display_label(r[0], r[1]) for r in rows if r[0] is not None
+                ]
+                if labels:
+                    unique_filiais = sorted({lbl.strip() for lbl in labels if lbl and lbl.strip()})
+                    return ["Todos"] + unique_filiais
+        except Exception as exc:
+            print(f"Aviso get_unique_filiais SATI: {exc}")
+
     table_names = [
         "relFilViagensFatCliente",
         "relFilDespesasGerais",
@@ -1976,6 +2879,43 @@ def get_unique_filiais(apartamento_id: int) -> list[str]:
 
 
 def get_unique_unidades_embarque(apartamento_id: int) -> list[str]:
+    return _cached_filter_options(
+        apartamento_id,
+        "unidades_embarque",
+        lambda: _get_unique_unidades_embarque_uncached(apartamento_id),
+    )
+
+
+def _get_unique_unidades_embarque_uncached(apartamento_id: int) -> list[str]:
+    if sati_enabled_for_apartment(engine, apartamento_id):
+        try:
+            schema = get_sati_schema(apartamento_id)
+            if re.match(r"^c\d+$", schema or "", re.I):
+                sql = text(
+                    f"""
+                    SELECT DISTINCT ue.codunidadeembarque,
+                           TRIM(COALESCE(ue.descricao, '')) AS nome
+                    FROM {schema}.unidadeembarque ue
+                    WHERE ue.codunidadeembarque IS NOT NULL
+                    ORDER BY ue.codunidadeembarque
+                    """
+                )
+                with get_sati_engine().connect() as conn:
+                    rows = conn.execute(sql).fetchall()
+                labels = [
+                    _filial_display_label(r[0], r[1])
+                    for r in rows
+                    if r[0] is not None and (r[1] or "").strip()
+                ]
+                if labels:
+                    unique = sorted({lbl.strip() for lbl in labels if lbl and lbl.strip()})
+                    return ["Todos"] + unique
+        except Exception as exc:
+            print(f"Aviso get_unique_unidades_embarque SATI: {exc}")
+
+    if sati_enabled_for_apartment(engine, apartamento_id):
+        return ["Todos"]
+
     table_names = [
         "relFilViagensCliente",
         "relFilViagensFatCliente",
@@ -2007,14 +2947,35 @@ def _merge_embarcadores_lista(items: list[dict]) -> list[dict]:
 
 
 def get_unique_embarcadores(apartamento_id: int) -> list[dict]:
+    return _cached_filter_options(
+        apartamento_id,
+        "embarcadores",
+        lambda: _get_unique_embarcadores_uncached(apartamento_id),
+    )
+
+
+def _get_unique_embarcadores_uncached(apartamento_id: int) -> list[dict]:
     """Embarcadores do cadastro SATI + distintos nos CT-es (fallback Excel)."""
     items: list[dict] = []
+    sati_on = False
     try:
-        from sati_integration.db.sati_source import fetch_embarcadores_catalog
+        from sati_integration.db.sati_source import (
+            fetch_embarcadores_catalog,
+            sati_enabled_for_apartment,
+        )
+        from app.data.database import engine as app_engine
 
-        items.extend(fetch_embarcadores_catalog(apartamento_id))
+        sati_on = sati_enabled_for_apartment(app_engine, apartamento_id)
+        if sati_on:
+            items.extend(fetch_embarcadores_catalog(apartamento_id))
+            if items:
+                return _merge_embarcadores_lista(items)
     except Exception as exc:
         print(f"AVISO: fetch_embarcadores_catalog: {exc}")
+
+    # Com SATI ativo, não varrer relFilViagens* inteiro (minutos em bases grandes).
+    if sati_on:
+        return _merge_embarcadores_lista(items)
 
     for table in ("relFilViagensCliente", "relFilViagensFatCliente"):
         df = get_data_as_dataframe(table, apartamento_id)
@@ -2046,13 +3007,12 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
 
     periodo = 'D' if (end_date - start_date).days <= 62 else 'M'
     
-    fat_evolucao = pd.Series(dtype=float)
-    if not df_fat_filtrado.empty and 'dataviagemmotorista' in col_map_viagens_cli and 'freteempresa' in col_map_fat:
-        df_viagens_essencial = df_viagens_cliente[[col_map_viagens_cli['numero'], col_map_viagens_cli['dataviagemmotorista']]]
-        df_fat_essencial = df_fat_filtrado[['numero', col_map_fat['freteempresa']]]
-        df_faturamento_para_grafico = pd.merge(df_viagens_essencial, df_fat_essencial, on='numero', how='inner')
-        df_faturamento_para_grafico['Periodo'] = pd.to_datetime(df_faturamento_para_grafico[col_map_viagens_cli['dataviagemmotorista']]).dt.to_period(periodo)
-        fat_evolucao = df_faturamento_para_grafico.groupby('Periodo')[col_map_fat['freteempresa']].sum()
+    fat_evolucao = _serie_receita_por_periodo(
+        df_viagens_cliente, apartamento_id, df_acerto_motorista_raw, periodo
+    )
+    df_rec = _df_viagens_com_receita(df_viagens_cliente, apartamento_id, df_acerto_motorista_raw)
+    cv_rec = _get_case_insensitive_column_map(df_rec.columns) if not df_rec.empty else {}
+    col_receita = cv_rec.get("receita", "receita")
 
     expense_data = _get_final_expense_dataframes(df_viagens_cliente, df_despesas_filtrado, df_flags, df_acerto_motorista_raw)
     df_custos = expense_data["custos"]
@@ -2095,45 +3055,20 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
                 ["Periodo", "Faturamento", "Custo"]
             ].to_dict(orient="records")
 
-    if not df_fat_filtrado.empty and "freteempresa" in col_map_fat:
-        if "nomecliente" in col_map_viagens_cli:
-            df_cli = pd.merge(
-                df_fat_filtrado[["numero", col_map_fat["freteempresa"]]],
-                df_viagens_cliente[["numero", col_map_viagens_cli["nomecliente"]]].drop_duplicates("numero"),
-                on="numero",
-                how="left",
-            )
-            top_clientes = (
-                df_cli.groupby(col_map_viagens_cli["nomecliente"])[col_map_fat["freteempresa"]]
-                .sum()
-                .nlargest(10)
-                .sort_values(ascending=False)
-                .reset_index()
-            )
-            top_clientes.columns = ["nomeCliente", "freteEmpresa"]
-            dashboard_data["top_clientes"] = top_clientes.to_dict(orient="records")
-        elif "nomecliente" in col_map_fat:
-            top_clientes = (
-                df_fat_filtrado.groupby(col_map_fat["nomecliente"])[col_map_fat["freteempresa"]]
-                .sum()
-                .nlargest(10)
-                .sort_values(ascending=False)
-                .reset_index()
-            )
-            dashboard_data["top_clientes"] = top_clientes.to_dict(orient="records")
+    if not df_rec.empty and cv_rec.get("nomecliente"):
+        top_clientes = (
+            df_rec.groupby(cv_rec["nomecliente"])[col_receita]
+            .sum()
+            .nlargest(10)
+            .sort_values(ascending=False)
+            .reset_index()
+        )
+        top_clientes.columns = ["nomeCliente", "freteEmpresa"]
+        dashboard_data["top_clientes"] = top_clientes.to_dict(orient="records")
 
-    filial_col = col_map_fat.get("nomefilial") or col_map_viagens_cli.get("nomefilial")
-    if not df_fat_filtrado.empty and filial_col and "freteempresa" in col_map_fat:
-        if filial_col in df_fat_filtrado.columns:
-            fat_filial = df_fat_filtrado.groupby(filial_col)[col_map_fat["freteempresa"]].sum().reset_index()
-        else:
-            df_fil = pd.merge(
-                df_fat_filtrado[["numero", col_map_fat["freteempresa"]]],
-                df_viagens_cliente[["numero", filial_col]].drop_duplicates("numero"),
-                on="numero",
-                how="left",
-            )
-            fat_filial = df_fil.groupby(filial_col)[col_map_fat["freteempresa"]].sum().reset_index()
+    filial_col = cv_rec.get("nomefilial") or col_map_viagens_cli.get("nomefilial")
+    if not df_rec.empty and filial_col and filial_col in df_rec.columns:
+        fat_filial = df_rec.groupby(filial_col)[col_receita].sum().reset_index()
         fat_filial.columns = ["nomeFilial", "freteEmpresa"]
         fat_filial = fat_filial.sort_values("freteEmpresa", ascending=False)
         dashboard_data["faturamento_filial"] = fat_filial.to_dict(orient="records")
@@ -2163,15 +3098,9 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
         viagens_veiculo.columns = ['placa', 'contagem']
         dashboard_data['viagens_por_veiculo'] = viagens_veiculo.to_dict(orient='records')
         
-    if "nomemotorista" in col_map_viagens_cli and not df_fat_filtrado.empty and "freteempresa" in col_map_fat:
-        df_mot = pd.merge(
-            df_viagens_cliente[["numero", col_map_viagens_cli["nomemotorista"]]].drop_duplicates("numero"),
-            df_fat_filtrado[["numero", col_map_fat["freteempresa"]]],
-            on="numero",
-            how="inner",
-        )
+    if not df_rec.empty and cv_rec.get("nomemotorista"):
         fat_motorista = (
-            df_mot.groupby(col_map_viagens_cli["nomemotorista"])[col_map_fat["freteempresa"]]
+            df_rec.groupby(cv_rec["nomemotorista"])[col_receita]
             .sum()
             .nlargest(10)
             .sort_values(ascending=False)
@@ -2180,15 +3109,9 @@ def get_faturamento_details_dashboard_data(apartamento_id: int, start_date, end_
         fat_motorista.columns = ["nomeMotorista", "faturamento"]
         dashboard_data["faturamento_motorista"] = fat_motorista.to_dict(orient="records")
 
-    if "descricaomercadoria" in col_map_viagens_cli and not df_fat_filtrado.empty and "freteempresa" in col_map_fat:
-        df_merc = pd.merge(
-            df_viagens_cliente[["numero", col_map_viagens_cli["descricaomercadoria"]]].drop_duplicates("numero"),
-            df_fat_filtrado[["numero", col_map_fat["freteempresa"]]],
-            on="numero",
-            how="inner",
-        )
+    if not df_rec.empty and cv_rec.get("descricaomercadoria"):
         fat_por_mercadoria = (
-            df_merc.groupby(col_map_viagens_cli["descricaomercadoria"])[col_map_fat["freteempresa"]]
+            df_rec.groupby(cv_rec["descricaomercadoria"])[col_receita]
             .sum()
             .nlargest(7)
             .reset_index()
@@ -2502,8 +3425,10 @@ def get_group_flags_with_tipo_d_status(apartamento_id: int):
             df_flags["has_tipo_v"] = df_flags["group_name"].isin(grupos_com_tipo_v)
             df_flags["has_tipo_e"] = df_flags["group_name"].isin(grupos_com_tipo_e)
 
-    grupos_especiais = ["COMISSÃO DE MOTORISTA", "VALOR QUEBRA"]
-    df_flags.loc[df_flags["group_name"].isin(grupos_especiais), "has_tipo_v"] = True
+    excluir = {g.upper() for g in dre.GRUPOS_DRE_CONHECIMENTO}
+    df_flags = df_flags[
+        ~df_flags["group_name"].astype(str).str.upper().isin(excluir)
+    ].copy()
 
     return df_flags
 
@@ -2511,9 +3436,11 @@ def get_unique_plates_with_types(apartamento_id: int, tipo_negocio_filter: str =
     """
     Placas classificadas por veiculo.veiculoproprio (cadastro SATI).
     FROTA = S/F; demais = frete/agenciamento. Receita usa conhecimento.tipofrete (DRE).
+    Com BI_COD_PROPRIETARIO, lista só veículos do proprietário (veiculo.codproprietario).
     """
+    cod_prop = obter_cod_proprietario_filtro(apartamento_id)
     placas_meta: dict[str, dict] = {}
-    mapa_veiculos = _mapa_veiculos_sati(apartamento_id)
+    mapa_veiculos = _mapa_veiculos_sati(apartamento_id, cod_prop)
 
     for placa, meta in mapa_veiculos.items():
         placas_meta[placa] = {
@@ -2522,7 +3449,26 @@ def get_unique_plates_with_types(apartamento_id: int, tipo_negocio_filter: str =
             "incluirateio": meta.get("incluirateio", ""),
         }
 
+    if not mapa_veiculos and sati_enabled_for_apartment(engine, apartamento_id):
+        pass
+    elif mapa_veiculos:
+        # Cadastro SATI já lista as placas — evita carregar relFilViagensCliente inteiro.
+        lista_final = [
+            {
+                "placa": placa,
+                "tipo": meta["tipo"],
+                "veiculoproprio": meta.get("veiculoproprio", ""),
+                "incluirateio": meta.get("incluirateio", ""),
+            }
+            for placa, meta in placas_meta.items()
+        ]
+        lista_final = _filtrar_lista_placas_por_tipo_negocio(lista_final, tipo_negocio_filter)
+        lista_final.sort(key=lambda x: (x["tipo"], x["placa"]))
+        return lista_final
+
     df_viagens = get_data_as_dataframe("relFilViagensCliente", apartamento_id)
+    if cod_prop is not None:
+        df_viagens = _filtrar_df_placas_proprietario(df_viagens, apartamento_id, cod_prop)
     if not df_viagens.empty:
         col_map_viagens = _get_case_insensitive_column_map(df_viagens.columns)
         if "placaveiculo" in col_map_viagens:
@@ -2544,6 +3490,10 @@ def get_unique_plates_with_types(apartamento_id: int, tipo_negocio_filter: str =
                 }
 
     df_despesas = get_data_as_dataframe("relFilDespesasGerais", apartamento_id)
+    if cod_prop is not None:
+        df_despesas = _filtrar_df_placas_proprietario(
+            df_despesas, apartamento_id, cod_prop
+        )
     if not df_despesas.empty:
         col_map_despesas = _get_case_insensitive_column_map(df_despesas.columns)
         if "placaveiculo" in col_map_despesas:
@@ -2898,7 +3848,7 @@ def _fluxo_numeros_coletar_comprovante(
     if not steps.get("mdfe_autorizado"):
         return []
     try:
-        from comprovante_descarga import comprovante_completo_no_cache
+        from sati_integration.robos.comprovante_descarga import comprovante_completo_no_cache
     except Exception:
         def comprovante_completo_no_cache(_item):
             return False
@@ -2926,7 +3876,7 @@ def _fluxo_numeros_coletar_comprovante(
 def _aplicar_cache_comprovantes_painel(apartamento_id: int, raw_rows: list[dict]) -> None:
     """Marca tem_documento e anexa metadados do Painel de Documentos por CT-e."""
     try:
-        from comprovante_descarga import mapa_cache_por_numero
+        from sati_integration.robos.comprovante_descarga import mapa_cache_por_numero
 
         cache_map = mapa_cache_por_numero(apartamento_id)
     except Exception:
@@ -3016,7 +3966,7 @@ def _fluxo_status_comprovante_descarga(
     if not steps.get("mdfe_autorizado"):
         return "aguardando_mdfe"
     try:
-        from comprovante_descarga import comprovante_completo_no_cache
+        from sati_integration.robos.comprovante_descarga import comprovante_completo_no_cache
 
         if any(comprovante_completo_no_cache(c) for c in (comprovantes_cache or [])):
             return "arquivo_ok"
@@ -3065,6 +4015,12 @@ FLUXO_FILTRO_COMPROVANTE_OPCOES = (
     ("sem_anexo", "Comprovante sem anexo"),
 )
 
+FLUXO_FILTRO_MDFE_OPCOES = (
+    ("todos", "Todos os MDF-e"),
+    ("encerrado", "MDF-e encerrado"),
+    ("nao_encerrado", "MDF-e não encerrado"),
+)
+
 
 def normalizar_filtro_comprovante_fluxo(valor: str | None) -> str:
     chave = (valor or "todos").strip().lower()
@@ -3106,6 +4062,227 @@ def filtrar_fluxo_por_comprovante(rows: list[dict], filtro: str | None) -> list[
     if chave == "sem_anexo":
         return [r for r in (rows or []) if _fluxo_row_comprovante_sem_anexo(r)]
     return list(rows or [])
+
+
+def normalizar_filtro_mdfe_fluxo(valor: str | None) -> str:
+    chave = (valor or "todos").strip().lower()
+    validos = {k for k, _ in FLUXO_FILTRO_MDFE_OPCOES}
+    return chave if chave in validos else "todos"
+
+
+def fluxo_query_string_para_async(args, start_date: str = "", end_date: str = "") -> str:
+    """Query string só com parâmetros do fluxo (datas + filtros locais)."""
+    from urllib.parse import urlencode
+
+    clean = extrair_query_fluxo(args)
+    pairs: list[tuple[str, str]] = []
+    for key in clean.keys():
+        for val in clean.getlist(key):
+            if val is not None and str(val).strip() != "":
+                pairs.append((key, str(val).strip()))
+    keys = {k for k, _ in pairs}
+    if start_date and "start_date" not in keys:
+        pairs.append(("start_date", start_date))
+    if end_date and "end_date" not in keys:
+        pairs.append(("end_date", end_date))
+    if "mdfe" not in keys:
+        pairs.append(("mdfe", "todos"))
+    if "comprovante" not in keys:
+        pairs.append(("comprovante", "todos"))
+    return urlencode(pairs)
+
+
+def _raw_tem_mdfe_emitido(raw: dict) -> bool:
+    """MDF-e autorizado no manifesto (manif) — viagem entra no fluxo."""
+    return _mdfestatus_autorizado(raw.get("mdfestatus")) or _fluxo_step_done(raw.get("mdfeprot"))
+
+
+def filtrar_fluxo_por_mdfe(rows: list[dict], filtro: str | None) -> list[dict]:
+    """Filtra linhas por situação de encerramento do MDF-e."""
+    chave = normalizar_filtro_mdfe_fluxo(filtro)
+    if chave == "todos":
+        return list(rows or [])
+    out = []
+    for row in rows or []:
+        steps = row.get("steps") or {}
+        if not steps.get("mdfe_autorizado"):
+            continue
+        enc = bool(steps.get("mdfe_encerrado"))
+        if chave == "encerrado" and enc:
+            out.append(row)
+        elif chave == "nao_encerrado" and not enc:
+            out.append(row)
+    return out
+
+
+def _fluxo_parse_km(val) -> float | None:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    try:
+        n = float(val)
+    except (TypeError, ValueError):
+        return None
+    if n < 0 or n > 9_999_999:
+        return None
+    return n
+
+
+def _fluxo_fmt_km(val) -> str:
+    n = _fluxo_parse_km(val)
+    if n is None:
+        return ""
+    if abs(n - round(n)) < 0.05:
+        return f"{int(round(n)):,}".replace(",", ".")
+    return f"{n:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _fluxo_km_rodado_valor(raw: dict) -> float | None:
+    ki = _fluxo_parse_km(raw.get("km_inicial"))
+    kf = _fluxo_parse_km(raw.get("km_final"))
+    if ki is not None and kf is not None and kf >= ki:
+        return kf - ki
+    kr = _fluxo_parse_km(raw.get("km_rodado"))
+    if kr is not None and kr > 0:
+        return kr
+    kp = _fluxo_parse_km(raw.get("km_previsto"))
+    if kp is not None and kp > 0:
+        return kp
+    return None
+
+
+def _fluxo_km_rodado_label(raw: dict) -> str:
+    ki = _fluxo_parse_km(raw.get("km_inicial"))
+    kf = _fluxo_parse_km(raw.get("km_final"))
+    if ki is not None and kf is not None and kf >= ki:
+        return f"KM rodado: {_fluxo_fmt_km(kf - ki)}"
+    kr = _fluxo_parse_km(raw.get("km_rodado"))
+    if kr is not None and kr > 0:
+        return f"KM rodado: {_fluxo_fmt_km(kr)}"
+    kp = _fluxo_parse_km(raw.get("km_previsto"))
+    if kp is not None and kp > 0:
+        return f"KM rodado (prev.): {_fluxo_fmt_km(kp)}"
+    return ""
+
+
+def _fluxo_km_manifesto(raw: dict) -> tuple[float | None, float | None, float | None, float | None]:
+    """KM ini/fim (agregado), km carregado (fim − ini) e km vazio (kmini − kmfim anterior)."""
+    fontes = list(raw.get("ctes_raw_list") or [])
+    if not fontes:
+        fontes = [raw]
+    kmis, kmfs = [], []
+    for r in fontes:
+        ki = _fluxo_parse_km(r.get("km_inicial"))
+        kf = _fluxo_parse_km(r.get("km_final"))
+        if ki is not None:
+            kmis.append(ki)
+        if kf is not None:
+            kmfs.append(kf)
+    ki = min(kmis) if kmis else _fluxo_parse_km(raw.get("km_inicial"))
+    kf = max(kmfs) if kmfs else _fluxo_parse_km(raw.get("km_final"))
+    carregado = _fluxo_km_rodado_valor(raw)
+    if carregado is None:
+        for r in fontes:
+            carregado = _fluxo_km_rodado_valor(r)
+            if carregado is not None:
+                break
+    vazios = []
+    for r in fontes:
+        vv = _fluxo_parse_km(r.get("km_vazio"))
+        if vv is not None and vv > 0:
+            vazios.append(vv)
+    if vazios:
+        vazio = float(sum(vazios))
+    else:
+        vazio = _fluxo_parse_km(raw.get("km_vazio"))
+    return ki, kf, carregado, vazio
+
+
+def _fluxo_cte_contexto(raw: dict) -> dict:
+    """Cliente, remetente e rota origem \\ destino para exibição no fluxo."""
+    cliente = str(raw.get("nomecliente") or "").strip()
+    remetente = str(raw.get("nome_remetente") or "").strip()
+    origem = str(raw.get("cidorigemformat") or "").strip()
+    destino = str(raw.get("ciddestinoformat") or "").strip()
+    rota = ""
+    if origem and destino:
+        rota = f"{origem} \\ {destino}"
+    elif origem:
+        rota = origem
+    elif destino:
+        rota = destino
+    partes = []
+    if cliente:
+        partes.append(f"Cliente: {cliente}")
+    if remetente:
+        partes.append(f"Remetente: {remetente}")
+    if rota:
+        partes.append(rota)
+    ki = _fluxo_parse_km(raw.get("km_inicial"))
+    kf = _fluxo_parse_km(raw.get("km_final"))
+    if ki is not None:
+        partes.append(f"KM ini.: {_fluxo_fmt_km(ki)}")
+    if kf is not None:
+        partes.append(f"KM fim: {_fluxo_fmt_km(kf)}")
+    rodado_lbl = _fluxo_km_rodado_label(raw)
+    if rodado_lbl:
+        partes.append(rodado_lbl)
+    km_vazio = _fluxo_parse_km(raw.get("km_vazio"))
+    if km_vazio is not None and km_vazio > 0:
+        partes.append(f"KM vazio: {_fluxo_fmt_km(km_vazio)}")
+    rodado = _fluxo_km_rodado_valor(raw)
+    return {
+        "cliente": cliente,
+        "remetente": remetente,
+        "origem": origem,
+        "destino": destino,
+        "rota": rota,
+        "linha": " · ".join(partes),
+        "km_inicial": ki,
+        "km_final": kf,
+        "km_rodado": rodado,
+        "km_vazio": km_vazio,
+    }
+
+
+def _fluxo_cte_status_label(raw: dict) -> str:
+    st = str(raw.get("ctestatus") or "").strip()
+    if st and st.lower() not in ("none", "nan"):
+        return st
+    if _ctestatus_autorizado(st) or _fluxo_step_done(raw.get("ctechave")):
+        return "Autorizado"
+    prot = str(raw.get("protocolo_cte") or "").strip()
+    if prot:
+        return "Com protocolo"
+    return "Pendente"
+
+
+def _fluxo_build_cte_detalhe(raw: dict) -> dict:
+    nc = _fluxo_int_or_none(raw.get("num_cte"))
+    ni = _fluxo_int_or_none(raw.get("numero"))
+    auth = (
+        _ctestatus_autorizado(str(raw.get("ctestatus") or ""))
+        or _fluxo_step_done(raw.get("ctechave"))
+        or bool(str(raw.get("protocolo_cte") or "").strip())
+    )
+    dv_fmt = ""
+    dv_raw = raw.get("data_viagem_motorista")
+    if dv_raw is not None and not (isinstance(dv_raw, float) and pd.isna(dv_raw)):
+        dv = pd.to_datetime(dv_raw, errors="coerce")
+        if pd.notna(dv):
+            dv_fmt = dv.strftime("%d/%m/%Y")
+    return {
+        "num_cte": nc,
+        "numero": ni,
+        "exibicao": _fluxo_format_cte_com_interno([], [], num_cte=nc, numero=ni) or "—",
+        "contexto": _fluxo_cte_contexto(raw),
+        "status": _fluxo_cte_status_label(raw),
+        "autorizado": auth,
+        "averbacao": bool(
+            _fluxo_step_done(raw.get("protocolo_averbacao"))
+            or str(raw.get("protocolo_cte") or "").strip()
+        ),
+        "data_motorista": dv_fmt,
+    }
 
 
 def _fluxo_format_lista_numeros(valores) -> str:
@@ -3169,7 +4346,250 @@ def _fluxo_format_cte_com_interno(
     return ", ".join(unicos)
 
 
+def _fluxo_build_cte_subtrack(raw: dict) -> dict:
+    """Trilha compacta por CT-e (ordem → NFE → CT-e → averbação)."""
+    num_ordem = _fluxo_int_or_none(raw.get("num_ordem"))
+    cod_ordem = _fluxo_int_or_none(raw.get("codordemcar"))
+    num_cte = _fluxo_int_or_none(raw.get("num_cte"))
+    n_raw = _fluxo_int_or_none(raw.get("numero"))
+    ctestatus_raw = str(raw.get("ctestatus") or "").strip()
+    protocolo_cte = str(raw.get("protocolo_cte") or "").strip()
+    tem_ordem = num_ordem is not None or cod_ordem is not None
+    cte_autorizado = (
+        _ctestatus_autorizado(ctestatus_raw)
+        or _fluxo_step_done(raw.get("ctechave"))
+        or bool(protocolo_cte)
+    )
+    nfe_ok = (
+        _fluxo_flag_sim(raw.get("nfe_emitida"))
+        or _fluxo_flag_sim(raw.get("nfe_notaxml_ok"))
+        or bool(str(raw.get("nfe_numero_notaxml") or "").strip())
+    )
+    nfe_num = str(raw.get("nfe_numero_notaxml") or "").strip()
+    if nfe_ok and nfe_num:
+        nfe_label = nfe_num
+    elif nfe_ok:
+        nfe_label = "Emitida"
+    else:
+        nfe_label = "—"
+    steps = {
+        "ordem_carregamento": tem_ordem,
+        "nfe_emitida": nfe_ok,
+        "cte_autorizado": cte_autorizado,
+        "carga_averbada": _fluxo_step_done(raw.get("protocolo_averbacao")) or bool(protocolo_cte),
+    }
+    titulo = _fluxo_format_cte_com_interno([], [], num_cte=num_cte, numero=n_raw) or "CT-e"
+    ordem_txt = str(num_ordem) if num_ordem is not None else (str(cod_ordem) if cod_ordem else "")
+    data_mot = ""
+    dv_raw = raw.get("data_viagem_motorista")
+    if dv_raw is not None and not (isinstance(dv_raw, float) and pd.isna(dv_raw)):
+        dv = pd.to_datetime(dv_raw, errors="coerce")
+        if pd.notna(dv):
+            data_mot = dv.strftime("%d/%m/%Y")
+    labels = {
+        "ordem": ordem_txt,
+        "nfe": nfe_label,
+        "cte": titulo,
+        "cte_status": ctestatus_raw or ("Autorizado" if cte_autorizado else "Pendente"),
+        "averbacao": str(raw.get("protocolo_averbacao") or protocolo_cte or "").strip(),
+        "data_viagem_motorista": data_mot,
+    }
+    comprovantes_cte = list(raw.get("comprovantes_cache") or [])
+    tem_doc_banco = _fluxo_tem_documento_descarga(raw)
+    nome_documento = _fluxo_nome_documento_descarga(comprovantes_cte, raw)
+    if cte_autorizado:
+        status_comprovante = _fluxo_status_comprovante_descarga(
+            {"mdfe_autorizado": True},
+            tem_doc_banco,
+            comprovantes_cte,
+            nome_documento,
+        )
+    else:
+        status_comprovante = "aguardando_cte"
+    steps["documento_descarga"] = status_comprovante == "arquivo_ok"
+    detalhe_descarga = "—"
+    if status_comprovante == "arquivo_ok":
+        detalhe_descarga = "Arquivo OK"
+        for c in comprovantes_cte:
+            nt = _fluxo_format_nome_documento_trilha(c.get("nomearq"))
+            if nt:
+                detalhe_descarga = nt
+                break
+        if detalhe_descarga == "Arquivo OK":
+            nome_trilha = _fluxo_format_nome_documento_trilha(nome_documento)
+            if nome_trilha:
+                detalhe_descarga = nome_trilha
+    elif status_comprovante in ("identificado_banco", "identificado_painel"):
+        detalhe_descarga = _fluxo_format_nome_documento_trilha(nome_documento) or "Identificado"
+    elif status_comprovante == "pendente_coleta":
+        detalhe_descarga = "Pendente"
+    labels["documento_descarga"] = detalhe_descarga
+    doc_numeros = [n_raw] if n_raw is not None else []
+    contexto = _fluxo_cte_contexto(raw)
+    return {
+        "titulo": titulo,
+        "contexto": contexto,
+        "numero": n_raw,
+        "doc_numeros": doc_numeros,
+        "steps": steps,
+        "flux_anim": _build_flux_cte_subtrack_anim(steps, labels),
+    }
+
+
+def _flux_truck_index_for_keys(steps: dict, keys: tuple) -> int:
+    n = len(keys)
+    furthest_done = -1
+    first_pending = n
+    for i, key in enumerate(keys):
+        if steps.get(key):
+            furthest_done = i
+        elif first_pending == n:
+            first_pending = i
+    if furthest_done < 0:
+        return 0
+    if furthest_done > 0:
+        return furthest_done
+    return first_pending if first_pending < n else furthest_done
+
+
+_CTE_SUBTRACK_KEYS = (
+    "ordem_carregamento",
+    "nfe_emitida",
+    "cte_autorizado",
+    "carga_averbada",
+    "documento_descarga",
+)
+
+_MDFE_TRACK_KEYS = (
+    "ciot_emitido",
+    "pedagio_emitido",
+    "mdfe_autorizado",
+    "mdfe_encerrado",
+)
+
+
+def _build_flux_cte_subtrack_anim(steps: dict, labels: dict) -> dict:
+    tem_ordem = bool(steps.get("ordem_carregamento"))
+
+    def node_state(key: str) -> str:
+        return "done" if steps.get(key) else "pending"
+
+    pipeline = [
+        {
+            "id": "ordem_carregamento",
+            "label": "Ordem",
+            "short": "Ordem",
+            "state": "done" if tem_ordem else "alert",
+            "dual_status": True,
+            "sem_ordem": not tem_ordem,
+            "ordem_emitida": tem_ordem,
+            "detail": labels.get("ordem") or "",
+        },
+        {
+            "id": "nfe_emitida",
+            "label": "NFE",
+            "short": "NFE",
+            "state": node_state("nfe_emitida"),
+            "detail": labels.get("nfe") or ("OK" if steps.get("nfe_emitida") else "—"),
+        },
+        {
+            "id": "cte_autorizado",
+            "label": "CT-e",
+            "short": "CT-e",
+            "state": node_state("cte_autorizado"),
+            "detail": labels.get("cte_status") or "—",
+            "detail_sub": labels.get("data_viagem_motorista") or "",
+        },
+        {
+            "id": "carga_averbada",
+            "label": "Averbação",
+            "short": "Averb.",
+            "state": node_state("carga_averbada"),
+            "detail": labels.get("averbacao") or "—",
+        },
+        {
+            "id": "documento_descarga",
+            "label": "Comprovante de descarga",
+            "short": "Descarga",
+            "state": node_state("documento_descarga"),
+            "detail": labels.get("documento_descarga") or "",
+            "clickable": True,
+            "icon": "📄",
+        },
+    ]
+    n = len(pipeline)
+    truck_index = _flux_truck_index_for_keys(steps, _CTE_SUBTRACK_KEYS)
+    return {
+        "stages": pipeline,
+        "truck_index": truck_index,
+        "truck_percent": round((truck_index / max(n - 1, 1)) * 100, 2),
+        "tem_ordem": tem_ordem,
+        "tem_cte": bool(steps.get("cte_autorizado")),
+        "truck_on_top": False,
+        # Só "dispensa" visual quando CT-e já saiu e a NFE ainda não foi vinculada
+        "pula_nfe": tem_ordem and bool(steps.get("cte_autorizado")) and not nfe_ok,
+        "mdfe_encerrado": False,
+        "mdfe_autorizado": False,
+        "is_subtrack": True,
+    }
+
+
+def _build_flux_mdfe_track_anim(steps: dict, labels: dict) -> dict:
+    """Trilha do manifesto: CIOT → pedágio → MDF-e → encerramento."""
+    mdfe_encerrado = bool(steps.get("mdfe_encerrado"))
+
+    def node_state(key: str) -> str:
+        return "done" if steps.get(key) else "pending"
+
+    pipeline = [
+        {
+            "id": "ciot_emitido",
+            "label": "CIOT emitido",
+            "short": "CIOT",
+            "state": node_state("ciot_emitido"),
+            "detail": labels.get("ciot") or "",
+        },
+        {
+            "id": "pedagio_emitido",
+            "label": "Pedágio emitido",
+            "short": "Pedágio",
+            "state": node_state("pedagio_emitido"),
+            "detail": labels.get("pedagio") or "",
+        },
+        {
+            "id": "mdfe_autorizado",
+            "label": "MDF-e autorizado",
+            "short": "MDF-e",
+            "state": node_state("mdfe_autorizado"),
+            "detail": labels.get("mdfe_numero") or labels.get("mdfe_status") or "",
+        },
+        {
+            "id": "mdfe_encerrado",
+            "label": "MDF-e encerrado",
+            "short": "Encerr.",
+            "state": node_state("mdfe_encerrado"),
+            "detail": labels.get("mdfe_enc") or "",
+        },
+    ]
+    n = len(pipeline)
+    truck_index = _flux_truck_index_for_keys(steps, _MDFE_TRACK_KEYS)
+    return {
+        "stages": pipeline,
+        "truck_index": truck_index,
+        "truck_percent": round((truck_index / max(n - 1, 1)) * 100, 2),
+        "tem_ordem": True,
+        "tem_nfe": True,
+        "tem_cte": True,
+        "mdfe_encerrado": mdfe_encerrado,
+        "mdfe_autorizado": bool(steps.get("mdfe_autorizado")),
+        "truck_on_top": bool(steps.get("mdfe_autorizado")),
+        "pula_nfe": False,
+        "is_mdfe_track": True,
+    }
+
+
 def _fluxo_group_key(raw: dict) -> tuple:
+    """Uma linha do painel = um MDF-e (manif). CT-es sem manifesto ficam em bucket solo."""
     cm = raw.get("codmanif")
     if cm is not None and not (isinstance(cm, float) and pd.isna(cm)):
         try:
@@ -3177,13 +4597,8 @@ def _fluxo_group_key(raw: dict) -> tuple:
         except (TypeError, ValueError):
             pass
     placa = str(raw.get("placa") or "").strip().upper()
-    num_cte = _fluxo_int_or_none(raw.get("num_cte"))
-    if num_cte is None and (
-        _fluxo_int_or_none(raw.get("num_ordem")) is not None
-        or _fluxo_int_or_none(raw.get("codordemcar")) is not None
-    ):
-        return ("ordem", placa, _fluxo_int_or_none(raw.get("codordemcar")), _fluxo_int_or_none(raw.get("num_ordem")))
-    return ("solo", placa, raw.get("numero"))
+    numero = _fluxo_int_or_none(raw.get("numero")) or 0
+    return ("solo", placa, numero)
 
 
 def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
@@ -3192,6 +4607,9 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
     base = dict(group[0])
     ordens, ctes, numeros, codordens = [], [], [], set()
     pares_cte: list[tuple[int | None, int | None]] = []
+    ctes_detalhe: list[dict] = []
+    ctes_raw_list: list[dict] = []
+    vistos_cte: set[tuple] = set()
     any_cte_auth = False
     any_cte_chave = False
     any_averb = False
@@ -3212,6 +4630,11 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
             numeros.append(n_doc)
         if nc is not None or n_doc is not None:
             pares_cte.append((nc, n_doc))
+            cte_key = (nc, n_doc)
+            if cte_key not in vistos_cte:
+                vistos_cte.add(cte_key)
+                ctes_detalhe.append(_fluxo_build_cte_detalhe(r))
+                ctes_raw_list.append(dict(r))
         if _ctestatus_autorizado(str(r.get("ctestatus") or "")) or _fluxo_step_done(r.get("ctechave")):
             any_cte_auth = True
         if _fluxo_step_done(r.get("ctechave")):
@@ -3259,7 +4682,12 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
     base["codordens_list"] = sorted(codordens)
     base["numeros_list"] = numeros
     base["ctes_pares_list"] = pares_cte
-    base["qtd_ctes_manifesto"] = len(base["ctes_list"]) or len(group)
+    base["ctes_detalhe_list"] = sorted(
+        ctes_detalhe,
+        key=lambda x: (x.get("num_cte") or 0, x.get("numero") or 0),
+    )
+    base["ctes_raw_list"] = ctes_raw_list
+    base["qtd_ctes_manifesto"] = len(base["ctes_list"]) or len(ctes_detalhe) or len(group)
     if any_cte_auth:
         base["ctestatus"] = base.get("ctestatus") or "AUTORIZADO"
     if any_cte_chave and not base.get("ctechave"):
@@ -3277,14 +4705,20 @@ def _merge_raw_fluxo_viagem(group: list[dict]) -> dict:
     return base
 
 
-def _agrupar_fluxo_por_viagem(records: list[dict]) -> list[dict]:
-    """Agrupa linhas do SATI: uma linha do painel por viagem (manif) ou CT-e/ordem isolado."""
+def _agrupar_fluxo_por_viagem(
+    records: list[dict],
+    *,
+    somente_com_mdfe_emitido: bool = False,
+) -> list[dict]:
+    """Agrupa linhas do SATI: uma linha do painel por MDF-e (manif)."""
     from collections import defaultdict
 
     buckets: dict[tuple, list[dict]] = defaultdict(list)
     for rec in records:
         buckets[_fluxo_group_key(rec)].append(rec)
     merged = [_merge_raw_fluxo_viagem(g) for g in buckets.values()]
+    if somente_com_mdfe_emitido:
+        merged = [m for m in merged if _raw_tem_mdfe_emitido(m)]
     merged.sort(key=lambda r: str(r.get("emissao") or ""), reverse=True)
     return merged
 
@@ -3424,6 +4858,7 @@ def _build_fluxo_row(raw: dict) -> dict:
         "ordem": ordem_txt,
         "cte": cte_txt,
         "cte_status": ctestatus_raw or "—",
+        "ctes_nested": list(raw.get("ctes_detalhe_list") or []),
         "protocolo_cte": protocolo_cte,
         "averbacao": str(raw.get("protocolo_averbacao") or "").strip(),
         "ciot": ciot_valor or (
@@ -3437,10 +4872,17 @@ def _build_fluxo_row(raw: dict) -> dict:
         "data_viagem_motorista": data_viagem_motorista_trilha,
     }
 
+    if not labels["ctes_nested"] and (num_cte is not None or n_raw is not None):
+        labels["ctes_nested"] = [_fluxo_build_cte_detalhe(raw)]
+
+    ctes_trilhas = [_fluxo_build_cte_subtrack(r) for r in (raw.get("ctes_raw_list") or [])]
+    if not ctes_trilhas:
+        ctes_trilhas = [_fluxo_build_cte_subtrack(raw)]
+
     progresso_total = len(steps)
     concluidos = sum(1 for v in steps.values() if v)
 
-    flux_anim = _build_flux_anim(steps, labels)
+    flux_anim = _build_flux_mdfe_track_anim(steps, labels)
 
     mdfe_lbl = labels.get("mdfe_numero") or labels.get("mdfe_status") or ""
     if ordem_txt and not mdfe_lbl and not cte_txt:
@@ -3468,6 +4910,14 @@ def _build_fluxo_row(raw: dict) -> dict:
         numero_exibicao, steps, status_comprovante
     )
 
+    _, _, km_carregado, km_vazio = _fluxo_km_manifesto(raw)
+    km_carregado_fmt = _fluxo_fmt_km(km_carregado) if km_carregado is not None else ""
+    if not km_carregado_fmt:
+        kp = _fluxo_parse_km(raw.get("km_previsto"))
+        if kp is not None and kp > 0:
+            km_carregado_fmt = f"{_fluxo_fmt_km(kp)} (prev.)"
+    km_vazio_fmt = _fluxo_fmt_km(km_vazio) if km_vazio is not None and km_vazio > 0 else ""
+
     return {
         "placa": str(raw.get("placa") or "—").strip().upper() or "—",
         "motorista": str(raw.get("motorista") or "—").strip() or "—",
@@ -3488,9 +4938,13 @@ def _build_fluxo_row(raw: dict) -> dict:
         "qtd_ctes": len(ctes_list),
         "lista_ordens": ordens_list,
         "lista_ctes": ctes_list,
+        "lista_ctes_detalhe": labels["ctes_nested"],
+        "ctes_trilhas": ctes_trilhas,
         "lista_numeros": numeros_list,
         "numero_exibicao": numero_exibicao,
         "linha_descarga": linha_descarga,
+        "km_carregado_fmt": km_carregado_fmt,
+        "km_vazio_fmt": km_vazio_fmt,
         "tem_documento_descarga": steps["documento_descarga"],
         "precisa_coletar_comprovante": precisa_coletar,
         "status_comprovante_descarga": status_comprovante,
@@ -3582,12 +5036,17 @@ def _build_flux_anim(steps: dict, labels: dict) -> dict:
         },
         {
             "id": "cte_autorizado",
-            "label": "CT-e autorizado",
-            "short": "CT-e",
+            "label": "CT-es do MDF-e",
+            "short": "CT-es",
             "state": node_state("cte_autorizado"),
             "detail": labels.get("cte") or "—",
-            "detail_sub": labels.get("cte_status") or "",
+            "detail_sub": (
+                f"{len(labels.get('ctes_nested') or [])} CT-e(s) no manifesto"
+                if len(labels.get("ctes_nested") or []) > 1
+                else (labels.get("cte_status") or "")
+            ),
             "detail_data_motorista": labels.get("data_viagem_motorista") or "",
+            "ctes_nested": labels.get("ctes_nested") or [],
         },
         {
             "id": "carga_averbada",
@@ -3663,7 +5122,15 @@ def _fluxo_cache_key(apartamento_id: int, start_date, end_date, cod_filial) -> t
             return ""
         return d.strftime("%Y-%m-%d %H:%M:%S") if hasattr(d, "strftime") else str(d)
 
-    return (apartamento_id, _fmt(start_date), _fmt(end_date), cod_filial)
+    return (apartamento_id, _fmt(start_date), _fmt(end_date), cod_filial, 5)
+
+
+def _fluxo_sql_coluna_ausente(exc: Exception, coluna: str) -> bool:
+    err = str(exc).lower()
+    col = coluna.lower()
+    return col in err and (
+        "does not exist" in err or "não existe" in err or "nao existe" in err
+    )
 
 
 def _fetch_fluxo_viagem_sati(apartamento_id: int, start_date, end_date) -> pd.DataFrame:
@@ -3674,17 +5141,61 @@ def _fetch_fluxo_viagem_sati(apartamento_id: int, start_date, end_date) -> pd.Da
     if cached and (now - cached[0]) < _FLUXO_CACHE_TTL_SEC:
         return cached[1].copy()
 
-    sql = query_fluxo_viagem(get_sati_schema())
+    schema = get_sati_schema()
     params = {
         "start_date": start_date,
         "end_date": end_date,
         "cod_filial": cod_filial,
     }
-    with get_sati_engine().connect() as conn:
-        df = pd.read_sql_query(text(sql), conn, params=params)
+
+    def _run(incluir_km_vazio: bool = True) -> pd.DataFrame:
+        sql = query_fluxo_viagem(schema, incluir_km_vazio=incluir_km_vazio)
+        with get_sati_engine().connect() as conn:
+            return pd.read_sql_query(text(sql), conn, params=params)
+
+    try:
+        df = _run(True)
+    except Exception as exc:
+        if _fluxo_sql_coluna_ausente(exc, "kmvazio"):
+            df = _run(False)
+        else:
+            raise
+
     df.columns = [str(c).strip() for c in df.columns]
     _fluxo_sati_cache[key] = (now, df)
     return df
+
+
+def _placas_fluxo_proprietario(apartamento_id: int) -> set[str] | None:
+    """Placas permitidas no fluxo quando BI_COD_PROPRIETARIO está no painel."""
+    cod_prop = obter_cod_proprietario_filtro(apartamento_id)
+    if cod_prop is None:
+        return None
+    return set(_mapa_veiculos_sati(apartamento_id, cod_prop).keys())
+
+
+def _filtrar_fluxo_placas_proprietario(apartamento_id: int, rows: list[dict]) -> list[dict]:
+    placas_ok = _placas_fluxo_proprietario(apartamento_id)
+    if placas_ok is None:
+        return rows
+    if not placas_ok:
+        return []
+    return [
+        r
+        for r in rows
+        if str(r.get("placa") or "").strip().upper() in placas_ok
+    ]
+
+
+def _filtrar_df_fluxo_placas_proprietario(apartamento_id: int, df: pd.DataFrame) -> pd.DataFrame:
+    placas_ok = _placas_fluxo_proprietario(apartamento_id)
+    if placas_ok is None or df is None or df.empty:
+        return df
+    if not placas_ok:
+        return df.iloc[0:0].copy()
+    if "placa" not in df.columns:
+        return df
+    return df[df["placa"].isin(placas_ok)].copy()
 
 
 def _get_fluxo_viagem_fallback(
@@ -3695,6 +5206,16 @@ def _get_fluxo_viagem_fallback(
     if df.empty:
         return []
     df = apply_filters_to_df(df, start_date, end_date, placa_filter, filial_filter)
+    placas_ok = _placas_fluxo_proprietario(apartamento_id)
+    if placas_ok is not None:
+        if not placas_ok:
+            return []
+        cm0 = _get_case_insensitive_column_map(df.columns)
+        col_placa0 = cm0.get("placaveiculo")
+        if col_placa0:
+            df = df[
+                df[col_placa0].astype(str).str.strip().str.upper().isin(placas_ok)
+            ]
     cm = _get_case_insensitive_column_map(df.columns)
     rows = []
     for _, r in df.iterrows():
@@ -3767,7 +5288,7 @@ def _aplicar_ultima_movimentacao_cte_anterior(rows: list[dict]) -> None:
 
 
 def _fluxo_ultima_por_placa_rows(rows: list[dict]) -> list[dict]:
-    """Mantém só o CT-e/viagem mais recente de cada placa (já com última mov. calculada)."""
+    """Mantém só a viagem MDF-e mais recente de cada placa."""
     ordenado = sorted(
         rows,
         key=lambda r: pd.to_datetime(
@@ -3778,6 +5299,8 @@ def _fluxo_ultima_por_placa_rows(rows: list[dict]) -> list[dict]:
     )
     por_placa: dict[str, dict] = {}
     for row in ordenado:
+        if not (row.get("steps") or {}).get("mdfe_autorizado"):
+            continue
         placa = str(row.get("placa") or "").strip().upper()
         if not placa or placa in ("—", "NAN"):
             continue
@@ -3799,20 +5322,26 @@ def _fluxo_ts_movimentacao_raw(rec: dict) -> pd.Timestamp:
 
 
 def _fluxo_ultima_por_placa(merged: list[dict]) -> list[dict]:
-    """Mantém só a viagem mais recente de cada placa (por data motorista ou emissão)."""
+    """Mantém a viagem mais recente de cada placa; prioriza viagem com MDF-e emitido."""
     ordenado = sorted(
         merged,
         key=lambda r: _fluxo_ts_movimentacao_raw(r),
         reverse=True,
     )
-    por_placa: dict[str, dict] = {}
+    por_placa_mdfe: dict[str, dict] = {}
+    por_placa_any: dict[str, dict] = {}
     for rec in ordenado:
         placa = str(rec.get("placa") or "").strip().upper()
         if not placa or placa in ("—", "NAN"):
             continue
-        if placa not in por_placa:
-            por_placa[placa] = rec
-    return list(por_placa.values())
+        if placa not in por_placa_any:
+            por_placa_any[placa] = rec
+        if _raw_tem_mdfe_emitido(rec) and placa not in por_placa_mdfe:
+            por_placa_mdfe[placa] = rec
+    return [
+        por_placa_mdfe.get(placa) or por_placa_any[placa]
+        for placa in sorted(por_placa_any.keys())
+    ]
 
 
 def _load_fluxo_viagem_rows(
@@ -3822,6 +5351,7 @@ def _load_fluxo_viagem_rows(
     placa_filter: str = "Todos",
     filial_filter: list = None,
     apenas_ultima_por_placa: bool = False,
+    somente_com_mdfe_emitido: bool = False,
 ) -> list:
     filial_filter = filial_filter or []
     rows = []
@@ -3832,9 +5362,13 @@ def _load_fluxo_viagem_rows(
             if not df.empty:
                 df["placa"] = df["placa"].astype(str).str.strip().str.upper()
                 df = df[(df["placa"] != "") & (df["placa"] != "—") & (df["placa"].str.lower() != "nan")]
+                df = _filtrar_df_fluxo_placas_proprietario(apartamento_id, df)
                 if placa_filter and placa_filter != "Todos":
                     df = df[df["placa"] == str(placa_filter).strip().upper()]
-                raw_rows = _agrupar_fluxo_por_viagem(df.to_dict(orient="records"))
+                raw_rows = _agrupar_fluxo_por_viagem(
+                    df.to_dict(orient="records"),
+                    somente_com_mdfe_emitido=somente_com_mdfe_emitido,
+                )
                 _aplicar_cache_comprovantes_painel(apartamento_id, raw_rows)
                 rows = [_build_fluxo_row(rec) for rec in raw_rows]
                 _aplicar_ultima_movimentacao_cte_anterior(rows)
@@ -3851,6 +5385,7 @@ def _load_fluxo_viagem_rows(
         if apenas_ultima_por_placa and rows:
             rows = _fluxo_ultima_por_placa_rows(rows)
 
+    rows = _filtrar_fluxo_placas_proprietario(apartamento_id, rows)
     rows.sort(
         key=lambda r: r.get("data_viagem_motorista_ts") or r.get("emissao_ts") or "",
         reverse=True,
@@ -3895,19 +5430,24 @@ def get_fluxo_veiculos_resumo(
     start_date=None,
     end_date=None,
     filial_filter: list = None,
+    limite: int = 120,
 ) -> list:
-    """Uma linha por placa — status da viagem mais recente no período."""
+    """MDF-es do período (mais recentes primeiro), até ``limite`` linhas."""
     rows = _load_fluxo_viagem_rows(
         apartamento_id,
         start_date,
         end_date,
         "Todos",
         filial_filter,
-        apenas_ultima_por_placa=True,
+        apenas_ultima_por_placa=False,
+        somente_com_mdfe_emitido=True,
     )
+    rows = [r for r in rows if (r.get("steps") or {}).get("mdfe_autorizado")]
     for row in rows:
         row["sem_viagem_periodo"] = False
-    return sorted(rows, key=lambda x: x.get("placa", ""))
+    if limite and len(rows) > limite:
+        rows = rows[:limite]
+    return rows
 
 
 def get_fluxo_viagem_historico(
@@ -3923,7 +5463,8 @@ def get_fluxo_viagem_historico(
     if not placa or placa == "TODOS":
         return []
     rows = _load_fluxo_viagem_rows(
-        apartamento_id, start_date, end_date, placa, filial_filter
+        apartamento_id, start_date, end_date, placa, filial_filter,
+        somente_com_mdfe_emitido=True,
     )
     return rows[:limite] if limite else rows
 
@@ -3941,6 +5482,126 @@ def get_fluxo_viagem_data(
             apartamento_id, start_date, end_date, placa_filter, filial_filter
         )
     return get_fluxo_veiculos_resumo(apartamento_id, start_date, end_date, filial_filter)
+
+
+def get_nfe_pendentes_cte(
+    apartamento_id: int,
+    start_date=None,
+    end_date=None,
+    filial_filter: list | None = None,
+    placa_filter: str | None = None,
+    numero_nfe: str | None = None,
+    data_nfe: str | None = None,
+) -> dict:
+    """
+    NFe transporte (notaxml tipoes=T) sem CT-e: chavenfe não ligada a conhecimento.
+    Retorno agrupado por placa do veículo.
+    """
+    vazio = {"total": 0, "por_placa": [], "mensagem": ""}
+    if not sati_enabled_for_apartment(db.engine, apartamento_id):
+        vazio["mensagem"] = "SATI não configurado para esta transportadora."
+        return vazio
+
+    cod_filial = resolve_cod_filial(db.engine, apartamento_id)
+    if filial_filter:
+        try:
+            cod_filial = int(filial_filter[0])
+        except (TypeError, ValueError, IndexError):
+            pass
+
+    sql = query_nfe_pendentes_cte(get_sati_schema())
+    params = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "cod_filial": cod_filial,
+    }
+    try:
+        with get_sati_engine().connect() as conn:
+            df = pd.read_sql_query(text(sql), conn, params=params)
+    except Exception as e:
+        print(f"ERRO NFe pendentes CT-e: {e}")
+        vazio["mensagem"] = f"Erro ao consultar SATI: {e}"
+        return vazio
+
+    if df.empty:
+        vazio["mensagem"] = "Nenhuma NFe pendente de CT-e no período."
+        return vazio
+
+    df.columns = [str(c).strip() for c in df.columns]
+    from collections import defaultdict
+
+    placa_f = str(placa_filter or "").strip().upper()
+    numero_f = str(numero_nfe or "").strip()
+    data_f = str(data_nfe or "").strip()
+
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for _, row in df.iterrows():
+        placa = str(row.get("placa") or "SEM PLACA").strip().upper() or "SEM PLACA"
+        if placa_f and placa_f not in ("TODOS", "—") and placa != placa_f:
+            continue
+        numeronota = str(row.get("numeronota") or "").strip()
+        serie = str(row.get("serie") or "").strip()
+        nota_ref = f"{serie}/{numeronota}" if serie else numeronota
+        if numero_f and numero_f not in numeronota and numero_f not in nota_ref:
+            continue
+        data_raw = row.get("data_nfe")
+        data_fmt = "—"
+        data_iso = ""
+        if data_raw is not None and not (isinstance(data_raw, float) and pd.isna(data_raw)):
+            dt = pd.to_datetime(data_raw, errors="coerce")
+            if pd.notna(dt):
+                data_fmt = dt.strftime("%d/%m/%Y")
+                data_iso = dt.strftime("%Y-%m-%d")
+        if data_f and data_iso != data_f:
+            continue
+        valor = row.get("valor")
+        try:
+            valor_fmt = f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (TypeError, ValueError):
+            valor_fmt = "—"
+        chave = str(row.get("chavenfe") or "").strip()
+        emitente = str(row.get("emitente_nome") or row.get("nome") or "").strip() or "—"
+        remetente = str(row.get("remetente_nome") or row.get("clientenome") or "").strip() or "—"
+        destino = str(row.get("destino_nome") or row.get("destnome") or "").strip() or "—"
+        mercadoria = str(row.get("mercadoria_nome") or "").strip() or "—"
+        buckets[placa].append({
+            "chavenfe": chave,
+            "chavenfe_curta": chave[-8:] if len(chave) > 8 else chave,
+            "numeronota": numeronota,
+            "serie": serie,
+            "nota_ref": nota_ref or "—",
+            "data_nfe": data_fmt,
+            "data_nfe_iso": data_iso,
+            "placa": placa,
+            "destino": destino,
+            "mercadoria": mercadoria,
+            "remetente": remetente,
+            "emitiu_nota": emitente,
+            "valor": valor_fmt,
+            "status": str(row.get("status") or "").strip(),
+            "sitnfe": str(row.get("sitnfe") or "").strip(),
+        })
+
+    por_placa = []
+    total_filtrado = 0
+    for placa in sorted(buckets.keys(), key=lambda p: (-len(buckets[p]), p)):
+        notas = buckets[placa]
+        total_filtrado += len(notas)
+        por_placa.append({
+            "placa": placa,
+            "qtd": len(notas),
+            "notas": notas,
+        })
+
+    if not por_placa:
+        vazio["mensagem"] = "Nenhuma NFe pendente com os filtros informados."
+        return vazio
+
+    return {
+        "total": total_filtrado,
+        "por_placa": por_placa,
+        "mensagem": "",
+    }
 
 
 def get_expense_audit_data(
@@ -4059,18 +5720,22 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
     frete_empresa_col = col_map_fat.get('freteempresa')
 
     comissao_map = dre.comissao_acerto_por_numero(acerto)
+    dre_opts = obter_dre_opts(apartamento_id)
+    modo_proprietario = dre_opts.get("campo_receita") == "fretemotorista"
     dre_previa = dre.calcular_dre_viagem(
         viagem_data,
         comissao_map.get(int(numero) if numero else numero, 0.0),
+        campo_receita=dre_opts.get("campo_receita", "freteempresa"),
+        incluir_icms_custo=dre_opts.get("incluir_icms_custo", True),
     )
 
-    frete_bruto = dre_previa["frete_empresa"]
+    frete_bruto = dre_previa["receita"] if modo_proprietario else dre_previa["frete_empresa"]
     frete_empresa_bruto = dre_previa.get("frete_empresa_bruto", frete_bruto)
     valor_pedagio = dre_previa["valor_pedagio"]
     pedagio_embutido = dre_previa["pedagio_embutido"]
     total_receitas = dre_previa["receita"]
 
-    valor_quebra = dre_previa["custo_quebra"]
+    valor_quebra = dre_previa.get("valor_quebra_bruto", dre_previa["custo_quebra_potencial"])
     comissao_motorista = dre_previa["comissao_motorista"]
     custo_motorista = dre_previa["custo_motorista"]
     custo_icms = dre_previa["custo_icms"]
@@ -4127,22 +5792,35 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
     despesas_detalhadas_formatado = formatar_df_para_relatorio(df_despesas_gerais)
     
     despesas_sugeridas = []
+    periodo_sugestao = {"inicio": None, "fim": None, "proxima_viagem": None}
     data_col = col_map_desp_raw.get("datacontrole", "dataControle")
+    data_ini_janela, data_fim_janela, proxima_viagem_fmt = _janela_sugestao_despesas(
+        df_viagens, placa_viagem, data_viagem_obj, numero
+    )
+    if data_ini_janela is not None and data_fim_janela is not None:
+        periodo_sugestao = {
+            "inicio": data_ini_janela.strftime("%d/%m/%Y"),
+            "fim": data_fim_janela.strftime("%d/%m/%Y"),
+            "proxima_viagem": proxima_viagem_fmt,
+        }
     if (
         placa_viagem
         and pd.notna(data_viagem_obj)
+        and data_ini_janela is not None
+        and data_fim_janela is not None
         and not df_despesas_raw.empty
         and data_col in df_despesas_raw.columns
     ):
-        data_inicio_janela = data_viagem_obj - timedelta(days=dias_janela)
-        data_fim_janela = data_viagem_obj + timedelta(days=dias_janela)
         df_despesas_raw = df_despesas_raw.copy()
         df_despesas_raw[data_col] = pd.to_datetime(df_despesas_raw[data_col], errors="coerce")
+        data_ini_cmp = data_ini_janela.normalize()
+        data_fim_cmp = data_fim_janela.normalize() + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
         candidatas = df_despesas_raw[
             (df_despesas_raw.get(col_map_desp_raw.get("despesa"), pd.Series(dtype=str)) == "S")
             & (df_despesas_raw.get(col_map_desp_raw.get("placaveiculo")) == placa_viagem)
-            & (df_despesas_raw[data_col].between(data_inicio_janela, data_fim_janela))
+            & (df_despesas_raw[data_col] >= data_ini_cmp)
+            & (df_despesas_raw[data_col] <= data_fim_cmp)
             & (~df_despesas_raw.get(cod_item_col, pd.Series(dtype=int)).isin(ids_excluidos))
             & (~df_despesas_raw.get(cod_item_col, pd.Series(dtype=int)).isin(ids_associados_em_qualquer_viagem))
         ].copy().sort_values(by=data_col)
@@ -4180,7 +5858,11 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
     "data_viagem": _dict_get_ci(viagem_data, "dataViagemMotorista", "dataviagemmotorista"),
     "placa_veiculo": placa_viagem,
     "motorista": _dict_get_ci(viagem_data, "nomeMotorista", "nomemotorista"),
-    "numero_nota": _dict_get_ci(viagem_data, "numNotaNF", "numnotanf", default="N/A"),
+    "numero_nota": (
+        _dict_get_ci(viagem_data, "numNotaNF", "numnotanf", "nfe_numero_notaxml")
+        or _dict_get_ci(fat_data, "numNotaNF", "numnotanf")
+        or "—"
+    ),
     "filial": _dict_get_ci(viagem_data, "nomeFilial", "nomefilial")
         or _dict_get_ci(fat_data, "nomeFilial", "nomefilial", default="N/A"),
     "unidade_embarque": _dict_get_ci(viagem_data, "nomeUnidEmb", "nomeunidembarque", default="N/A"),
@@ -4196,6 +5878,12 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
     "km_rodado": km_comissao["km_rodado"],
     "comissao_perc": km_comissao["comissao_perc"],
     "valor_base_comissao": km_comissao["valor_base_comissao"],
+    "valor_comissao_calculada": km_comissao.get("valor_comissao_calculada", comissao_motorista),
+    "fretemotorista_bruto": dre_previa.get("fretemotorista_bruto", 0),
+    "composicao_motorista": [] if modo_proprietario else dre_previa.get("composicao_motorista", []),
+    "modo_proprietario": modo_proprietario,
+    "valor_quebra_bruto": dre_previa.get("valor_quebra_bruto", valor_quebra),
+    "pedagio_embutido_motorista": dre_previa.get("pedagio_embutido_motorista", "N"),
     "frete_bruto": frete_bruto,
     "frete_empresa_bruto": frete_empresa_bruto,
     "permite_faturar": dre_previa.get("permite_faturar", True),
@@ -4225,6 +5913,13 @@ def get_relatorio_viagem_data(apartamento_id: int, numero: int, dias_janela: int
     "despesas_detalhadas": despesas_detalhadas_formatado,
     "total_custos": total_custos_final, "total_despesas": total_despesas,
     "lucro_prejuizo_valor": lucro, "margem_valor": margem,
-    "despesas_sugeridas": despesas_sugeridas
+    "tipo_frete": dre_previa.get("tipo_frete")
+        or str(_dict_get_ci(viagem_data, "tipoFrete", "tipofrete", default="") or "").strip().upper(),
+    "tipo_frete_label": dre.label_tipofrete_relatorio(
+        dre_previa.get("tipo_frete")
+        or _dict_get_ci(viagem_data, "tipoFrete", "tipofrete", default="")
+    ),
+    "despesas_sugeridas": despesas_sugeridas,
+    "periodo_sugestao_despesas": periodo_sugestao,
 }
     return _sanitize_for_json(relatorio)

@@ -20,9 +20,16 @@ dump_toc.txt
 # Outros
 .DS_Store
 .cursor/
+dist/
+build/
+runtime/
+installer/
+pgdata/
 scripts/_tmp_*
 scripts/_*_out.txt
 scripts/_nginx*.tmp
 scripts/_painel_index.html
 scripts/_server_*.js
 scripts/_server_*.py
+dev/debian_mirror/tenants/
+dev/debian_mirror/manifest.json

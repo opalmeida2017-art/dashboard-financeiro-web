@@ -1,0 +1,71 @@
+{# Corpo carregado via /api/fluxo_viagem_body (async) ou no servidor #}
+{% from "dashboards/fluxo_viagem_rail_macros.html" import flux_mdfe_viagem_block %}
+
+{% for row in rows %}
+<article class="fluxo-vehicle-card {% if row.sem_viagem_periodo %}fluxo-row-empty{% endif %}"
+    {% if row.precisa_coletar_comprovante %}data-precisa-coleta="1" data-numeros="{{ row.numeros_coleta_comprovante|join(',') }}"{% endif %}>
+    <header class="fluxo-vehicle-card-head">
+        {% if modo == 'lista' %}
+        <a class="fluxo-placa-link" href="{{ url_for('main.fluxo_viagem', start_date=selected_start_date, end_date=selected_end_date, placa=row.placa, historico=1) }}">
+            <strong class="fluxo-placa">{{ row.placa }}</strong>
+        </a>
+        {% if row.data_dia and row.data_dia != '—' %}
+        <span class="fluxo-dia-badge" title="Data viagem motorista do CT-e">{{ row.data_dia }}</span>
+        {% endif %}
+        {% else %}
+        <strong class="fluxo-placa">{{ row.placa }}</strong>
+        {% if row.labels.mdfe_numero and row.labels.mdfe_numero != '—' %}
+        <span class="fluxo-mdfe-badge" title="MDF-e">MDF-e {{ row.labels.mdfe_numero }}</span>
+        {% endif %}
+        <span class="fluxo-dia-badge" title="Data viagem motorista do CT-e">{{ row.data_dia }}</span>
+        {% endif %}
+        <span class="fluxo-motorista">{{ row.motorista }}</span>
+        <span class="fluxo-descarga-badge {% if row.status_comprovante_descarga == 'arquivo_ok' %}fluxo-descarga-badge--ok{% elif row.precisa_coletar_comprovante %}fluxo-descarga-badge--warn{% else %}fluxo-descarga-badge--muted{% endif %}"
+            title="Comprovante de descarga">{{ row.linha_descarga }}</span>
+        {% if row.ultima_movimentacao_fmt %}
+        <span class="fluxo-emissao">Última movimentação: {{ row.ultima_movimentacao_fmt }}</span>
+        {% elif modo == 'lista' %}
+        <span class="fluxo-emissao fluxo-emissao--muted">Última movimentação: —</span>
+        {% endif %}
+        {% if row.data_viagem_motorista_fmt %}
+        <span class="fluxo-emissao fluxo-emissao--motorista">Dt. motorista: {{ row.data_viagem_motorista_fmt }}</span>
+        {% endif %}
+        {% if row.lista_ctes_detalhe and row.qtd_ctes > 1 %}
+        <span class="fluxo-viagem-meta">MDF-e · <strong>{{ row.qtd_ctes }} CT-es</strong> · Ordens: <strong>{{ row.labels.ordem or '—' }}</strong></span>
+        {% elif row.lista_ctes_detalhe and row.qtd_ctes == 1 %}
+        <span class="fluxo-viagem-meta">Ordens: <strong>{{ row.labels.ordem or '—' }}</strong> · CT-e: <strong>{{ row.labels.cte }}</strong></span>
+        {% endif %}
+        {% if modo == 'historico' and row.lista_numeros %}
+        <span class="fluxo-relatorios">
+            {% for num in row.lista_numeros %}
+            <a class="fluxo-link-relatorio" href="#" data-numero="{{ num }}">Rel. {{ loop.index }} ↗</a>
+            {% endfor %}
+        </span>
+        {% elif row.numero and modo == 'historico' %}
+        <a class="fluxo-link-relatorio" href="#" data-numero="{{ row.numero }}">Relatório da viagem ↗</a>
+        {% endif %}
+    </header>
+    {{ flux_mdfe_viagem_block(row) }}
+</article>
+{% else %}
+<div class="fluxo-empty">
+    {% if selected_comprovante_filtro != 'todos' or selected_mdfe_filtro != 'todos' %}
+    Nenhuma viagem corresponde aos filtros selecionados.
+    {% elif modo == 'historico' %}
+    Nenhuma movimentação para esta placa no período.
+    {% else %}
+    Nenhum MDF-e no período {{ selected_start_date | replace('-', '/') }} — {{ selected_end_date | replace('-', '/') }}.
+    Verifique as datas (use o último dia do mês em Fim, ex.: 30/06) ou atualize o banco SATI.
+    {% endif %}
+</div>
+{% endfor %}
+
+{% if rows or selected_comprovante_filtro != 'todos' or selected_mdfe_filtro != 'todos' %}
+<p class="fluxo-footnote" id="fluxo-footnote">
+    {% if modo == 'historico' %}
+    {{ rows | length }} viagem(ns) para {{ placa_historico }}{% if (selected_comprovante_filtro != 'todos' or selected_mdfe_filtro != 'todos') and total_antes_filtro_comprovante > (rows | length) %} (de {{ total_antes_filtro_comprovante }} no período){% endif %}.
+    {% else %}
+    {{ rows | length }} veículo(s){% if (selected_comprovante_filtro != 'todos' or selected_mdfe_filtro != 'todos') and total_antes_filtro_comprovante > (rows | length) %} (de {{ total_antes_filtro_comprovante }} na frota){% endif %}.
+    {% endif %}
+</p>
+{% endif %}

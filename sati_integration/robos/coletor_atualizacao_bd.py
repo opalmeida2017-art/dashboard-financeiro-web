@@ -3,14 +3,15 @@
 import os
 import re
 import sys
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core import logic
 from app.data import database as db
 from app.data import data_manager as dm
-from sati_integration.robos from sati_integration.robos from sati_integration.robos import sati_db_restore as sati_restore
-import robos.base_robo as base_robo
+from sati_integration.robos import base_robo
+from sati_integration.robos import sati_db_restore as sati_restore
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.action_chains import ActionChains
 
@@ -87,8 +88,13 @@ def executar_atualizacao_bd_sati(apartamento_id: int):
             )
 
         dm.clear_data_cache(apartamento_id)
+        from app.data.bi_snapshot import invalidate_snapshot, enqueue_rebuild_bi_snapshot
+
+        invalidate_snapshot(apartamento_id)
         sati_restore.processar_arquivo_zip_sati(zip_path, apartamento_id=apartamento_id)
         dm.clear_data_cache(apartamento_id)
+        gen = zip_path.stem or datetime.now().strftime("%Y%m%d%H%M%S")
+        enqueue_rebuild_bi_snapshot(apartamento_id, gen)
 
         db.logar_progresso(apartamento_id, "ATUALIZAÇÃO DO BANCO SATI CONCLUÍDA.")
         return True
@@ -98,8 +104,9 @@ def executar_atualizacao_bd_sati(apartamento_id: int):
         return False
     finally:
         if driver:
-            db.logar_progresso(apartamento_id, "Fechando o navegador.")
-            driver.quit()
+            from sati_integration.robos.chrome_cleanup import encerrar_driver_chrome
+
+            encerrar_driver_chrome(driver, apartamento_id)
 
 
 if __name__ == "__main__":

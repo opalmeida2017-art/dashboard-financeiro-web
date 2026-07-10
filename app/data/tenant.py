@@ -47,6 +47,13 @@ def default_transportadora_id() -> int:
 def get_transportadora_id() -> int:
     """ID da transportadora desta instalação (uma por servidor/.exe)."""
     try:
+        from infra.tenant_licensing.bi_tenant_runtime import _biweb_multi_tenant_ativo
+
+        if _biweb_multi_tenant_ativo():
+            return default_transportadora_id()
+    except Exception:
+        pass
+    try:
         from flask import has_request_context
         from flask_login import current_user
 
@@ -55,7 +62,16 @@ def get_transportadora_id() -> int:
                 current_user, "transportadora_id", None
             )
             if aid is not None:
-                return int(aid)
+                tid = int(aid)
+                try:
+                    with db.engine.connect() as conn:
+                        if conn.execute(
+                            text("SELECT id FROM apartamentos WHERE id = :id"),
+                            {"id": tid},
+                        ).first():
+                            return tid
+                except Exception:
+                    pass
     except Exception:
         pass
     return default_transportadora_id()

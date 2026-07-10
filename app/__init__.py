@@ -1,6 +1,7 @@
 # BIWEB — painel de gestão de transporte (100% Web / SaaS)
 
 import os
+import sys
 
 from app.utils.env_loader import load_env
 
@@ -91,6 +92,30 @@ def create_app() -> Flask:
         )
 
     @app.before_request
+    def biweb_validar_slug_entrada():
+        """Bloqueia /biweb/<slug>/ inválido (teste6, transportes-brasil-ltda, etc.)."""
+        from infra.tenant_licensing.bi_tenant_context import tenant_slug_registrado
+        from infra.tenant_licensing.bi_tenant_runtime import (
+            _biweb_multi_tenant_ativo,
+            _path_entrada_tenant,
+            resolve_tenant_slug_from_request,
+        )
+
+        if not _biweb_multi_tenant_ativo():
+            return
+        if request.endpoint in ("static",) or (request.path or "").startswith("/static/"):
+            return
+        if not _path_entrada_tenant(request):
+            return
+        slug = resolve_tenant_slug_from_request(request)
+        if not slug:
+            return
+        if tenant_slug_registrado(slug):
+            return
+        session.pop("bi_tenant_slug", None)
+        return render_template("auth/tenant_nao_encontrado.html"), 404
+
+    @app.before_request
     def biweb_require_tenant_link():
         from infra.tenant_licensing.bi_tenant_runtime import (
             _biweb_multi_tenant_ativo,
@@ -114,7 +139,10 @@ def create_app() -> Flask:
     @app.before_request
     def biweb_switch_tenant():
         try:
-            from infra.tenant_licensing.bi_tenant_context import set_tenant
+            from infra.tenant_licensing.bi_tenant_context import (
+                set_tenant,
+                tenant_slug_registrado,
+            )
             from infra.tenant_licensing.bi_tenant_runtime import (
                 apply_tenant_env,
                 resolve_tenant_slug_from_request,
@@ -122,14 +150,32 @@ def create_app() -> Flask:
             from app.data.database import switch_engine_for_request
 
             slug = resolve_tenant_slug_from_request(request)
+            slug_da_url = bool(slug)
             if not slug:
                 slug = (session.get("bi_tenant_slug") or "").strip().lower() or None
             if not slug:
                 return
-            session["bi_tenant_slug"] = slug
             set_tenant(slug)
-            if apply_tenant_env(slug):
-                switch_engine_for_request()
+            if not apply_tenant_env(slug):
+                if slug_da_url:
+                    session.pop("bi_tenant_slug", None)
+                    if not tenant_slug_registrado(slug):
+                        return render_template("auth/tenant_nao_encontrado.html"), 404
+                return
+            session["bi_tenant_slug"] = slug
+            switch_engine_for_request()
+            tid = ensure_transportadora()
+            ensure_local_admin(tid)
+            try:
+                from flask_login import current_user, logout_user
+
+                if current_user.is_authenticated:
+                    u_apt = getattr(current_user, "apartamento_id", None)
+                    if u_apt is not None and int(u_apt) != int(tid):
+                        logout_user()
+                try_auto_login()
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -169,6 +215,7 @@ def create_app() -> Flask:
             pass
 
     _iniciar_monitor_ocioso(app)
+    _iniciar_limpeza_chrome_zumbi(app)
     return app
 
 
@@ -206,6 +253,49 @@ def _iniciar_monitor_ocioso(app: Flask) -> None:
     sched.add_job(_tick, "interval", minutes=intervalo, id="biweb_idle_monitor")
     sched.start()
     _idle_scheduler = sched
+
+
+_chrome_scheduler = None
+
+
+def _iniciar_limpeza_chrome_zumbi(app: Flask) -> None:
+    """Agendador periódico: mata Chrome/chromedriver órfãos no Debian."""
+    global _chrome_scheduler
+    if _chrome_scheduler is not None:
+        return
+    if not sys.platform.startswith("linux"):
+        return
+    if os.getenv("BIWEB_CHROME_CLEANUP", "true").lower() in ("0", "false", "no", "off"):
+        return
+    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        return
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+    except ImportError:
+        return
+
+    try:
+        intervalo = max(5, int(os.getenv("BIWEB_CHROME_CLEANUP_MINUTES", "15")))
+    except ValueError:
+        intervalo = 15
+
+    def _tick():
+        with app.app_context():
+            try:
+                from sati_integration.robos.chrome_cleanup import (
+                    limpar_chrome_orfaos,
+                    limpar_perfis_antigos,
+                )
+
+                limpar_chrome_orfaos()
+                limpar_perfis_antigos()
+            except Exception as exc:
+                print(f"[chrome-cleanup] {exc}")
+
+    sched = BackgroundScheduler(daemon=True)
+    sched.add_job(_tick, "interval", minutes=intervalo, id="biweb_chrome_cleanup")
+    sched.start()
+    _chrome_scheduler = sched
 
 
 app = create_app()

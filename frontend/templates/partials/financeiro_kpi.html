@@ -1,0 +1,15 @@
+{# KPIs A pagar / A receber — principal até ontem; vencimento futuro discreto #}
+{% set fp = summary.financeiro_pagar if summary and summary.financeiro_pagar is defined else {} %}
+{% set fr = summary.financeiro_receber if summary and summary.financeiro_receber is defined else {} %}
+<div class="kpi-mini financeiro-kpi financeiro-kpi--compact" style="margin-bottom:0.5rem;box-shadow:none;">
+    <button type="button" class="audit-btn-mini" data-audit-metric="contas_pagar" title="Auditar contas a pagar">⊕</button>
+    <span class="financeiro-kpi-label">A pagar</span>
+    <strong class="financeiro-kpi-valor financeiro-kpi-valor--pagar">{{ (fp.total_periodo if fp else summary.saldo_contas_a_pagar_pendentes) | currency }}</strong>
+    <small class="financeiro-kpi-futuro">Vencimento futuro: {{ (fp.futuro if fp else 0) | currency }}</small>
+</div>
+<div class="kpi-mini financeiro-kpi financeiro-kpi--compact" style="margin-bottom:0.5rem;box-shadow:none;">
+    <button type="button" class="audit-btn-mini" data-audit-metric="contas_receber" title="Auditar contas a receber">⊕</button>
+    <span class="financeiro-kpi-label">A receber</span>
+    <strong class="financeiro-kpi-valor financeiro-kpi-valor--receber">{{ (fr.total_periodo if fr else summary.saldo_contas_a_receber_pendentes) | currency }}</strong>
+    <small class="financeiro-kpi-futuro">Vencimento futuro: {{ (fr.futuro if fr else 0) | currency }}</small>
+</div>

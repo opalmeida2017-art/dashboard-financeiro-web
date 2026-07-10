@@ -1,0 +1,118 @@
+{# Macros de trilha — incluído por fluxo_viagem.html #}
+{% macro flux_rail(anim, row, extra_class='', doc_numeros=None) %}
+<div class="flux-track {{ extra_class }}"
+     data-truck-percent="{{ anim.truck_percent }}"
+     data-truck-index="{{ anim.truck_index }}"
+     data-truck-on-top="{{ '1' if anim.truck_on_top else '0' }}"
+     data-pula-nfe="{{ '1' if anim.pula_nfe else '0' }}">
+    <div class="flux-track-rail-wrap {% if anim.truck_on_top %}flux-track-rail-wrap--elevated{% endif %} {% if anim.mdfe_encerrado %}flux-track-rail-wrap--finished{% endif %}">
+        {% if anim.truck_on_top %}
+        <div class="flux-truck-lane" aria-hidden="false">
+            <div class="flux-truck flux-truck--on-top" style="left: 0%" role="img" aria-label="Posição no fluxo">
+                <span class="flux-truck-icon" aria-hidden="true">🚛</span>
+            </div>
+        </div>
+        {% endif %}
+        <div class="flux-track-rail">
+            <div class="flux-track-fill" style="width: 0%"></div>
+            {% if not anim.truck_on_top %}
+            <div class="flux-truck flux-truck--on-rail" style="left: 0%" role="img" aria-label="Posição no fluxo">
+                <span class="flux-truck-icon" aria-hidden="true">🚛</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="flux-track-nodes">
+            {% for stage in anim.stages %}
+            {% if stage.id == 'documento_descarga' and doc_numeros is not none %}
+            <button type="button"
+                class="flux-node flux-node--doc flux-node--{{ stage.state }} flux-node-doc-btn
+                {% if loop.index0 == anim.truck_index and not anim.truck_on_top %}flux-node--active{% endif %}"
+                data-numeros="{{ doc_numeros|join(',') }}"
+                title="{{ stage.label }} — clique para ver o documento">
+                <span class="flux-node-dot flux-node-dot--icon" aria-hidden="true">{{ stage.icon or '📄' }}</span>
+                <span class="flux-node-label">{{ stage.short }}</span>
+                {% if stage.detail %}
+                <span class="flux-node-detail flux-node-detail--doc">{{ stage.detail }}</span>
+                {% elif stage.state != 'done' %}
+                <span class="flux-node-detail flux-node-detail--doc">Pendente</span>
+                {% endif %}
+            </button>
+            {% else %}
+            <div class="flux-node flux-node--{{ stage.state }}
+                {% if anim.pula_nfe and stage.id == 'nfe_emitida' %}flux-node--bypassed{% endif %}
+                {% if loop.index0 == anim.truck_index and not anim.truck_on_top %}flux-node--active{% endif %}
+                {% if loop.index0 == anim.truck_index and anim.truck_on_top %}flux-node--active flux-node--goal{% endif %}"
+                 title="{{ stage.label }}{% if stage.detail %}: {{ stage.detail }}{% endif %}">
+                {% if stage.get('dual_status') %}
+                <div class="flux-dual-status">
+                    <span class="flux-dual-status-item {% if stage.sem_ordem %}flux-dual-status-item--on flux-dual-status-item--alert{% endif %}">Sem ordem</span>
+                    <span class="flux-dual-status-item {% if stage.ordem_emitida %}flux-dual-status-item--on flux-dual-status-item--ok{% endif %}">Ordem emitida</span>
+                </div>
+                {% else %}
+                <span class="flux-node-dot"></span>
+                {% endif %}
+                <span class="flux-node-label">{{ stage.short }}</span>
+                {% if stage.detail and stage.id == 'pedagio_emitido' %}
+                <span class="flux-node-detail flux-node-detail--multi flux-node-detail--pedagio">{{ stage.detail }}</span>
+                {% elif stage.detail and stage.id != 'ordem_carregamento' and stage.state == 'done' %}
+                <span class="flux-node-detail">{{ stage.detail }}</span>
+                {% elif stage.detail and stage.id == 'ordem_carregamento' and stage.ordem_emitida %}
+                <span class="flux-node-detail flux-node-detail--multi">Nº {{ stage.detail }}</span>
+                {% elif stage.detail and stage.state != 'done' and stage.id in ('cte_autorizado', 'nfe_emitida') %}
+                <span class="flux-node-detail flux-node-detail--sub">{{ stage.detail }}</span>
+                {% endif %}
+                {% if stage.get('detail_sub') %}
+                <span class="flux-node-detail flux-node-detail--sub">{{ stage.detail_sub }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% if anim.is_mdfe_track %}
+        {% if anim.mdfe_encerrado %}
+        <p class="flux-track-hint flux-track-hint--ok">MDF-e encerrado — viagem concluída.</p>
+        {% elif anim.truck_on_top %}
+        <p class="flux-track-hint flux-track-hint--ok">MDF-e autorizado — aguardando encerramento.</p>
+        {% endif %}
+    {% elif anim.is_subtrack and anim.pula_nfe %}
+    <p class="flux-track-hint flux-track-hint--sub">CT-e emitido — NFE ainda não vinculada nesta trilha.</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro flux_mdfe_viagem_block(row) %}
+<div class="flux-mdfe-block">
+    {% for trilha in row.ctes_trilhas %}
+    <div class="flux-cte-subtrack-row">
+        <div class="flux-cte-subtrack-head">
+            <span class="flux-cte-subtrack-label">CT-e</span>
+            <strong class="flux-cte-subtrack-num">{{ trilha.titulo }}</strong>
+            {% if trilha.contexto and trilha.contexto.linha %}
+            <span class="flux-cte-subtrack-ctx">{{ trilha.contexto.linha }}</span>
+            {% endif %}
+        </div>
+        {{ flux_rail(trilha.flux_anim, row, 'flux-track--sub', trilha.doc_numeros if trilha.doc_numeros else none) }}
+    </div>
+    {% endfor %}
+    <div class="flux-mdfe-track-row">
+        <div class="flux-mdfe-track-head">
+            <span class="flux-mdfe-track-label">Manifesto MDF-e</span>
+            {% if row.labels.mdfe_numero and row.labels.mdfe_numero != '—' %}
+            <strong>{{ row.labels.mdfe_numero }}</strong>
+            {% endif %}
+            {% if row.km_carregado_fmt or row.km_vazio_fmt %}
+            <span class="flux-mdfe-track-km">
+                {% if row.km_carregado_fmt %}KM carregado: {{ row.km_carregado_fmt }}{% endif %}
+                {% if row.km_carregado_fmt and row.km_vazio_fmt %} · {% endif %}
+                {% if row.km_vazio_fmt %}KM vazio: {{ row.km_vazio_fmt }}{% endif %}
+            </span>
+            {% endif %}
+            {% if row.qtd_ctes > 1 %}
+            <span class="flux-mdfe-track-qtd">{{ row.qtd_ctes }} CT-es</span>
+            {% endif %}
+        </div>
+        {{ flux_rail(row.flux_anim, row, 'flux-track--mdfe', none) }}
+    </div>
+</div>
+{% endmacro %}

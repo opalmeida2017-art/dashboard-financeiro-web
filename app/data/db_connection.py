@@ -29,7 +29,13 @@ class _EngineHolder:
         if self._engine is None or self._url != url:
             if self._engine is not None:
                 self._engine.dispose()
-            self._engine = create_engine(url)
+            self._engine = create_engine(
+                url,
+                connect_args={
+                    "client_encoding": "utf8",
+                    "options": "-c client_encoding=UTF8",
+                },
+            )
             self._url = url
         return self._engine
 

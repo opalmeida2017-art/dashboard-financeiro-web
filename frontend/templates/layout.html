@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=cache_buster) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css', v=cache_buster) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='print.css', v=cache_buster) }}" media="print">
 </head>
 <body class="biweb-app">
     <nav class="navbar navbar-expand-lg navbar-dark biweb-navbar no-print">
@@ -70,9 +71,40 @@
 
     <div id="biAuditModal" class="modal no-print">
         <div class="modal-content" style="max-width: 960px;">
-            <span class="close-button">&times;</span>
-            <h2 id="bi-audit-title">Auditoria</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                <h2 id="bi-audit-title" style="margin:0;">Auditoria</h2>
+                <div style="display:flex;gap:0.5rem;align-items:center;">
+                    <button type="button" class="tb-btn" data-print-audit title="Imprimir esta auditoria">🖨 Imprimir</button>
+                    <span class="close-button" style="position:static;">&times;</span>
+                </div>
+            </div>
             <div id="bi-audit-body" class="bi-audit-body"></div>
+        </div>
+    </div>
+
+    <div id="inconsistenciasModal" class="modal no-print">
+        <div class="modal-content bi-inconsist-modal-content">
+            <div class="bi-inconsist-modal-head">
+                <h2 id="inconsistencias-title" style="margin:0;">Inconsistências do banco</h2>
+                <div class="bi-inconsist-modal-actions">
+                    <button type="button" class="tb-btn" data-print-inconsistencias title="Imprimir relatório">🖨 Imprimir</button>
+                    <span class="close-button" style="position:static;">&times;</span>
+                </div>
+            </div>
+            <div id="inconsistencias-body" class="bi-inconsist-modal-body"></div>
+        </div>
+    </div>
+
+    <div id="margemAnaliseModal" class="modal no-print">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                <h2 id="margem-analise-title" style="margin:0;">Análise geral da margem</h2>
+                <div style="display:flex;gap:0.5rem;align-items:center;">
+                    <button type="button" class="tb-btn" data-print-margem-analise title="Imprimir análise">🖨 Imprimir</button>
+                    <span class="close-button" style="position:static;">&times;</span>
+                </div>
+            </div>
+            <div id="margem-analise-body" class="bi-margem-modal-body"></div>
         </div>
     </div>
 
@@ -102,6 +134,7 @@
             <span class="close-button">&times;</span>
             <h2>Gerenciar Grupos de Despesa</h2>
             <p><strong>itemnota.ved</strong> define o fluxo: <strong>D</strong> → diversos (Tipo D); <strong>V</strong> / <strong>E</strong> → despesa (padrão) ou custo se alterar o grupo.</p>
+            <p class="text-muted" style="font-size:.9rem;margin-top:.5rem;"><strong>VALOR QUEBRA</strong> e <strong>COMISSÃO DE MOTORISTA</strong> não aparecem aqui — entram na DRE do CT-e (conhecimento), não por classificação de grupo.</p>
             <form method="POST" action="{{ url_for('main.gerenciar_grupos_salvar') }}">
                 <div id="manageGroupsTableContainer"></div>
                 <button type="submit" class="btn-salvar">Salvar Alterações</button>
@@ -134,12 +167,21 @@
     })();
     </script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/relatorioViagem.js', v=cache_buster) }}"></script>
     <script src="{{ url_for('static', filename='js/biAudit.js', v=cache_buster) }}"></script>
+    <script src="{{ url_for('static', filename='js/biInconsistencias.js', v=cache_buster) }}"></script>
+    <script src="{{ url_for('static', filename='js/biMargemAnalise.js', v=cache_buster) }}"></script>
 
     {% block scripts %}{% endblock %}
 
     <script class="no-print">
         document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('[data-print-a4]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    window.print();
+                });
+            });
+
             let lastHeartbeatTime = 0;
             const heartbeatInterval = 30000;
 

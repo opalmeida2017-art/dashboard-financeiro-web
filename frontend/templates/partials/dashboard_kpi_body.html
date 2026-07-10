@@ -1,0 +1,197 @@
+{# KPIs + gráfico + painel lateral — carregado no servidor ou via /api/dashboard_body #}
+{% if summary %}
+{% set custo_operacional = summary.custo_total_viagem + summary.total_despesas_gerais + summary.total_despesas_tipo_d %}
+{% set num_ctes = summary.qtd_ctes if summary.qtd_ctes is defined else (summary.faturamento_conhecimentos | length if summary.faturamento_conhecimentos else 0) %}
+{% set cmp = summary.comparativo if summary.comparativo else none %}
+{% set meta_st = summary.meta_margem_status if summary.meta_margem_status else none %}
+
+<section class="kpi-hero">
+    <div class="kpi-card kpi-receita">
+        <button type="button" class="audit-btn" data-audit-metric="receita_frete" title="Auditar CT-es desta receita">⊕</button>
+        <div class="kpi-label">Receita de frete</div>
+        <div class="kpi-value" style="color: var(--accent);">{{ summary.faturamento_total_viagens | currency }}</div>
+        <div class="kpi-hint">{{ num_ctes }} viagem(ns) no período</div>
+        {% if cmp and cmp.receita %}
+        <div class="kpi-delta kpi-delta-{{ cmp.receita.tone }}">{{ cmp.receita.label }} vs período ant.</div>
+        {% endif %}
+    </div>
+    <div class="kpi-card kpi-custo">
+        <button type="button" class="audit-btn" data-audit-metric="custo_operacional" title="Auditar composição dos custos">⊕</button>
+        <div class="kpi-label">Custos operacionais</div>
+        <div class="kpi-value" style="color: var(--warning);">{{ custo_operacional | currency }}</div>
+        <div class="kpi-hint">Prévia CT-e + notas + tipo D</div>
+        {% if cmp and cmp.custo %}
+        <div class="kpi-delta kpi-delta-{{ cmp.custo.tone }}">{{ cmp.custo.label }} vs período ant.</div>
+        {% endif %}
+    </div>
+    <div class="kpi-card kpi-resultado">
+        <button type="button" class="audit-btn" data-audit-metric="resultado_liquido" title="Auditar composição do resultado">⊕</button>
+        <div class="kpi-label">Resultado líquido</div>
+        <div class="kpi-value" style="color: {% if summary.saldo_geral >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+            {{ summary.saldo_geral | currency }}
+        </div>
+        <div class="kpi-hint">Receita − custos</div>
+        {% if cmp and cmp.resultado %}
+        <div class="kpi-delta kpi-delta-{{ cmp.resultado.tone }}">{{ cmp.resultado.label }} vs período ant.</div>
+        {% endif %}
+    </div>
+    <div class="kpi-card kpi-margem">
+        <button type="button" class="audit-btn" data-audit-metric="margem_frete" title="Auditar margem">⊕</button>
+        <div class="kpi-label">Margem sobre frete</div>
+        <div class="kpi-value" style="color: {% if summary.margem_frete >= 0 %}var(--success){% else %}var(--danger){% endif %};">
+            {{ summary.margem_frete | percentage }}
+        </div>
+        <div class="kpi-hint">
+            Lucro / receita
+            {% if meta_st and meta_st.label %}
+            · <span class="kpi-meta kpi-meta-{{ meta_st.tone }}">{{ meta_st.label }}</span>
+            {% endif %}
+        </div>
+        {% if cmp and cmp.margem %}
+        <div class="kpi-delta kpi-delta-{{ cmp.margem.tone }}">{{ cmp.margem.label }} vs período ant.</div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="kpi-secondary">
+    <div class="kpi-mini">
+        <span>Custo por CT-e</span>
+        <strong style="color: var(--warning);">{{ (summary.custo_por_cte or 0) | currency }}</strong>
+        <small class="kpi-mini-hint">Custos operacionais ÷ {{ num_ctes }} CT-e(s)</small>
+        {% if cmp and cmp.custo_por_cte %}
+        <small class="kpi-delta kpi-delta-{{ cmp.custo_por_cte.tone }}">{{ cmp.custo_por_cte.label }} vs ant.</small>
+        {% endif %}
+    </div>
+    <div class="kpi-mini">
+        <span>Ticket médio</span>
+        <strong style="color: var(--accent);">{{ (summary.ticket_medio or 0) | currency }}</strong>
+        <small class="kpi-mini-hint">Receita frete ÷ {{ num_ctes }} CT-e(s)</small>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="custo_viagem" title="Auditar custo de viagem">⊕</button>
+        <span>Custo de viagem</span>
+        <strong style="color: var(--warning);">{{ summary.custo_total_viagem | currency }}</strong>
+        <small class="kpi-mini-hint">Prévia CT-e {{ summary.custo_previa_conhecimento | currency }} + notas {{ summary.custo_nota_itemnota | currency }}</small>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="despesas_gerais" title="Auditar despesas gerais">⊕</button>
+        <span>Despesas gerais</span>
+        <strong style="color: var(--danger);">{{ summary.total_despesas_gerais | currency }}</strong>
+        <small class="kpi-mini-hint">Somente notas com despesa=S</small>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="despesas_tipo_d" title="Auditar despesas tipo D">⊕</button>
+        <span>{% if placa_filtrada %}Tipo D (rateado){% else %}Despesas tipo D{% endif %}</span>
+        <strong style="color: var(--purple);">{{ summary.total_despesas_tipo_d | currency }}</strong>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="receita_comercio" title="Auditar receita comércio">⊕</button>
+        <span>Receita comércio</span>
+        <strong style="color: var(--accent);">{{ summary.receita_comercio | currency }}</strong>
+        <small class="kpi-mini-hint">COMERCIO · despesa=N · tiponfe=0 · tipo=0</small>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="despesa_comercio" title="Auditar despesa comércio">⊕</button>
+        <span>Despesa comércio</span>
+        <strong style="color: var(--danger);">{{ summary.despesa_comercio | currency }}</strong>
+        <small class="kpi-mini-hint">COMERCIO · despesa=S · tiponfe=0</small>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="investimento" title="Auditar investimentos">⊕</button>
+        <span>Investimento</span>
+        <strong style="color: #0d9488;">{{ summary.total_investimento | currency }}</strong>
+        <small class="kpi-mini-hint">Item investimento=S · já compõe custos operacionais</small>
+    </div>
+    <div class="kpi-mini">
+        <button type="button" class="audit-btn-mini" data-audit-metric="investimento_estoque" title="Auditar investimento em estoque">⊕</button>
+        <span>Investimento estoque</span>
+        <strong style="color: #0891b2;">{{ summary.total_investimento_estoque | currency }}</strong>
+        <small class="kpi-mini-hint">Saldo × custo · posição atual · não entra na despesa</small>
+    </div>
+</section>
+
+<div class="dash-main-grid">
+    <section class="dash-chart-card chart-pro" id="secao-grafico">
+        <div class="chart-pro-head">
+            <div>
+                <h2>Receita vs. despesas</h2>
+                <p class="chart-desc">Comparativo do período filtrado — mesma base dos KPIs.</p>
+            </div>
+            <div class="chart-legend-pills" id="dashboard-chart-audit-pills">
+                <button type="button" class="chart-pill audit-chart-pill receita" data-audit-metric="receita_frete" title="Auditar receita"><span class="audit-chart-icon">⊕</span>Receita</button>
+                <button type="button" class="chart-pill audit-chart-pill custo" data-audit-metric="custo_viagem" title="Auditar custo viagem"><span class="audit-chart-icon">⊕</span>Custo viagem</button>
+                <button type="button" class="chart-pill audit-chart-pill geral" data-audit-metric="despesas_gerais" title="Auditar despesa geral"><span class="audit-chart-icon">⊕</span>Despesa geral</button>
+                <button type="button" class="chart-pill audit-chart-pill tipod" data-audit-metric="despesas_tipo_d" title="Auditar tipo D"><span class="audit-chart-icon">⊕</span>Tipo D</button>
+            </div>
+            <p class="chart-audit-hint">Clique na legenda ou em uma barra do gráfico para auditar os lançamentos.</p>
+        </div>
+        <div class="chart-wrap chart-wrap-lg">
+            <canvas id="faturamentoDespesasChart"></canvas>
+        </div>
+    </section>
+
+    <aside class="dash-side-panel">
+        <div class="side-card">
+            <h3>Análises</h3>
+            <a class="side-link" href="{{ url_for('main.visao_comercial') }}?{{ query_string }}">
+                <span class="icon purple">💼</span>
+                <span>Visão comercial</span>
+            </a>
+            <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='financeira') }}?{{ query_string }}">
+                <span class="icon red">💰</span>
+                <span>Visão financeira</span>
+            </a>
+            <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='frota') }}?{{ query_string }}">
+                <span class="icon blue">🚛</span>
+                <span>Visão de frota</span>
+            </a>
+            <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='operacional') }}?{{ query_string }}">
+                <span class="icon green">📋</span>
+                <span>Visão operacional</span>
+            </a>
+            <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='estrategica') }}?{{ query_string }}">
+                <span class="icon purple">🎯</span>
+                <span>Cruzamentos estratégicos</span>
+            </a>
+        </div>
+        <div class="side-card">
+            <h3>Exploratório</h3>
+            <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='volume') }}?{{ query_string }}">
+                <span class="icon blue">📈</span>
+                <span>Visão volume</span>
+            </a>
+            <a class="side-link" href="{{ url_for('main.visao_bi', visao_key='custos') }}?{{ query_string }}">
+                <span class="icon red">📉</span>
+                <span>Estrutura de custos</span>
+            </a>
+        </div>
+        <div class="side-card">
+            <h3>Financeiro</h3>
+            {% include 'partials/financeiro_kpi.html' %}
+            <button type="button" id="btn-auditoria-despesas" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                <span class="icon red">🔍</span>
+                <span>Auditoria de despesas</span>
+            </button>
+            <button type="button" id="btn-analise-margem-geral" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                <span class="icon blue">📊</span>
+                <span>Análise geral</span>
+            </button>
+            <button type="button" id="btn-inconsistencias-banco" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                <span class="icon orange">⚠</span>
+                <span>Inconsistências do banco</span>
+            </button>
+        </div>
+        <div class="side-card">
+            <h3>Viagens</h3>
+            <a class="side-link" href="{{ url_for('main.fluxo_viagem') }}">
+                <span class="icon purple">🛣️</span>
+                <span>Fluxo de viagem</span>
+            </a>
+            <button type="button" id="btn-ctes-relatorios" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                <span class="icon green">🚚</span>
+                <span>Ver CT-es e relatórios</span>
+            </button>
+        </div>
+    </aside>
+</div>
+{% endif %}

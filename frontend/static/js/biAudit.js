@@ -8,6 +8,13 @@
         return safe.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     }
 
+    function fmtPeriodoBr(ini, fim, sep = " → ") {
+        if (window.BIWEBCharts?.fmtPeriodoBr) {
+            return window.BIWEBCharts.fmtPeriodoBr(ini, fim, sep);
+        }
+        return `${ini || "—"}${sep}${fim || "—"}`;
+    }
+
     function getPageParams() {
         const params = new URLSearchParams(window.location.search);
         if (!params.get("start_date") || !params.get("end_date")) {
@@ -27,6 +34,17 @@
         return params;
     }
 
+    function lucroToneClass(val) {
+        const n = Number(val);
+        if (!Number.isFinite(n) || n === 0) return "rel-tone-neutral";
+        return n < 0 ? "rel-tone-neg" : "rel-tone-pos";
+    }
+
+    function relatorioBtnHtml(numero, toneValue) {
+        const tone = lucroToneClass(toneValue);
+        return `<button type="button" class="bi-audit-rel-btn ${tone}" data-numero="${numero}" title="Relatório da viagem">↗</button>`;
+    }
+
     function renderTableCte(linhas, metric) {
         if (!linhas || !linhas.length) {
             return "";
@@ -38,6 +56,7 @@
                 const excluido =
                     l.receita === 0 && l.frete_empresa_bruto > 0 && metric === "receita_frete";
                 const flags = `fat ${l.permite_faturar || "—"} / pag ${l.pagarConhecimento || "—"}`;
+                const lucroRef = Number(l.lucro != null ? l.lucro : (l.receita || 0) - (l.custo_previa || 0));
                 return `<tr class="${excluido ? "bi-audit-row-muted" : ""}">
                     <td>${l.display || l.numero}</td>
                     <td>${l.cliente || "—"}</td>
@@ -46,7 +65,7 @@
                     ${showCusto ? `<td class="text-end">${fmtMoeda(l.custo_previa)}</td>` : ""}
                     <td class="small text-muted">${flags}</td>
                     <td class="text-center">
-                        <button type="button" class="bi-audit-rel-btn" data-numero="${l.numero}" title="Relatório da viagem">↗</button>
+                        ${relatorioBtnHtml(l.numero, lucroRef)}
                     </td>
                 </tr>`;
             })
@@ -76,15 +95,20 @@
             return "";
         }
         const financeiro = metric === "contas_pagar" || metric === "contas_receber";
+        const isPagar = metric === "contas_pagar";
         const estoque = metric === "investimento_estoque";
         const rows = linhas
             .map((l) => {
                 if (financeiro) {
-                    return `<tr>
+                    const vencido = l.status === "Vencido";
+                    const parceiro = isPagar ? (l.fornecedor || "—") : (l.cliente || "—");
+                    return `<tr class="${vencido ? "bi-audit-row-vencido" : ""}">
                         <td>${l.documento || "—"}</td>
+                        <td>${parceiro}</td>
                         <td>${l.vencimento || "—"}</td>
+                        <td>${l.status || "—"}</td>
                         <td>${l.filial || "—"}</td>
-                        <td class="text-end">${fmtMoeda(l.valor)}</td>
+                        <td class="text-end ${vencido ? "text-danger fw-semibold" : ""}">${fmtMoeda(l.valor)}</td>
                     </tr>`;
                 }
                 if (estoque) {
@@ -99,6 +123,7 @@
                 return `<tr>
                     <td>${l.nota || l.codnota || "—"}</td>
                     <td class="small">${l.cod_itemnota != null ? l.cod_itemnota : "—"}</td>
+                    <td>${l.fornecedor || "—"}</td>
                     <td>${l.data || "—"}</td>
                     <td>${l.grupo || "—"}</td>
                     <td class="small">${l.item || "—"}</td>
@@ -110,13 +135,16 @@
             .join("");
 
         if (financeiro) {
-            return `<h6 class="bi-audit-section-title">Títulos em aberto</h6>
+            const parceiroTh = metric === "contas_pagar" ? "Fornecedor" : "Cliente";
+            return `<h6 class="bi-audit-section-title">Títulos em aberto (venc. até ontem)</h6>
                 <div class="table-responsive bi-audit-table-wrap">
                 <table class="table table-sm table-bordered bi-audit-table">
                     <thead class="table-secondary">
                         <tr>
                             <th>Documento</th>
+                            <th>${parceiroTh}</th>
                             <th>Vencimento</th>
+                            <th>Situação</th>
                             <th>Filial</th>
                             <th class="text-end">Valor</th>
                         </tr>
@@ -151,6 +179,7 @@
                     <tr>
                         <th>Nota</th>
                         <th>Cód. item</th>
+                        <th>Fornecedor</th>
                         <th>Data</th>
                         <th>Grupo</th>
                         <th>Item</th>
@@ -186,7 +215,48 @@
         return parts.length ? `(${parts.join(" · ")})` : "";
     }
 
-    function openBiAudit(metric) {
+    function renderTableMargemCliente(linhas) {
+        if (!linhas || !linhas.length) {
+            return "";
+        }
+        const rows = linhas
+            .map((l) => {
+                const margem = Number(l.margem_pct || 0);
+                const margemCls = lucroToneClass(margem).replace("rel-tone-", "rel-margem-");
+                return `<tr>
+                <td>${l.display || l.numero}</td>
+                <td>${l.data_viagem || "—"}</td>
+                <td class="text-end">${fmtMoeda(l.receita)}</td>
+                <td class="text-end">${fmtMoeda(l.custo_previa)}</td>
+                <td class="text-end ${l.lucro < 0 ? "text-danger" : "text-success"}">${fmtMoeda(l.lucro)}</td>
+                <td class="text-end ${margemCls}">${margem.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</td>
+                <td class="text-center">
+                    ${relatorioBtnHtml(l.numero, margem)}
+                </td>
+            </tr>`;
+            })
+            .join("");
+        return `<h6 class="bi-audit-section-title">CT-es do cliente</h6>
+            <div class="table-responsive bi-audit-table-wrap">
+            <table class="table table-sm table-bordered bi-audit-table">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>CT-e</th>
+                        <th>Data</th>
+                        <th class="text-end">Receita</th>
+                        <th class="text-end">Custo prévia</th>
+                        <th class="text-end">Lucro</th>
+                        <th class="text-end">Margem %</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+    }
+
+    function openBiAudit(metric, drill) {
+        drill = drill || {};
         const modal = document.getElementById("biAuditModal");
         const body = document.getElementById("bi-audit-body");
         if (!modal || !body) return;
@@ -196,6 +266,11 @@
 
         const params = getPageParams();
         params.set("metric", metric);
+        if (drill.cliente) params.set("cliente", drill.cliente);
+        if (drill.rota) params.set("rota", drill.rota);
+        if (drill.periodo) params.set("periodo", drill.periodo);
+        if (drill.numero_cte) params.set("numero_cte", drill.numero_cte);
+        if (drill.placa) params.set("placa", drill.placa);
 
         fetch(`/api/bi_audit?${params.toString()}`)
             .then((r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(e.error || "Erro"))))
@@ -206,14 +281,22 @@
                 }
                 const filtrosTxt = [
                     data.filtros?.start_date && data.filtros?.end_date
-                        ? `${data.filtros.start_date} → ${data.filtros.end_date}`
+                        ? fmtPeriodoBr(data.filtros.start_date, data.filtros.end_date)
                         : "",
+                    data.filtros?.periodo ? `Período: ${data.filtros.periodo}` : "",
+                    data.filtros?.cliente ? `Cliente: ${data.filtros.cliente}` : "",
+                    data.filtros?.rota ? `Rota: ${data.filtros.rota}` : "",
                     data.filtros?.placa && data.filtros.placa !== "Todos" ? `Placa: ${data.filtros.placa}` : "",
                 ]
                     .filter(Boolean)
                     .join(" · ");
 
-                const cteHtml = renderTableCte(data.linhas, data.metric);
+                let cteHtml = "";
+                if (data.metric === "margem_cliente") {
+                    cteHtml = renderTableMargemCliente(data.linhas);
+                } else {
+                    cteHtml = renderTableCte(data.linhas, data.metric);
+                }
                 const notaHtml = renderTableNotas(data.linhas_notas, data.metric);
                 const emptyMsg =
                     !cteHtml && !notaHtml && (!data.resumo || !data.resumo.length)
@@ -226,7 +309,7 @@
                     ${renderResumo(data.resumo)}
                     <div class="bi-audit-total">
                         <span>Total calculado</span>
-                        <strong>${data.metric === "margem_frete" ? Number(data.total_calculado).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%" : fmtMoeda(data.total_calculado)}</strong>
+                        <strong>${data.metric === "margem_frete" || data.metric === "margem_cliente" ? Number(data.total_calculado).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%" : fmtMoeda(data.total_calculado)}</strong>
                         <span class="small text-muted">${countLabel(data)}</span>
                     </div>
                     ${cteHtml}
@@ -235,6 +318,15 @@
                 `;
                 const titleEl = modal.querySelector("#bi-audit-title");
                 if (titleEl) titleEl.textContent = data.titulo;
+                if (drill.printAfterLoad) {
+                    document.body.classList.add("bi-audit-print-mode");
+                    window.setTimeout(function () {
+                        window.print();
+                        window.setTimeout(function () {
+                            document.body.classList.remove("bi-audit-print-mode");
+                        }, 400);
+                    }, 350);
+                }
             })
             .catch((err) => {
                 body.innerHTML = `<p class="text-danger text-center">Erro ao carregar: ${err}</p>`;
@@ -264,6 +356,17 @@
         document.addEventListener("keydown", (e) => {
             if (e.key === "Escape" && modal.style.display === "block") closeBiAuditModal();
         });
+        const printBtn = modal.querySelector("[data-print-audit]");
+        if (printBtn) {
+            printBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                document.body.classList.add("bi-audit-print-mode");
+                window.print();
+                window.setTimeout(function () {
+                    document.body.classList.remove("bi-audit-print-mode");
+                }, 400);
+            });
+        }
     }
 
     bindBiAuditModal();
@@ -281,11 +384,12 @@
         const relBtn = event.target.closest(".bi-audit-rel-btn");
         if (relBtn && relBtn.dataset.numero) {
             event.preventDefault();
+            event.stopPropagation();
             const numero = relBtn.dataset.numero;
             if (typeof window.BIWEB_openRelatorioViagem === "function") {
                 window.BIWEB_openRelatorioViagem(numero);
             } else {
-                window.open("/api/relatorio_viagem/" + encodeURIComponent(numero), "_blank");
+                window.location.href = "/report/viagem/" + encodeURIComponent(numero);
             }
         }
     });
@@ -372,19 +476,58 @@
         return DEFAULT_CHART_AUDIT_PILLS;
     }
 
-    function bindChartSegmentAudit(chart, labelToMetric) {
-        if (!chart || !chart.canvas || !labelToMetric) return;
+    function bindChartDrill(chart, config) {
+        if (!chart || !chart.canvas) return;
+        const metrics = (config && config.metrics) || {};
+        const drill = (config && config.drill) || {};
+        const labelValues = (config && config.labelValues) || chart.data.labels || [];
+        const mode = (config && config.mode) || drill.kind || "";
+
         chart.options.onClick = (evt, elements) => {
             if (!elements || !elements.length) return;
-            const ds = chart.data.datasets[elements[0].datasetIndex];
-            const metric = labelToMetric[ds.label];
-            if (metric) openBiAudit(metric);
+            const el = elements[0];
+            const ds = chart.data.datasets[el.datasetIndex];
+            const dsLabel = (ds && ds.label) || "";
+            const label = labelValues[el.index] || chart.data.labels[el.index] || "";
+
+            if (/margem\s*%/i.test(dsLabel) || drill.margin_metric) {
+                openBiAudit(drill.margin_metric || "margem_cliente", {
+                    cliente: label,
+                    printAfterLoad: true,
+                });
+                return;
+            }
+
+            let metric = metrics[dsLabel];
+            if (!metric) return;
+
+            const opts = {};
+            if (mode === "period" || drill.kind === "period") {
+                opts.periodo = label;
+            } else if (drill.kind === "cliente") {
+                opts.cliente = label;
+            } else if (drill.kind === "rota") {
+                opts.rota = label;
+            } else if (drill.kind === "placa") {
+                opts.placa = label;
+            } else if (/^CT-e\s/i.test(String(label))) {
+                const m = String(label).match(/(\d+)/);
+                if (m) opts.numero_cte = m[1];
+            }
+
+            openBiAudit(metric, opts);
         };
         chart.options.onHover = (evt, elements) => {
             chart.canvas.style.cursor = elements && elements.length ? "pointer" : "default";
         };
         chart.update();
     }
+
+    function bindChartSegmentAudit(chart, labelToMetric) {
+        bindChartDrill(chart, { metrics: labelToMetric });
+    }
+
+    window.BIWEB_bindChartDrill = bindChartDrill;
 
     window.BIWEB_renderChartAuditPills = renderChartAuditPills;
     window.BIWEB_resolveChartAuditPills = resolveChartAuditPills;

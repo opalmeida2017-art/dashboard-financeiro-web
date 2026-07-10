@@ -37,6 +37,60 @@ def _safe_ts(col_expr: str) -> str:
     END"""
 
 
+def _date_range_clause(col_expr: str) -> str:
+    """Filtro opcional por período (:start_date/:end_date NULL = sem filtro)."""
+    col = _safe_ts(col_expr)
+    return f"""
+        AND (:start_date IS NULL OR ({col})::date >= CAST(:start_date AS date))
+        AND (:end_date IS NULL OR ({col})::date <= CAST(:end_date AS date))"""
+
+
+_DATE_VIAGEM = _date_range_clause("c.dataviagemmotorista")
+_DATE_NOTA = _date_range_clause("n.data")
+_DATE_VENC_PAGAR = _date_range_clause("dp.datavencimento")
+_DATE_VENC_RECEBER = _date_range_clause("dr.datavencimento")
+
+
+def _proprietario_filter_conhecimento(c_alias: str = "c", v_alias: str = "v") -> str:
+    return (
+        f"AND (:cod_proprietario IS NULL OR "
+        f"{c_alias}.codproprietario = :cod_proprietario OR "
+        f"{v_alias}.codproprietario = :cod_proprietario)"
+    )
+
+
+def _proprietario_filter_itemnota() -> str:
+    """Despesas (itemnota): só codproprietario do item — nota não tem essa coluna no SATI."""
+    return (
+        "AND (:cod_proprietario IS NULL OR "
+        "i.codproprietario = :cod_proprietario)"
+    )
+
+
+def _proprietario_filter_acerto_duplicata(schema: str, dup_alias: str) -> str:
+    """Contas ligadas ao proprietário via acertoproprietario (SATI)."""
+    return f"""
+        AND (
+            :cod_proprietario IS NULL
+            OR EXISTS (
+                SELECT 1 FROM {schema}.acertoproprietario ap
+                WHERE ap.codacertoproprietario = {dup_alias}.codacertoproprietario
+                  AND ap.codproprietario = :cod_proprietario
+            )
+        )"""
+
+
+# Tabelas relFil* que aceitam pushdown de período no SQL (contas usam janela financeira própria).
+SATI_TABLES_PERIOD_FILTER = frozenset(
+    {
+        "relFilViagensCliente",
+        "relFilViagensFatCliente",
+        "relFilDespesasGerais",
+        "relFilAcertoMot",
+    }
+)
+
+
 def _filial_label(alias: str = "f") -> str:
     return (
         f"TRIM(CAST(CAST({alias}.codfilial AS INTEGER) AS TEXT)) || ' - ' || "
@@ -82,10 +136,53 @@ def query_embarcadores_cadastro(schema: str = "c3332") -> str:
     """
 
 
-def query_fluxo_viagem(schema: str = "c3332") -> str:
-    """Fluxo operacional diário: ordem, CT-e, averbação, CIOT, pedágio, MDF-e."""
+def query_fluxo_viagem(schema: str = "c3332", *, incluir_km_vazio: bool = True) -> str:
+    """Fluxo operacional diário: ordem, CT-e, averbação, CIOT, pedágio, MDF-e.
+
+    Km vazio = kmini(atual) − kmfim(viagem anterior) no mesmo veículo.
+    incluir_km_vazio=True também tenta fallback em manif.kmvazio (coluna do patch).
+    """
     emissao = _safe_ts("c.data")
     emissao_oc = _safe_ts("oc.data")
+    join_km_vazio = f"""
+            LEFT JOIN LATERAL (
+                SELECT c_prev.kmfim::numeric AS prev_kmfim
+                FROM {schema}.conhecimento c_prev
+                WHERE c_prev.codveiculo = c.codveiculo
+                  AND c_prev.cancelado IS DISTINCT FROM 'S'
+                  AND c_prev.kmfim IS NOT NULL
+                  AND (
+                    c_prev.dataviagemmotorista < c.dataviagemmotorista
+                    OR (
+                      c_prev.dataviagemmotorista IS NOT DISTINCT FROM c.dataviagemmotorista
+                      AND c_prev.numero < c.numero
+                    )
+                  )
+                ORDER BY c_prev.dataviagemmotorista DESC NULLS LAST, c_prev.numero DESC
+                LIMIT 1
+            ) lag_km ON TRUE
+"""
+    if incluir_km_vazio:
+        col_km_vazio = """
+                CASE
+                    WHEN c.kmini IS NOT NULL
+                     AND lag_km.prev_kmfim IS NOT NULL
+                     AND c.kmini::numeric > lag_km.prev_kmfim
+                    THEN (c.kmini::numeric - lag_km.prev_kmfim)
+                    ELSE NULLIF(mf.kmvazio, 0)
+                END AS km_vazio,"""
+        sel_km_vazio_lateral = ",\n                       m.kmvazio"
+    else:
+        # Sem coluna manif.kmvazio: só o cálculo entre conhecimentos
+        col_km_vazio = """
+                CASE
+                    WHEN c.kmini IS NOT NULL
+                     AND lag_km.prev_kmfim IS NOT NULL
+                     AND c.kmini::numeric > lag_km.prev_kmfim
+                    THEN (c.kmini::numeric - lag_km.prev_kmfim)
+                    ELSE NULL
+                END AS km_vazio,"""
+        sel_km_vazio_lateral = ""
     return f"""
         WITH base AS (
             SELECT
@@ -95,6 +192,10 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 mot.nome AS motorista,
                 {emissao} AS emissao,
                 {_safe_ts("c.dataviagemmotorista")} AS data_viagem_motorista,
+                COALESCE(c.kmini, mf.kmini) AS km_inicial,
+                COALESCE(c.kmfim, mf.kmfim) AS km_final,
+                NULLIF(c.kmrodado, 0) AS km_rodado,
+                mf.kmprevisto AS km_previsto,
                 oc.numero AS num_ordem,
                 oc.emitida AS nfe_emitida,
                 c.codordemcar,
@@ -131,12 +232,55 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 mfe.prot_encerramento AS mdfe_prot_encerramento,
                 COALESCE(mf_dados.tem_doc_manifesto, 0) AS tem_documento,
                 doc_cte.nomearq_descarga_cte,
-                mf.codmanif
+                cli.nome AS nomecliente,
+                rem.nome AS nome_remetente,
+                TRIM(COALESCE(co.nome, '')) || CASE WHEN co.uf IS NOT NULL AND TRIM(co.uf) <> '' THEN ' - ' || TRIM(co.uf) ELSE '' END AS cidorigemformat,
+                TRIM(COALESCE(cd.nome, '')) || CASE WHEN cd.uf IS NOT NULL AND TRIM(cd.uf) <> '' THEN ' - ' || TRIM(cd.uf) ELSE '' END AS ciddestinoformat,
+                mf.codmanif,
+                {col_km_vazio}
+                nfe_xml.nfe_notaxml_ok,
+                nfe_xml.nfe_numero_notaxml
             FROM {schema}.conhecimento c
             LEFT JOIN {schema}.conhecimentoadic ad ON ad.numero = c.numero
             LEFT JOIN {schema}.veiculo v ON v.codveiculo = c.codveiculo
             LEFT JOIN {schema}.motorista mot ON mot.codmotorista = c.codmotorista
             LEFT JOIN {schema}.ordemcar oc ON oc.codordemcar = c.codordemcar
+            LEFT JOIN {schema}.cliente cli ON cli.codcliente = c.codcliente
+            LEFT JOIN {schema}.cliente rem ON rem.codcliente = c.codremetente
+            LEFT JOIN {schema}.cidade co ON co.codcidade = c.codcidadeorigem
+            LEFT JOIN {schema}.cidade cd ON cd.codcidade = c.codcidadedestino
+            {join_km_vazio}
+            LEFT JOIN LATERAL (
+                SELECT
+                    'S' AS nfe_notaxml_ok,
+                    NULLIF(TRIM(
+                        COALESCE(
+                            CASE
+                                WHEN COALESCE(TRIM(nx.serie::text), '') <> ''
+                                THEN TRIM(nx.serie::text) || '/' || TRIM(nx.numeronota::text)
+                                ELSE NULLIF(TRIM(nx.numeronota::text), '')
+                            END,
+                            CASE
+                                WHEN COALESCE(TRIM(cn_nfe.serie::text), '') <> ''
+                                THEN TRIM(cn_nfe.serie::text) || '/' || TRIM(cn_nfe.numeronota::text)
+                                ELSE NULLIF(TRIM(cn_nfe.numeronota::text), '')
+                            END
+                        )
+                    ), '') AS nfe_numero_notaxml
+                FROM {schema}.conhecimentonota cn_nfe
+                LEFT JOIN {schema}.notaxml nx
+                    ON TRIM(cn_nfe.chavenfe::text) = TRIM(nx.chavenfe::text)
+                    AND (nx.tipoes IS NULL OR UPPER(TRIM(nx.tipoes::text)) = 'T')
+                WHERE cn_nfe.numero = c.numero
+                  AND (
+                    NULLIF(TRIM(cn_nfe.chavenfe::text), '') IS NOT NULL
+                    OR NULLIF(TRIM(cn_nfe.numeronota::text), '') IS NOT NULL
+                  )
+                ORDER BY
+                    CASE WHEN nx.chavenfe IS NOT NULL THEN 0 ELSE 1 END,
+                    cn_nfe.datadigitacao DESC NULLS LAST
+                LIMIT 1
+            ) nfe_xml ON TRUE
             LEFT JOIN LATERAL (
                 SELECT
                     MAX(NULLIF(TRIM(c2.ciot::text), '')) AS ciot_do_manifesto,
@@ -165,7 +309,8 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
             ) doc_cte ON TRUE
             LEFT JOIN LATERAL (
                 SELECT m.mdfechave, m.mdfestatus, m.mdfeprot, m.numeromdfe, m.seriemdfe,
-                       m.codmanif, m.datafinalizacao, m.valorpedagio, m.pedagioembfretemot
+                       m.codmanif, m.datafinalizacao, m.valorpedagio, m.pedagioembfretemot,
+                       m.kmini, m.kmfim, m.kmprevisto{sel_km_vazio_lateral}
                 FROM {schema}.manifconhecimento mc
                 INNER JOIN {schema}.manif m ON m.codmanif = mc.codmanif
                 WHERE mc.numero = c.numero
@@ -192,6 +337,10 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 mot.nome AS motorista,
                 {emissao_oc} AS emissao,
                 NULL::timestamp AS data_viagem_motorista,
+                NULL::numeric AS km_inicial,
+                NULL::numeric AS km_final,
+                NULL::numeric AS km_rodado,
+                NULL::numeric AS km_previsto,
                 oc.numero AS num_ordem,
                 oc.emitida AS nfe_emitida,
                 oc.codordemcar,
@@ -205,7 +354,14 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
                 NULL::timestamp, NULL::varchar,
                 0 AS tem_documento,
                 NULL::varchar AS nomearq_descarga_cte,
-                NULL::integer AS codmanif
+                NULL::varchar AS nomecliente,
+                NULL::varchar AS nome_remetente,
+                NULL::varchar AS cidorigemformat,
+                NULL::varchar AS ciddestinoformat,
+                NULL::integer AS codmanif,
+                NULL::numeric AS km_vazio,
+                NULL::varchar AS nfe_notaxml_ok,
+                NULL::varchar AS nfe_numero_notaxml
             FROM {schema}.ordemcar oc
             LEFT JOIN {schema}.veiculo v ON v.codveiculo = oc.codveiculo
             LEFT JOIN {schema}.motorista mot ON mot.codmotorista = oc.codmotorista
@@ -219,10 +375,10 @@ def query_fluxo_viagem(schema: str = "c3332") -> str:
         SELECT *
         FROM base
         WHERE 1=1
-          AND (:start_date IS NULL OR emissao >= :start_date)
-          AND (:end_date IS NULL OR emissao <= :end_date)
+          AND (:start_date IS NULL OR COALESCE(data_viagem_motorista, emissao) >= :start_date)
+          AND (:end_date IS NULL OR COALESCE(data_viagem_motorista, emissao) <= :end_date)
           {_FILIAL_FILTER_CONHECIMENTO.replace('c.codfilial', 'codfilial')}
-        ORDER BY emissao DESC NULLS LAST, placa NULLS LAST
+        ORDER BY COALESCE(data_viagem_motorista, emissao) DESC NULLS LAST, placa NULLS LAST
     """
 
 
@@ -239,6 +395,11 @@ def _query_viagens(schema: str) -> str:
             c.fretemotorista,
             c.comissao,
             c.valorquebra,
+            c.outrosdescontosmot,
+            c.outrosdescontosmot2,
+            c.pedagioembfretemot AS "pedagioEmbFretMot",
+            c.descsegurosaldomot AS "descSeguroSaldoMot",
+            c.valorpedagiomot AS "valorPedagioMot",
             c.permitefaturar,
             c.pagar AS "pagarConhecimento",
             c.kmini,
@@ -259,6 +420,8 @@ def _query_viagens(schema: str) -> str:
             c.codunidadeembarque AS "codUnidadeEmb",
             {_unidade_embarque_label("c.codunidadeembarque")} AS nomeunidembarque,
             c.codembarcador AS "codEmbarcador",
+            c.codproprietario AS "codProp",
+            c.codproprietario AS "codProprietario",
             emb.nome AS nomeembarcador,
             c.codveiculo,
             v.placa AS placaveiculo,
@@ -270,7 +433,8 @@ def _query_viagens(schema: str) -> str:
             mer.descricao AS descricaomercadoria,
             c.pesosaida,
             TRIM(COALESCE(co.nome, '')) || CASE WHEN co.uf IS NOT NULL AND TRIM(co.uf) <> '' THEN ' - ' || TRIM(co.uf) ELSE '' END AS cidorigemformat,
-            TRIM(COALESCE(cd.nome, '')) || CASE WHEN cd.uf IS NOT NULL AND TRIM(cd.uf) <> '' THEN ' - ' || TRIM(cd.uf) ELSE '' END AS ciddestinoformat
+            TRIM(COALESCE(cd.nome, '')) || CASE WHEN cd.uf IS NOT NULL AND TRIM(cd.uf) <> '' THEN ' - ' || TRIM(cd.uf) ELSE '' END AS ciddestinoformat,
+            nfe_xml.nfe_numero_notaxml AS "numNotaNF"
         FROM {schema}.conhecimento c
         LEFT JOIN {schema}.veiculo v ON v.codveiculo = c.codveiculo
         LEFT JOIN {schema}.filial f ON f.codfilial = c.codfilial
@@ -281,8 +445,39 @@ def _query_viagens(schema: str) -> str:
         LEFT JOIN {schema}.mercadoria mer ON mer.codmercadoria = c.codmercadoria
         LEFT JOIN {schema}.cidade co ON co.codcidade = c.codcidadeorigem
         LEFT JOIN {schema}.cidade cd ON cd.codcidade = c.codcidadedestino
+        LEFT JOIN LATERAL (
+            SELECT NULLIF(TRIM(
+                COALESCE(
+                    CASE
+                        WHEN COALESCE(TRIM(nx.serie::text), '') <> ''
+                        THEN TRIM(nx.serie::text) || '/' || TRIM(nx.numeronota::text)
+                        ELSE NULLIF(TRIM(nx.numeronota::text), '')
+                    END,
+                    CASE
+                        WHEN COALESCE(TRIM(cn_nfe.serie::text), '') <> ''
+                        THEN TRIM(cn_nfe.serie::text) || '/' || TRIM(cn_nfe.numeronota::text)
+                        ELSE NULLIF(TRIM(cn_nfe.numeronota::text), '')
+                    END
+                )
+            ), '') AS nfe_numero_notaxml
+            FROM {schema}.conhecimentonota cn_nfe
+            LEFT JOIN {schema}.notaxml nx
+                ON TRIM(cn_nfe.chavenfe::text) = TRIM(nx.chavenfe::text)
+                AND (nx.tipoes IS NULL OR UPPER(TRIM(nx.tipoes::text)) = 'T')
+            WHERE cn_nfe.numero = c.numero
+              AND (
+                NULLIF(TRIM(cn_nfe.chavenfe::text), '') IS NOT NULL
+                OR NULLIF(TRIM(cn_nfe.numeronota::text), '') IS NOT NULL
+              )
+            ORDER BY
+                CASE WHEN nx.chavenfe IS NOT NULL THEN 0 ELSE 1 END,
+                cn_nfe.datadigitacao DESC NULLS LAST
+            LIMIT 1
+        ) nfe_xml ON TRUE
         WHERE c.cancelado IS DISTINCT FROM 'S'
         {_FILIAL_FILTER_CONHECIMENTO}
+        {_DATE_VIAGEM}
+        {_proprietario_filter_conhecimento("c")}
     """
 
 
@@ -301,6 +496,8 @@ def _query_viagens_fat(schema: str) -> str:
             c.valorquebra,
             c.codfilial,
             c.codembarcador AS "codEmbarcador",
+            c.codproprietario AS "codProp",
+            c.codproprietario AS "codProprietario",
             emb.nome AS nomeembarcador,
             v.placa AS placaveiculo,
             {_filial_label("f")} AS nomefilial,
@@ -312,6 +509,8 @@ def _query_viagens_fat(schema: str) -> str:
         LEFT JOIN {schema}.cliente cli ON cli.codcliente = c.codcliente
         WHERE c.cancelado IS DISTINCT FROM 'S'
         {_FILIAL_FILTER_CONHECIMENTO}
+        {_DATE_VIAGEM}
+        {_proprietario_filter_conhecimento("c")}
     """
 
 
@@ -347,7 +546,10 @@ def _query_despesas(schema: str) -> str:
             ng.descricao AS descnegocio,
             i.codnota AS "codNota",
             i.codfornecedor AS codforn,
+            TRIM(COALESCE(forn.nome, '')) AS nomefornecedor,
             i.codacertomotorista,
+            COALESCE(i.codproprietario, v.codproprietario) AS "codProprietario",
+            i.codacertoproprietario AS "codAcertoProprietario",
             i.valor,
             i.custototal,
             it.descricao AS descitemd
@@ -358,11 +560,14 @@ def _query_despesas(schema: str) -> str:
         LEFT JOIN {schema}.grupo g ON g.codgrupo = it.codgrupo
         LEFT JOIN {schema}.veiculo v ON v.codveiculo = COALESCE(i.codveiculo, n.codveiculo)
         LEFT JOIN {schema}.filial f ON f.codfilial = n.codfilial
+        LEFT JOIN {schema}.fornecedor forn ON forn.codfornecedor = i.codfornecedor
         LEFT JOIN {schema}.unidadeembarque ue ON ue.codunidadeembarque = n.codunidadeembarque
         LEFT JOIN {schema}.negocio ng
             ON ng.codnegocio = COALESCE(i.codnegocio, it.codnegocio)
         WHERE 1=1
         {_FILIAL_FILTER_NOTA}
+        {_DATE_NOTA}
+        {_proprietario_filter_itemnota()}
     """
 
 
@@ -395,6 +600,7 @@ def _query_contas_pagar(schema: str) -> str:
             i.codinterno AS "codItemNota",
             dp.codduplicatapagar,
             dp.codtransacao,
+            dp.codacertoproprietario AS "codAcertoProprietario",
             i.liquido AS liquidoitemnota,
             dp.valorvencimento,
             dp.datapagamento,
@@ -403,10 +609,12 @@ def _query_contas_pagar(schema: str) -> str:
             n.serie,
             n.numeronota AS numnota,
             n.codfornecedor AS codforn,
+            TRIM(COALESCE(forn.nome, '')) AS nomefornecedor,
             {_filial_label("f")} AS nomefilial
         FROM {schema}.itemnota i
         INNER JOIN {schema}.nota n ON n.codnota = i.codnota
         LEFT JOIN {schema}.filial f ON f.codfilial = n.codfilial
+        LEFT JOIN {schema}.fornecedor forn ON forn.codfornecedor = n.codfornecedor
         LEFT JOIN {schema}.duplicatapagar dp
             ON dp.codnota = n.codnota
             AND dp.codfornecedor = n.codfornecedor
@@ -414,6 +622,7 @@ def _query_contas_pagar(schema: str) -> str:
             AND dp.serie = n.serie
         WHERE 1=1
         {_FILIAL_FILTER_NOTA}
+        {_proprietario_filter_acerto_duplicata(schema, "dp")}
     """
 
 
@@ -423,6 +632,7 @@ def _query_contas_receber(schema: str) -> str:
             :apartamento_id AS apartamento_id,
             dr.codduplicatareceber,
             dr.codtransacao,
+            dr.codacertoproprietario AS "codAcertoProprietario",
             dr.valorvencimento AS valorvenc,
             dr.valorpagamento AS valorpagto,
             dr.datavencimento AS datavenc,
@@ -430,9 +640,13 @@ def _query_contas_receber(schema: str) -> str:
             dr.datavencimento AS dataemissao,
             dr.codfatura,
             dr.parcela,
-            dr.codbaixa
+            dr.codbaixa,
+            TRIM(COALESCE(cli.nome, '')) AS nomecliente
         FROM {schema}.duplicatareceber dr
+        LEFT JOIN {schema}.fatura fat ON fat.codfatura = dr.codfatura
+        LEFT JOIN {schema}.cliente cli ON cli.codcliente = fat.codcliente
         WHERE 1=1
+        {_proprietario_filter_acerto_duplicata(schema, "dr")}
     """
 
 
@@ -468,6 +682,8 @@ def _query_acerto_motorista(schema: str) -> str:
         LEFT JOIN {schema}.veiculo v ON v.codveiculo = c.codveiculo
         WHERE c.cancelado IS DISTINCT FROM 'S'
         {_FILIAL_FILTER_CONHECIMENTO}
+        {_DATE_VIAGEM}
+        {_proprietario_filter_conhecimento("c")}
     """
 
 
@@ -510,6 +726,57 @@ SATI_TABLE_MAP = {
 }
 
 # Tabelas public.* do BIWEB que não vêm do dump SATI (criar com migration 6 ou sql/criar_tabelas_biweb_apartamento.sql)
+def query_nfe_pendentes_cte(schema: str = "c3332") -> str:
+    """
+    NFe de transporte (notaxml.tipoes='T') sem CT-e emitido:
+    chave da NFe ausente em conhecimento (via conhecimentonota).
+    """
+    data_nfe = _safe_ts("nx.data")
+    return f"""
+        SELECT
+            nx.codnotaxml,
+            nx.nsu,
+            nx.chavenfe,
+            nx.numeronota,
+            nx.serie,
+            {data_nfe} AS data_nfe,
+            nx.tipoes,
+            nx.status,
+            nx.sitnfe,
+            nx.destnome,
+            nx.clientenome,
+            TRIM(nx.nome) AS emitente_nome,
+            TRIM(nx.clientenome) AS remetente_nome,
+            TRIM(nx.destnome) AS destino_nome,
+            NULLIF(TRIM(
+                (regexp_match(nx.xml::text, '<xProd>([^<]+)</xProd>'))[1]
+            ), '') AS mercadoria_nome,
+            nx.valor,
+            nx.codfilial,
+            COALESCE(
+                NULLIF(TRIM(UPPER(nx.placa::text)), ''),
+                NULLIF(TRIM(UPPER(v.placa::text)), ''),
+                'SEM PLACA'
+            ) AS placa
+        FROM {schema}.notaxml nx
+        LEFT JOIN {schema}.veiculo v ON v.codveiculo = nx.codveiculo
+        WHERE nx.tipoes = 'T'
+          AND nx.chavenfe IS NOT NULL
+          AND TRIM(nx.chavenfe::text) <> ''
+          AND NOT EXISTS (
+              SELECT 1
+              FROM {schema}.conhecimento c
+              INNER JOIN {schema}.conhecimentonota cn ON cn.numero = c.numero
+              WHERE c.cancelado IS DISTINCT FROM 'S'
+                AND TRIM(cn.chavenfe::text) = TRIM(nx.chavenfe::text)
+          )
+          AND (:start_date IS NULL OR {data_nfe} >= :start_date)
+          AND (:end_date IS NULL OR {data_nfe} <= :end_date)
+          AND (:cod_filial IS NULL OR nx.codfilial = :cod_filial)
+        ORDER BY placa NULLS LAST, {data_nfe} DESC NULLS LAST, nx.chavenfe
+    """
+
+
 BIWEB_APARTAMENTO_TABLES = {
     "apartamentos": ["id", "nome_empresa", "slug", "status", "data_criacao", "data_vencimento", "notas_admin"],
     "usuarios": ["id", "apartamento_id", "email", "password_hash", "nome", "role"],

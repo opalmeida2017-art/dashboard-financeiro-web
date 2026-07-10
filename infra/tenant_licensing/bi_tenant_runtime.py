@@ -170,8 +170,6 @@ def resolve_tenant_slug_from_request(request) -> str | None:
 
 def _biweb_multi_tenant_ativo() -> bool:
     """Debian: exige link /acesso/<slug> ou /biweb/<slug>."""
-    if os.getenv("BIWEB_DESKTOP", "").strip():
-        return False
     flag = os.getenv("BIWEB_REQUIRE_TENANT_LINK", "").strip().lower()
     if flag in ("0", "false", "no", "off"):
         return False

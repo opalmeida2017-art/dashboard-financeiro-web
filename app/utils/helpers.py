@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 
 
@@ -48,6 +48,36 @@ def admin_required(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+def format_date_br(value) -> str:
+    """Exibe data como dd/mm/aaaa (ISO, date, datetime ou já formatada)."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    s = str(value).strip()
+    if not s:
+        return ""
+    if len(s) >= 10 and s[2] == "/" and s[5] == "/":
+        return s[:10]
+    try:
+        part = s.split("T")[0].split(" ")[0]
+        if len(part) >= 10 and part[4] == "-":
+            return datetime.strptime(part[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        pass
+    return s
+
+
+def format_period_br(start, end, sep: str = " → ") -> str:
+    """Intervalo legível: dd/mm/aaaa → dd/mm/aaaa."""
+    a, b = format_date_br(start), format_date_br(end)
+    if a and b:
+        return f"{a}{sep}{b}"
+    return a or b or ""
 
 
 super_admin_required = admin_required

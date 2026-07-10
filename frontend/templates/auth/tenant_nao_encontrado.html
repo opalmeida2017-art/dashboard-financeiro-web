@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transportadora não encontrada — BIWEB</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            background: #0f1419;
+            color: #e7ecf3;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 1.5rem;
+        }
+        .card {
+            max-width: 520px;
+            background: #1a2332;
+            border: 1px solid #2a3548;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 12px 40px rgba(0,0,0,.35);
+        }
+        h1 { font-size: 1.35rem; margin: 0 0 .75rem; }
+        p { color: #9aa8bc; line-height: 1.55; margin: 0; }
+        code {
+            display: block;
+            margin-top: 1rem;
+            padding: .75rem 1rem;
+            background: #0d1117;
+            border-radius: 8px;
+            color: #fca5a5;
+            font-size: .9rem;
+            word-break: break-all;
+        }
+        ul { color: #9aa8bc; margin: 1rem 0 0 1.2rem; padding: 0; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>BI não disponível para este link</h1>
+        <p>
+            O endereço que você abriu não corresponde a uma transportadora ativa no painel.
+            Instâncias de teste antigas podem ter sido removidas.
+        </p>
+        <code>{{ request.path }}</code>
+        <p style="margin-top:1rem;">Use um dos links válidos do painel de licenças, por exemplo:</p>
+        <ul>
+            <li><code>/biweb/wcarlos/</code></li>
+            <li><code>/biweb/rio-bonito/</code></li>
+            <li><code>/biweb/transporte-brasil/</code></li>
+        </ul>
+    </div>
+</body>
+</html>

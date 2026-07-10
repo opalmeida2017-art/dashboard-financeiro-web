@@ -6,7 +6,7 @@ import smtplib
 import tempfile
 from urllib.parse import urlparse
 
-import database_setup as db
+from app.data import database as db
 from ui.relatorio_execucao import salvar_relatorio_excel as salvar_relatorio_notas_excel
 from ui.relatorio_itens import salvar_relatorio_excel as salvar_relatorio_itens_excel
 

@@ -288,6 +288,21 @@ body.biweb-app main.container {
     margin-top: 0.35rem;
 }
 
+.kpi-card .kpi-delta {
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-top: 0.4rem;
+}
+
+.kpi-delta-up { color: var(--success); }
+.kpi-delta-down { color: var(--danger); }
+.kpi-delta-neutral { color: var(--text-muted); }
+
+.kpi-meta { font-weight: 600; }
+.kpi-meta-up { color: var(--success); }
+.kpi-meta-down { color: var(--danger); }
+.kpi-meta-neutral { color: var(--text-muted); }
+
 .kpi-card .kpi-link {
     position: absolute;
     top: 0.75rem;
@@ -411,10 +426,49 @@ body.biweb-app main.container {
     cursor: pointer;
     font-size: 0.9rem;
     padding: 0 0.25rem;
+    font-weight: 600;
+    line-height: 1;
 }
 
-.bi-audit-rel-btn:hover {
-    color: var(--success);
+.bi-audit-rel-btn.rel-tone-pos,
+.bi-audit-rel-btn.rel-margem-pos {
+    color: #22c55e !important;
+}
+
+.bi-audit-rel-btn.rel-tone-neg,
+.bi-audit-rel-btn.rel-margem-neg {
+    color: #dc2626 !important;
+}
+
+.bi-audit-rel-btn.rel-tone-neutral,
+.bi-audit-rel-btn.rel-margem-neutral {
+    color: #2563eb !important;
+}
+
+.bi-audit-rel-btn.rel-tone-pos:hover {
+    color: #16a34a !important;
+}
+
+.bi-audit-rel-btn.rel-tone-neg:hover {
+    color: #b91c1c !important;
+}
+
+.bi-audit-rel-btn.rel-tone-neutral:hover {
+    color: #1d4ed8 !important;
+}
+
+.bi-audit-table .rel-margem-pos {
+    color: #22c55e !important;
+    font-weight: 600;
+}
+
+.bi-audit-table .rel-margem-neg {
+    color: #dc2626 !important;
+    font-weight: 600;
+}
+
+.bi-audit-table .rel-margem-neutral {
+    color: #64748b !important;
 }
 
 .bi-audit-empty {
@@ -658,6 +712,7 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
 .side-link .icon.red { background: var(--danger-soft); }
 .side-link .icon.green { background: var(--success-soft); }
 .side-link .icon.purple { background: #ede9fe; }
+.side-link .icon.orange { background: #ffedd5; }
 
 /* Placa colors */
 .placa-próprio { color: #2563eb; font-weight: 600; }
@@ -723,11 +778,171 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
     padding: 12px;
 }
 
+.bi-inconsist-modal-content {
+    width: min(1280px, calc(100vw - 1.5rem));
+    max-width: min(1280px, calc(100vw - 1.5rem));
+    margin: 1rem auto;
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.bi-inconsist-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.bi-inconsist-modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.bi-inconsist-modal-body {
+    padding: 12px 0 4px;
+    max-height: none;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.bi-inconsist-modal-body .bi-audit-table-wrap,
+.bi-inconsist-modal-body .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.bi-inconsist-modal-body .bi-audit-table {
+    min-width: 720px;
+}
+
+@media (max-width: 768px) {
+    #inconsistenciasModal {
+        padding: 0.35rem;
+        align-items: flex-start;
+    }
+
+    .bi-inconsist-modal-content {
+        width: calc(100vw - 0.7rem);
+        max-width: calc(100vw - 0.7rem);
+        margin: 0.35rem auto;
+        max-height: calc(100vh - 0.7rem);
+        border-radius: 10px;
+        padding: 0.75rem;
+    }
+
+    .bi-inconsist-modal-head h2 {
+        font-size: 1.05rem;
+        line-height: 1.25;
+    }
+
+    .bi-inconsist-modal-body {
+        padding-top: 0.5rem;
+    }
+
+    .bi-inconsist-modal-body .bi-audit-table {
+        min-width: 640px;
+        font-size: 0.78rem;
+    }
+
+    .bi-inconsist-modal-body .bi-audit-table th,
+    .bi-inconsist-modal-body .bi-audit-table td {
+        padding: 0.35rem 0.4rem;
+        white-space: nowrap;
+    }
+
+    .bi-inconsist-secao h5 {
+        font-size: 0.95rem;
+    }
+}
+
 .audit-section {
+    margin-bottom: 1.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 12px;
     background: #f8fafc;
+}
+.bi-inconsist-secao + .bi-inconsist-secao {
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.bi-margem-modal-body {
+    padding: 12px;
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
+.bi-margem-secao + .bi-margem-secao {
+    margin-top: 1.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.bi-margem-resumo {
+    font-size: 0.92rem;
+}
+
+.bi-margem-comentario {
+    color: var(--text-muted, #64748b);
+    border-left: 3px solid var(--border, #cbd5e1);
+    padding-left: 0.65rem;
+}
+
+.bi-margem-duo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+.bi-margem-duo-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+    color: var(--accent, #2563eb);
+}
+
+.bi-margem-quadro-previa {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 1px solid #7dd3fc;
+    border-radius: 8px;
+}
+
+.bi-margem-quadro-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #0369a1;
+    margin-bottom: 0.5rem;
+}
+
+.bi-margem-conclusao {
+    color: #0f172a;
+    background: #f8fafc;
+    border-left: 3px solid #2563eb;
+    padding: 0.4rem 0.65rem;
+    margin-top: 0.5rem;
+}
+
+.bi-margem-verif-table .bi-margem-verif-label {
+    font-weight: 600;
+    width: 42%;
+    vertical-align: top;
+}
+
+@media (max-width: 768px) {
+    .bi-margem-duo-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .audit-group h6 {
@@ -743,6 +958,16 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
     font-size: 0.8rem;
 }
 
+.dash-loading-panel {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px dashed var(--border);
+    margin: 1rem 0;
+}
+
 .dash-empty {
     text-align: center;
     padding: 3rem 1rem;
@@ -750,6 +975,14 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
     background: var(--bg-card);
     border-radius: var(--radius);
     border: 1px dashed var(--border);
+}
+
+.dash-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 1rem;
 }
 
 /* Páginas de análise detalhada */
@@ -1363,6 +1596,172 @@ button.chart-card {
     background: #e0f2fe;
 }
 
+.fluxo-mdfe-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    padding: 0.12rem 0.5rem;
+    border-radius: 4px;
+    background: #dbeafe;
+    border: 1px solid #93c5fd;
+}
+
+.flux-node--cte-group {
+    min-width: 7.5rem;
+    max-width: 11rem;
+}
+
+.flux-ctes-nested {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.35rem;
+    width: 100%;
+    max-height: 5.5rem;
+    overflow-y: auto;
+    padding: 0.2rem 0;
+}
+
+.flux-cte-nested-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.15rem 0.35rem;
+    font-size: 0.5rem;
+    line-height: 1.25;
+    padding: 0.15rem 0.25rem;
+    border-radius: 3px;
+    background: rgba(15, 23, 42, 0.04);
+    text-align: left;
+}
+
+.flux-cte-nested-row--done {
+    border-left: 2px solid #16a34a;
+}
+
+.flux-cte-nested-row--pending {
+    border-left: 2px solid #d97706;
+}
+
+.flux-cte-nested-num {
+    font-weight: 700;
+    color: #0f172a;
+    grid-column: 1 / -1;
+}
+
+.flux-cte-nested-st {
+    color: #475569;
+    font-weight: 600;
+}
+
+.flux-cte-nested-dt {
+    color: #0369a1;
+    font-size: 0.48rem;
+}
+
+.flux-mdfe-block {
+    margin-top: 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fafbfc;
+}
+
+.flux-cte-subtrack-row {
+    padding: 0.55rem 0.75rem 0.45rem;
+    border-bottom: 1px dashed #e2e8f0;
+    background: #fff;
+}
+
+.flux-cte-subtrack-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.78rem;
+}
+
+.flux-cte-subtrack-label {
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.04em;
+}
+
+.flux-cte-subtrack-num {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.flux-cte-subtrack-ctx {
+    color: #475569;
+    font-weight: 500;
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.flux-mdfe-track-row {
+    padding: 0.65rem 0.75rem 0.5rem;
+    background: #f0f9ff;
+}
+
+.flux-mdfe-track-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.82rem;
+    color: #1e3a5f;
+}
+
+.flux-mdfe-track-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+}
+
+.flux-mdfe-track-qtd {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-left: auto;
+}
+
+.flux-mdfe-track-km {
+    font-size: 0.75rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+.flux-track--sub .flux-track-rail {
+    height: 5px;
+}
+
+.flux-track--sub .flux-node {
+    min-width: 3.6rem;
+    max-width: 5rem;
+}
+
+.flux-track--sub .flux-node-label {
+    font-size: 0.58rem;
+}
+
+.flux-track--sub .flux-node-detail {
+    font-size: 0.5rem;
+}
+
+.flux-track--sub .flux-truck-icon {
+    font-size: 0.85rem;
+}
+
+.flux-track-hint--sub {
+    font-size: 0.62rem;
+    margin-top: 0.2rem;
+    opacity: 0.8;
+}
+
 .fluxo-descarga-badge {
     font-size: 0.8rem;
     font-weight: 700;
@@ -1575,6 +1974,22 @@ button.chart-card {
     border-color: #86efac;
 }
 
+.fluxo-loading {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+}
+
+.fluxo-loading-hint {
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+    color: #b45309;
+}
+
+.kpi-mini--warn {
+    border-left: 3px solid #f59e0b;
+}
+
 .btn-apply--secondary {
     background: #e0f2fe;
     color: #0369a1;
@@ -1627,6 +2042,156 @@ button.chart-card {
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
+}
+
+.flux-modal-panel--wide {
+    width: min(1100px, 100%);
+}
+
+.flux-nfe-pendente-resumo {
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+    color: #334155;
+}
+
+.flux-nfe-placa-block {
+    margin-bottom: 1.25rem;
+}
+
+.flux-nfe-placa-title {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+}
+
+.flux-nfe-placa-badge {
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    background: #1e3a5f;
+    color: #fff;
+}
+
+.flux-nfe-placa-qtd {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 600;
+}
+
+.flux-nfe-pendente-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+
+.flux-nfe-pendente-table th,
+.flux-nfe-pendente-table td {
+    border: 1px solid #e2e8f0;
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.flux-nfe-pendente-table th {
+    background: #f1f5f9;
+    font-weight: 700;
+    color: #334155;
+}
+
+.flux-nfe-pendente-table tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+.flux-nfe-chave {
+    font-family: ui-monospace, monospace;
+    font-size: 0.72rem;
+    color: #475569;
+}
+
+.flux-modal-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-apply--sm {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.78rem;
+}
+
+.flux-nfe-pendente-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.flux-nfe-pendente-filtros label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.flux-nfe-pendente-filtros input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    min-width: 7rem;
+}
+
+@media print {
+    body.flux-print-nfe-pendente main.no-print {
+        display: block !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    body.flux-print-nfe-pendente main.no-print > *:not(#flux-modal-nfe-pendente) {
+        display: none !important;
+    }
+    body.flux-print-nfe-pendente #flux-modal-nfe-pendente,
+    body.flux-print-nfe-pendente #flux-modal-nfe-pendente[hidden] {
+        display: block !important;
+        position: static !important;
+        inset: auto !important;
+        padding: 0 !important;
+        z-index: auto !important;
+    }
+    body.flux-print-nfe-pendente .flux-modal-backdrop,
+    body.flux-print-nfe-pendente .no-print,
+    body.flux-print-nfe-pendente .flux-modal-close,
+    body.flux-print-nfe-pendente #btn-nfe-pendente-imprimir,
+    body.flux-print-nfe-pendente .flux-nfe-pendente-filtros {
+        display: none !important;
+    }
+    body.flux-print-nfe-pendente .flux-modal-panel {
+        max-height: none !important;
+        box-shadow: none !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+    }
+    body.flux-print-nfe-pendente .flux-modal-body {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+    body.flux-print-nfe-pendente .flux-nfe-pendente-table {
+        font-size: 8pt;
+    }
+    body.flux-print-nfe-pendente .flux-nfe-pendente-table th,
+    body.flux-print-nfe-pendente .flux-nfe-pendente-table td {
+        border: 1px solid #333 !important;
+        padding: 3px 5px !important;
+    }
 }
 
 .flux-modal-head {
@@ -1739,5 +2304,349 @@ button.chart-card {
     text-decoration: underline;
 }
 
+/* Relatório de viagem — destaques DRE no modal */
+#relatorioViagemModal {
+    z-index: 1100;
+}
+
+#relatorio-body .rel-tipo-frete,
+.rel-viagem-page .rel-tipo-frete {
+    font-weight: 700 !important;
+}
+#relatorio-body .rel-valor-frete,
+.rel-viagem-page .rel-valor-frete {
+    color: #2563eb !important;
+    font-weight: 600 !important;
+}
+#relatorio-body .rel-valor-custo-pot,
+.rel-viagem-page .rel-valor-custo-pot {
+    color: #ea580c !important;
+    font-weight: 600 !important;
+}
+#relatorio-body .rel-lucro-pos,
+.rel-viagem-page .rel-lucro-pos {
+    color: #22c55e !important;
+    font-weight: 700 !important;
+}
+#relatorio-body .rel-lucro-neg,
+.rel-viagem-page .rel-lucro-neg {
+    color: #dc2626 !important;
+    font-weight: 700 !important;
+}
+#relatorio-body .rel-viagem-resumo,
+.rel-viagem-page .rel-viagem-resumo {
+    background: #f8fafc;
+}
+#relatorio-body .rel-resumo-label,
+.rel-viagem-page .rel-resumo-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin-bottom: 0.15rem;
+}
+
 /* legado tabela — oculto se restar referência */
 .fluxo-table-wrap { display: none; }
+
+@media print {
+    body.bi-audit-print-mode nav,
+    body.bi-audit-print-mode main,
+    body.bi-audit-print-mode .modal:not(#biAuditModal) {
+        display: none !important;
+    }
+    body.bi-audit-print-mode #biAuditModal {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        z-index: auto !important;
+    }
+    body.bi-audit-print-mode #biAuditModal .close-button,
+    body.bi-audit-print-mode #biAuditModal [data-print-audit],
+    body.bi-audit-print-mode #biAuditModal .bi-audit-rel-btn {
+        display: none !important;
+    }
+    body.bi-audit-print-mode #biAuditModal .modal-content {
+        box-shadow: none !important;
+        border: none !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        max-height: none !important;
+    }
+    body.bi-audit-print-mode #bi-audit-title {
+        font-size: 14pt;
+        text-align: center;
+        margin: 0 0 12px !important;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #ccc;
+    }
+    body.bi-audit-print-mode .bi-audit-body {
+        max-height: none !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    body.bi-audit-print-mode .bi-audit-table-wrap,
+    body.bi-audit-print-mode .table-responsive {
+        max-height: none !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+    body.bi-audit-print-mode .bi-audit-section-title {
+        font-size: 10pt;
+        margin: 10px 0 4px;
+        page-break-after: avoid;
+    }
+    body.bi-audit-print-mode .bi-audit-table {
+        font-size: 7.5pt;
+        width: 100%;
+        page-break-inside: auto;
+    }
+    body.bi-audit-print-mode .bi-audit-table th,
+    body.bi-audit-print-mode .bi-audit-table td {
+        padding: 3px 5px;
+        border: 1px solid #999 !important;
+        word-break: break-word;
+    }
+    body.bi-audit-print-mode .bi-audit-table thead {
+        background: #eee !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    body.bi-audit-print-mode .bi-audit-total {
+        margin-bottom: 10px;
+        font-size: 9pt;
+        page-break-inside: avoid;
+    }
+    body.bi-audit-print-mode .bi-audit-filtros,
+    body.bi-audit-print-mode .bi-audit-formula {
+        font-size: 8pt;
+        margin-bottom: 8px;
+    }
+    body.bi-audit-print-mode .bi-audit-row-vencido td {
+        color: #721c24 !important;
+    }
+
+    /* Impressão — relatório Inconsistências do banco */
+    body.bi-inconsist-print-mode nav,
+    body.bi-inconsist-print-mode main,
+    body.bi-inconsist-print-mode .modal:not(#inconsistenciasModal) {
+        display: none !important;
+    }
+    body.bi-inconsist-print-mode #inconsistenciasModal {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: #fff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    body.bi-inconsist-print-mode #inconsistenciasModal .close-button,
+    body.bi-inconsist-print-mode #inconsistenciasModal [data-print-inconsistencias] {
+        display: none !important;
+    }
+    body.bi-inconsist-print-mode #inconsistenciasModal .modal-content {
+        box-shadow: none !important;
+        border: none !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    body.bi-inconsist-print-mode #inconsistencias-title {
+        font-size: 14pt;
+        text-align: center;
+        margin: 0 0 12px !important;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #ccc;
+    }
+    body.bi-inconsist-print-mode .bi-audit-table-wrap,
+    body.bi-inconsist-print-mode .table-responsive {
+        max-height: none !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+    body.bi-inconsist-print-mode .bi-inconsist-modal-body {
+        max-height: none !important;
+        overflow: visible !important;
+        padding: 0 !important;
+    }
+    body.bi-inconsist-print-mode .bi-inconsist-secao {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 14px;
+        border: none;
+        background: transparent;
+        padding: 0;
+    }
+    body.bi-inconsist-print-mode .bi-inconsist-secao h5 {
+        font-size: 10pt;
+        margin: 10px 0 4px;
+    }
+    body.bi-inconsist-print-mode .bi-audit-table {
+        font-size: 7.5pt;
+        width: 100%;
+    }
+    body.bi-inconsist-print-mode .bi-audit-table th,
+    body.bi-inconsist-print-mode .bi-audit-table td {
+        padding: 3px 5px;
+        border: 1px solid #999 !important;
+    }
+    body.bi-inconsist-print-mode .bi-audit-table thead {
+        background: #eee !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    body.bi-inconsist-print-mode .bi-audit-total {
+        margin-bottom: 10px;
+        font-size: 9pt;
+    }
+    body.bi-inconsist-print-mode .bi-audit-filtros {
+        font-size: 8pt;
+        margin-bottom: 8px;
+    }
+    body.bi-inconsist-print-mode .badge {
+        border: 1px solid #666;
+        color: #000 !important;
+        background: #eee !important;
+    }
+
+    /* Impressão — análise geral da margem */
+    body.bi-margem-print-mode nav,
+    body.bi-margem-print-mode main,
+    body.bi-margem-print-mode .modal:not(#margemAnaliseModal) {
+        display: none !important;
+    }
+    body.bi-margem-print-mode #margemAnaliseModal {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: #fff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    body.bi-margem-print-mode #margemAnaliseModal .close-button,
+    body.bi-margem-print-mode #margemAnaliseModal [data-print-margem-analise] {
+        display: none !important;
+    }
+    body.bi-margem-print-mode #margemAnaliseModal .modal-content {
+        box-shadow: none !important;
+        border: none !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    body.bi-margem-print-mode .bi-margem-modal-body {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    body.bi-margem-print-mode .bi-audit-table-wrap,
+    body.bi-margem-print-mode .table-responsive {
+        max-height: none !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+    body.bi-margem-print-mode .bi-margem-duo-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    body.bi-margem-print-mode .bi-margem-secao {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+}
+
+/* Financeiro — KPI lateral */
+.financeiro-kpi .financeiro-kpi-total {
+    color: var(--text);
+    font-weight: 700;
+}
+.financeiro-kpi--compact {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem 0.75rem;
+}
+.financeiro-kpi--compact .financeiro-kpi-label {
+    font-size: 0.82rem;
+    color: var(--accent);
+    font-weight: 600;
+}
+.financeiro-kpi--compact .financeiro-kpi-valor {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-left: auto;
+}
+.financeiro-kpi-valor--pagar {
+    color: var(--danger);
+}
+.financeiro-kpi-valor--receber {
+    color: var(--accent);
+}
+.financeiro-kpi .financeiro-kpi-total--receber {
+    color: var(--accent);
+}
+.financeiro-kpi .financeiro-kpi-vencido {
+    display: block;
+    color: var(--danger);
+    font-weight: 600;
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
+}
+.financeiro-kpi .financeiro-kpi-futuro {
+    display: block;
+    flex-basis: 100%;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 400;
+    opacity: 0.75;
+    margin-top: 0.15rem;
+    line-height: 1.3;
+}
+.bi-audit-row-vencido td {
+    background: rgba(220, 53, 69, 0.06);
+}
+.btn-print-a4 {
+    white-space: nowrap;
+}
+
+@media print {
+    .biweb-navbar,
+    .no-print,
+    .dash-filters,
+    .dash-side-panel,
+    .audit-btn,
+    .audit-btn-mini,
+    .tb-btn:not(.btn-print-a4) {
+        display: none !important;
+    }
+    main.container {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .dash-detail-page,
+    .dash-page {
+        box-shadow: none !important;
+    }
+    canvas {
+        max-height: 280px !important;
+    }
+}

@@ -34,21 +34,28 @@ _TABELAS_OBRIGATORIAS = (
 _MIN_TABELAS_PRE_DATA = int(os.getenv("SATI_RESTORE_MIN_TABELAS", "50"))
 
 
+def _restore_lock_path() -> Path:
+    tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
+    if tenant_path:
+        return Path(tenant_path) / "sati_restore.lock"
+    try:
+        from app.utils.paths import data_root
+
+        return data_root() / "sati_restore.lock"
+    except Exception:
+        return Path("sati_restore.lock")
+
+
 @contextmanager
 def _restore_lock(apartamento_id: int | None):
     """Evita restore duplo (Flask debug) e sinaliza painel para aguardar."""
-    try:
-        from app.utils.paths import data_root
-    except Exception:
-        yield
-        return
-
-    lock = data_root() / "sati_restore.lock"
+    lock = _restore_lock_path()
     if lock.exists():
         raise RuntimeError(
             "Outra atualização do banco SATI já está em andamento. "
             "Aguarde terminar antes de abrir o painel."
         )
+    lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text("running", encoding="utf-8")
     os.environ["BIWEB_SATI_RESTORING"] = "1"
     try:
@@ -729,15 +736,27 @@ def _verificar_tabelas_apos_restore(apartamento_id: int | None, schema: str) -> 
         n_conh = conn.execute(
             text(f'SELECT COUNT(*) FROM "{schema_sql}".conhecimento')
         ).scalar()
+        n_nota = conn.execute(
+            text(f'SELECT COUNT(*) FROM "{schema_sql}".nota')
+        ).scalar()
+        n_item = conn.execute(
+            text(f'SELECT COUNT(*) FROM "{schema_sql}".itemnota')
+        ).scalar()
     _log(
         apartamento_id,
-        f"Tabelas OK no schema {schema_sql}. conhecimento: {n_conh or 0} linhas.",
+        f"Tabelas OK no schema {schema_sql}. conhecimento: {n_conh or 0}, "
+        f"nota: {n_nota or 0}, itemnota: {n_item or 0} linhas.",
     )
     if faltando:
         raise RuntimeError(
             "Restore incompleto. Tabelas ausentes: "
             + ", ".join(faltando)
             + ". Rode a atualização novamente até concluir."
+        )
+    if int(n_conh or 0) > 0 and int(n_nota or 0) == 0:
+        raise RuntimeError(
+            f"Restore incompleto: schema {schema_sql} tem conhecimento mas nota/itemnota vazios. "
+            "Despesas do painel não carregarão. Rode «Atualizar banco SATI» novamente."
         )
 
 
@@ -853,6 +872,17 @@ def restaurar_dump_sati(
             sati_url, dump_schema, pg["user"], apartamento_id, pg, usar_sudo
         )
         _verificar_tabelas_apos_restore(apartamento_id, dump_schema)
+        try:
+            from sati_integration.db.sati_km_vazio_patch import aplicar_patch_km_vazio_restore
+
+            aplicar_patch_km_vazio_restore(
+                lambda sql: _executar_sql_autocommit(sati_url, sql, pg, usar_sudo),
+                dump_schema,
+                apartamento_id,
+                _log,
+            )
+        except Exception as exc:
+            _log(apartamento_id, f"Aviso patch km vazio MDF-e: {exc}")
 
     if usar_sudo and dump_restore != dump_path and Path(dump_restore).exists():
         Path(dump_restore).unlink(missing_ok=True)

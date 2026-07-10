@@ -9,6 +9,7 @@ import pandas as pd
 
 from app.data import data_manager as dm
 from app.core import dre_viagem as dre
+from app.utils.dre_tenant_config import obter_dre_opts
 
 ANALISES = {
     1: {
@@ -238,6 +239,8 @@ def _chart_hbar_margem(grp: pd.DataFrame, dim_col: str, top: int = 12) -> dict:
         "type": "bar",
         "indexAxis": "y",
         "labels": [str(x)[:42] for x in top_df[dim_col]],
+        "label_values": [str(x) for x in top_df[dim_col]],
+        "audit_drill": {"kind": "cliente", "margin_metric": "margem_cliente"},
         "datasets": [
             {
                 "label": "Margem %",
@@ -248,13 +251,15 @@ def _chart_hbar_margem(grp: pd.DataFrame, dim_col: str, top: int = 12) -> dict:
     }
 
 
-def _chart_hbar_receita_custo(grp: pd.DataFrame, dim_col: str, top: int = 12) -> dict:
+def _chart_hbar_receita_custo(grp: pd.DataFrame, dim_col: str, top: int = 12, drill_kind: str = "cliente") -> dict:
     top_df = grp.head(top).sort_values("receita", ascending=True)
     return {
         "mode": "receita_custo_hbar",
         "type": "bar",
         "indexAxis": "y",
         "labels": [str(x)[:42] for x in top_df[dim_col]],
+        "label_values": [str(x) for x in top_df[dim_col]],
+        "audit_drill": {"kind": drill_kind},
         "datasets": [
             {
                 "label": "Receita (R$)",
@@ -270,11 +275,13 @@ def _chart_hbar_receita_custo(grp: pd.DataFrame, dim_col: str, top: int = 12) ->
     }
 
 
-def _chart_receita_custo_bar(grp: pd.DataFrame, dim_col: str) -> dict:
+def _chart_receita_custo_bar(grp: pd.DataFrame, dim_col: str, drill_kind: str = "cliente") -> dict:
     return {
         "mode": "receita_custo_bar",
         "type": "bar",
         "labels": [str(x) for x in grp[dim_col]],
+        "label_values": [str(x) for x in grp[dim_col]],
+        "audit_drill": {"kind": drill_kind},
         "datasets": [
             {
                 "label": "Receita (R$)",
@@ -296,6 +303,8 @@ def _chart_pareto(grp: pd.DataFrame, dim_col: str, top: int = 15) -> dict:
         "mode": "pareto",
         "type": "bar",
         "labels": [str(x)[:30] for x in top_df[dim_col]],
+        "label_values": [str(x) for x in top_df[dim_col]],
+        "audit_drill": {"kind": "cliente"},
         "datasets": [
             {
                 "label": "Faturamento (R$)",
@@ -319,6 +328,8 @@ def _chart_spread_hbar(grp: pd.DataFrame, dim_col: str) -> dict:
         "type": "bar",
         "indexAxis": "y",
         "labels": [str(x)[:35] for x in top_df[dim_col]],
+        "label_values": [str(x) for x in top_df[dim_col]],
+        "audit_drill": {"kind": "motorista"},
         "datasets": [
             {
                 "label": "Spread total (R$)",
@@ -463,7 +474,19 @@ def get_gestao_comercial_data(
         }
 
     cv = dm._get_case_insensitive_column_map(df.columns)
-    df_dre = dre.aplicar_dre_em_dataframe(df, filtered.get("df_acerto_motorista_raw"))
+    df_dre = dm._df_viagens_com_receita(
+        filtered["df_viagens_cliente"],
+        apartamento_id,
+        filtered.get("df_acerto_motorista_raw"),
+    )
+    if df_dre.empty:
+        df_dre = dre.aplicar_dre_em_dataframe(
+            df,
+            filtered.get("df_acerto_motorista_raw"),
+            dre_opts=obter_dre_opts(apartamento_id),
+        )
+        rec = pd.to_numeric(df_dre.get("receita", 0), errors="coerce").fillna(0)
+        df_dre = df_dre[rec > 0].copy()
 
     if analise_id == 1:
         col = cv.get("nomecliente", "nomecliente")
@@ -488,7 +511,7 @@ def get_gestao_comercial_data(
         return {
             "analise": meta,
             "kpis": _kpis_receita_custo(grp, "rotas"),
-            "chart": _chart_hbar_receita_custo(grp, "rota"),
+            "chart": _chart_hbar_receita_custo(grp, "rota", drill_kind="rota"),
             "chart_title": "Receita vs custo prévia por rota",
         }
 
@@ -601,7 +624,7 @@ def get_gestao_comercial_data(
                     "hint": "Receita − custo prévia conhecimento",
                 },
             ],
-            "chart": _chart_receita_custo_bar(grp, "tipo_operacao"),
+            "chart": _chart_receita_custo_bar(grp, "tipo_operacao", drill_kind="tipo_operacao"),
             "chart_title": "Receita vs custo prévia por tipo de operação",
         }
 

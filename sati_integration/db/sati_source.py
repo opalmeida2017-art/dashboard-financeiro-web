@@ -10,9 +10,24 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from app import config
-from sati_integration.db.sati_queries import SATI_QUERY_KEYS, build_sati_query, query_embarcadores_cadastro
+from sati_integration.db.sati_queries import (
+    SATI_QUERY_KEYS,
+    SATI_TABLES_PERIOD_FILTER,
+    build_sati_query,
+    query_embarcadores_cadastro,
+)
 
 _TRUTHY = frozenset({"1", "true", "yes", "on", "s"})
+
+# Receita/despesa: mesma carga SQL do BI sem proprietário; filtro por placa no data_manager.
+_SATI_TABLES_FILTRO_PLACA_NO_APP = frozenset(
+    {
+        "relFilViagensCliente",
+        "relFilViagensFatCliente",
+        "relFilDespesasGerais",
+        "relFilAcertoMot",
+    }
+)
 
 
 def _is_truthy(value: str | None) -> bool:
@@ -164,17 +179,97 @@ def resolve_cod_filial(engine, apartamento_id: int) -> int | None:
     return None
 
 
-def fetch_sati_dataframe(app_engine: Engine, table_name: str, apartamento_id: int):
+def resolve_cod_proprietario(engine, apartamento_id: int) -> int | None:
+    """Filtro opcional BI_COD_PROPRIETARIO (painel de licenças)."""
+    try:
+        from app.utils.proprietario_filtro import CHAVE_CONFIG, normalizar_cod_proprietario
+    except ImportError:
+        from utils.proprietario_filtro import CHAVE_CONFIG, normalizar_cod_proprietario
+
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT valor FROM configuracoes_robo
+                    WHERE apartamento_id = :apt_id AND chave = :chave
+                    LIMIT 1
+                    """
+                ),
+                {"apt_id": apartamento_id, "chave": CHAVE_CONFIG},
+            ).fetchone()
+            if row and row[0] is not None:
+                return normalizar_cod_proprietario(row[0])
+    except Exception:
+        pass
+    return None
+
+
+def fetch_sati_ano_referencia_viagens(apartamento_id: int) -> int | None:
+    """Ano mais recente com viagem (consulta leve — não carrega relFilViagensCliente inteiro)."""
+    import re
+
+    from app.data.database import engine as app_engine
+
+    if not sati_enabled_for_apartment(app_engine, apartamento_id):
+        return None
+    schema = get_sati_schema(apartamento_id)
+    if not re.match(r"^c\d+$", schema or "", re.I):
+        return None
+    sql = text(
+        f"""
+        SELECT MAX(EXTRACT(YEAR FROM c.dataviagemmotorista))::int AS ano
+        FROM {schema}.conhecimento c
+        WHERE c.cancelado IS DISTINCT FROM 'S'
+          AND c.dataviagemmotorista IS NOT NULL
+          AND EXTRACT(YEAR FROM c.dataviagemmotorista) BETWEEN 1990 AND 2100
+        """
+    )
+    try:
+        with get_sati_engine().connect() as conn:
+            row = conn.execute(sql).fetchone()
+        if row and row[0]:
+            return int(row[0])
+    except Exception as exc:
+        print(f"AVISO fetch_sati_ano_referencia_viagens: {exc}")
+    return None
+
+
+def fetch_sati_dataframe(
+    app_engine: Engine,
+    table_name: str,
+    apartamento_id: int,
+    start_date=None,
+    end_date=None,
+):
     import pandas as pd
+    from datetime import date, datetime
 
     sql = build_sati_query(table_name, get_sati_schema(apartamento_id))
     if not sql:
         return pd.DataFrame()
 
     cod_filial = resolve_cod_filial(app_engine, apartamento_id)
+    cod_proprietario = resolve_cod_proprietario(app_engine, apartamento_id)
+    if table_name in _SATI_TABLES_FILTRO_PLACA_NO_APP:
+        cod_proprietario = None
+
+    def _as_date(val):
+        if val is None:
+            return None
+        if isinstance(val, datetime):
+            return val.date()
+        if isinstance(val, date):
+            return val
+        return val
+
+    use_period = table_name in SATI_TABLES_PERIOD_FILTER
     params: dict[str, Any] = {
         "apartamento_id": apartamento_id,
         "cod_filial": cod_filial,
+        "cod_proprietario": cod_proprietario,
+        "start_date": _as_date(start_date) if use_period else None,
+        "end_date": _as_date(end_date) if use_period else None,
     }
 
     sati_engine = get_sati_engine()

@@ -23,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.data import database as db
 from app.core import logic
-import robos.base_robo as base_robo
+from sati_integration.robos import base_robo
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -198,7 +198,7 @@ def _coletar_bloco(
         texto_extraido = ""
         if arquivo_local:
             try:
-                from comprovante_descarga import extrair_texto_arquivo
+                from sati_integration.robos.comprovante_descarga import extrair_texto_arquivo
 
                 texto_extraido = extrair_texto_arquivo(arquivo_local)
             except Exception:
@@ -477,7 +477,7 @@ def executar_painel_documentos_sati(
     except Exception as e:
         db.logar_progresso(apartamento_id, f"ERRO no Painel de Documentos: {e}")
         try:
-            from comprovante_descarga import liberar_coleta_da_fila
+            from sati_integration.robos.comprovante_descarga import liberar_coleta_da_fila
 
             liberar_coleta_da_fila(
                 apartamento_id,
@@ -489,11 +489,9 @@ def executar_painel_documentos_sati(
     finally:
         _liberar_lock_robo_painel(apartamento_id)
         if driver:
-            db.logar_progresso(apartamento_id, "Fechando o navegador.")
-            try:
-                driver.quit()
-            except Exception:
-                pass
+            from sati_integration.robos.chrome_cleanup import encerrar_driver_chrome
+
+            encerrar_driver_chrome(driver, apartamento_id)
 
 
 if __name__ == "__main__":

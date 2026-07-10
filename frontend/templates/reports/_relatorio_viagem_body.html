@@ -1,0 +1,212 @@
+<div class="rel-viagem-report">
+    <div class="text-center mb-3"><h2>Relatório de Viagem</h2></div>
+
+    <div class="rel-viagem-resumo mb-3 p-2 rounded border">
+        <div class="row g-2 text-center">
+            <div class="col-6 col-md-3">
+                <span class="rel-resumo-label">Tipo frete</span>
+                <div class="rel-tipo-frete">{{ data.tipo_frete_label or data.tipo_frete or '—' }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <span class="rel-resumo-label">{% if data.modo_proprietario %}Frete motorista{% else %}Frete empresa{% endif %}</span>
+                <div class="rel-valor-frete">{% if data.modo_proprietario %}{{ (data.frete_bruto or data.fretemotorista_bruto or 0) | currency }}{% else %}{{ (data.frete_empresa_bruto or data.frete_bruto or 0) | currency }}{% endif %}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <span class="rel-resumo-label">Custo prévia pot.</span>
+                <div class="rel-valor-custo-pot">{{ data.custo_previa_potencial | currency }}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <span class="rel-resumo-label">Lucro / Prejuízo</span>
+                <div class="{{ 'rel-lucro-pos' if data.lucro_prejuizo_valor >= 0 else 'rel-lucro-neg' }}">{{ data.lucro_prejuizo_valor | currency }}</div>
+            </div>
+        </div>
+    </div>
+
+    <table class="table table-bordered table-sm rel-viagem-table">
+        <tr>
+            <th style="width: 25%;">Viagem (CT-e)</th><td style="width: 25%;">{{ data.viagem_display }}</td>
+            <th style="width: 25%;">Data Viagem</th><td style="width: 25%;">{{ data.data_viagem | format_date }}</td>
+        </tr>
+        <tr>
+            <th>Veículo</th><td>{{ data.placa_veiculo or 'N/A' }}</td>
+            <th>Motorista</th><td>{{ data.motorista or 'N/A' }}</td>
+        </tr>
+        <tr>
+            <th>Tipo frete</th><td class="rel-tipo-frete">{{ data.tipo_frete_label or data.tipo_frete or '—' }}</td>
+            <th>Filial</th><td>{{ data.filial }}</td>
+        </tr>
+        <tr>
+            <th>Numero Nota</th><td>{{ data.numero_nota }}</td>
+            <th>Unidade de Embarque</th><td>{{ data.unidade_embarque }}</td>
+        </tr>
+    </table>
+
+    <table class="table table-bordered table-sm mt-3 rel-viagem-table">
+        <tr class="table-secondary"><th colspan="2">Dados da Viagem</th></tr>
+        <tr><th>Cliente</th><td>{{ data.cliente or 'N/A' }}</td></tr>
+        <tr><th>Origem &rarr; Destino</th><td>{{ data.origem or 'N/A' }} &rarr; {{ data.destino or 'N/A' }}</td></tr>
+        <tr><th>Peso Saída / Chegada</th><td>{{ (data.peso_saida or 0) | round(2) }} / {{ (data.peso_chegada or 0) | round(2) }} Kg</td></tr>
+        <tr><th>Valor Seguro</th><td>{{ data.valor_seguro | currency }}</td></tr>
+        <tr><th>Valor Pedágio</th><td>{{ data.valor_pedagio | currency }} <span class="small text-muted">(emb. frete: {{ data.pedagio_embutido_frete or '—' }} / mot.: {{ data.pedagio_embutido_motorista or '—' }})</span></td></tr>
+        <tr><th>Valor Quebra</th><td>{{ (data.valor_quebra_bruto or data.valor_quebra or 0) | currency }}</td></tr>
+        <tr><th>KM Inicial</th><td>{{ (data.km_inicial or 0) | round(2) }}</td></tr>
+        <tr><th>KM Final</th><td>{{ (data.km_final or 0) | round(2) }}</td></tr>
+        <tr><th>KM Rodado</th><td>{{ (data.km_rodado or 0) | round(2) }} Km</td></tr>
+        <tr><th>Base comissão</th><td>{{ data.valor_base_comissao | currency }} <span class="small text-muted">{{ (data.comissao_perc or 0) | round(2) }}% → {{ (data.valor_comissao_calculada or data.comissao_motorista or 0) | currency }}</span></td></tr>
+    </table>
+
+    <div class="d-flex flex-wrap gap-2 p-2 mb-2 rounded border bg-light">
+        <span class="badge {{ 'bg-success' if data.permite_faturar else 'bg-danger' }} text-white">
+            Permite faturar: {{ data.permite_faturar_flag or ('S' if data.permite_faturar else 'N') }}
+        </span>
+        <span class="badge {{ 'bg-success' if data.pagar_conhecimento else 'bg-danger' }} text-white">
+            Pagar conhecimento: {{ data.pagar_flag or ('S' if data.pagar_conhecimento else 'N') }}
+        </span>
+    </div>
+
+    <table class="table table-bordered table-sm mt-3 rel-viagem-table">
+        <tr class="table-secondary"><th colspan="2">Receitas</th></tr>
+        {% if data.modo_proprietario %}
+        {% if data.permite_faturar %}
+        <tr><td>Frete motorista (receita)</td><td class="text-end rel-valor-frete">{{ data.frete_bruto | currency }}</td></tr>
+        {% else %}
+        <tr><td>Frete motorista no CT-e <span class="small text-muted">— não compõe receita</span></td><td class="text-end rel-valor-frete">{{ data.fretemotorista_bruto | currency }}</td></tr>
+        <tr><td>Receita contabilizada</td><td class="text-end">R$ 0,00</td></tr>
+        {% endif %}
+        <tr><td>Frete empresa no CT-e <span class="small text-muted">— referência</span></td><td class="text-end">{{ data.frete_empresa_bruto | currency }}</td></tr>
+        {% elif data.permite_faturar %}
+        <tr><td>Frete empresa (receita)</td><td class="text-end rel-valor-frete">{{ data.frete_bruto | currency }}</td></tr>
+        {% else %}
+        <tr>
+            <td>Frete empresa no CT-e <span class="small text-muted">— não compõe receita</span></td>
+            <td class="text-end rel-valor-frete">{{ data.frete_empresa_bruto | currency }}</td>
+        </tr>
+        <tr><td>Receita contabilizada</td><td class="text-end">R$ 0,00</td></tr>
+        {% endif %}
+        {% if data.pedagio_reembolso and data.pedagio_reembolso > 0 %}
+        <tr><td colspan="2" class="small text-muted border-0 pt-0">
+            Pedágio {{ data.pedagio_reembolso | currency }} — reembolso (fatura cliente / CP; não compõe receita).
+        </td></tr>
+        {% endif %}
+        <tr class="table-success fw-bold"><td>TOTAL RECEITAS</td><td class="text-end">{{ data.total_receitas | currency }}</td></tr>
+    </table>
+
+    <table class="table table-bordered table-sm mt-3 rel-viagem-table">
+        <tr class="table-secondary"><th colspan="2">Custos Prévia (conhecimento)</th></tr>
+        {% if data.pagar_conhecimento %}
+        <tr><td colspan="2" class="small text-muted border-0">pagar = S — comissão e quebra não vão para contas a pagar.</td></tr>
+        {% else %}
+        <tr><td colspan="2" class="small text-warning border-0 bg-warning-subtle">
+            pagar = N — custos prévia zerados no resultado. Valores <em>ref.</em> são só referência do CT-e.
+        </td></tr>
+        {% endif %}
+        {% if data.modo_proprietario %}
+        <tr><td colspan="2" class="small text-muted border-0">Modo proprietário: frete motorista e ICMS compõem a receita (não entram como custo).</td></tr>
+        {% else %}
+        <tr class="table-light"><td colspan="2" class="small fw-semibold">Composição frete motorista</td></tr>
+        {% if data.composicao_motorista %}
+            {% for linha in data.composicao_motorista %}
+            <tr>
+                <td class="{% if linha.tipo == 'resultado' %}fw-bold text-danger{% elif linha.tipo == 'desconto' %}ps-3 small text-muted{% elif linha.tipo == 'subtotal' %}fw-semibold{% elif linha.tipo == 'comissao' %}ps-3 text-danger{% endif %}">{{ linha.label }}</td>
+                <td class="text-end {% if linha.tipo == 'resultado' %}text-danger fw-bold{% endif %}">{{ linha.valor | currency }}</td>
+            </tr>
+            {% endfor %}
+        {% else %}
+        {% set mot = data.custo_motorista_potencial if not data.pagar_conhecimento else data.custo_motorista %}
+        {% if mot and mot > 0 %}
+        <tr><td>(-) Frete motorista líquido</td><td class="text-end text-danger">{{ mot | currency }}</td></tr>
+        {% endif %}
+        {% endif %}
+        {% set icms = data.custo_icms_potencial if not data.pagar_conhecimento else data.custo_icms %}
+        {% if icms and icms > 0 %}
+        <tr><td>(-) ICMS embutido{% if not data.pagar_conhecimento %} <em class="text-muted small">ref.</em>{% endif %}</td>
+            <td class="text-end {{ 'text-danger' if data.pagar_conhecimento else 'text-muted' }}">{{ icms | currency }}</td></tr>
+        {% endif %}
+        {% endif %}
+        {% set seg = data.custo_seguro_potencial if not data.pagar_conhecimento else data.custo_seguro %}
+        {% if seg and seg > 0 %}
+        <tr><td>(-) Seguro (não embutido no saldo){% if not data.pagar_conhecimento %} <em class="text-muted small">ref.</em>{% endif %}</td>
+            <td class="text-end {{ 'text-danger' if data.pagar_conhecimento else 'text-muted' }}">{{ seg | currency }}</td></tr>
+        {% endif %}
+        <tr class="table-warning fw-bold">
+            <td>Subtotal prévia {% if not data.pagar_conhecimento %}<span class="text-muted small">(contabilizado: R$ 0)</span>{% endif %}</td>
+            <td class="text-end rel-valor-custo-pot">{{ data.custo_previa_conhecimento | currency }}</td>
+        </tr>
+        <tr><td>Custo prévia potencial (CT-e)</td><td class="text-end rel-valor-custo-pot">{{ data.custo_previa_potencial | currency }}</td></tr>
+    </table>
+
+    <h4 class="mt-4">Outros Custos da Viagem</h4>
+    <table class="table table-bordered table-sm rel-viagem-table">
+        <thead class="table-secondary">
+            <tr><th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th><th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th><th class="text-end">Valor</th></tr>
+        </thead>
+        <tbody>
+            {% for item in data.custos_detalhados %}
+            {% if item.descGrupoD not in ['COMISSÃO DE MOTORISTA', 'VALOR QUEBRA'] %}
+            <tr>
+                <td>{{ item.descGrupoD or '' }}</td><td>{{ item.codNota or '' }}</td><td>{{ item.dataControle or '' }}</td>
+                <td>{{ item.serie or '' }}</td><td>{{ item.nomeForn or '' }}</td><td>{{ item.codItemNota or '' }}</td>
+                <td>{{ item.descItemD or '' }}</td><td class="text-end">{{ item.valor_calculado | currency }}</td>
+            </tr>
+            {% endif %}
+            {% else %}
+            <tr><td colspan="8" class="text-center">Nenhum custo encontrado.</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot><tr class="table-warning fw-bold"><td colspan="7" class="text-end">TOTAL</td><td class="text-end">{{ data.total_outros_custos | currency }}</td></tr></tfoot>
+    </table>
+
+    <h4 class="mt-4">Despesas da Viagem</h4>
+    <table class="table table-bordered table-sm rel-viagem-table">
+        <thead class="table-secondary">
+            <tr><th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th><th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th><th class="text-end">Valor</th></tr>
+        </thead>
+        <tbody>
+            {% for item in data.despesas_detalhadas %}
+            <tr>
+                <td>{{ item.descGrupoD or '' }}</td><td>{{ item.codNota or '' }}</td><td>{{ item.dataControle or '' }}</td>
+                <td>{{ item.serie or '' }}</td><td>{{ item.nomeForn or '' }}</td><td>{{ item.codItemNota or '' }}</td>
+                <td>{{ item.descItemD or '' }}</td><td class="text-end">{{ item.valor_calculado | currency }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center">Nenhuma despesa encontrada.</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot><tr class="table-danger fw-bold"><td colspan="7" class="text-end">TOTAL DESPESAS</td><td class="text-end">{{ data.total_despesas | currency }}</td></tr></tfoot>
+    </table>
+
+    <table class="table table-bordered table-sm mt-3 rel-viagem-table">
+        <tr class="table-secondary"><th colspan="2">Resultado da Viagem</th></tr>
+        <tr><td>Total Receitas</td><td class="text-end">{{ data.total_receitas | currency }}</td></tr>
+        <tr><td>(-) Custos prévia conhecimento</td><td class="text-end text-danger">{{ data.custo_previa_conhecimento | currency }}</td></tr>
+        <tr><td>(-) Outros custos (notas)</td><td class="text-end text-danger">{{ data.total_outros_custos | currency }}</td></tr>
+        <tr><td>(-) Despesas da viagem (notas)</td><td class="text-end text-danger">{{ data.total_despesas | currency }}</td></tr>
+        <tr><td>(-) Outros descontos</td><td class="text-end text-danger">{{ data.outros_descontos | currency }}</td></tr>
+        <tr class="fw-bold"><td>LUCRO/PREJUÍZO</td>
+            <td class="text-end {{ 'rel-lucro-pos' if data.lucro_prejuizo_valor >= 0 else 'rel-lucro-neg' }}">{{ data.lucro_prejuizo_valor | currency }}</td></tr>
+        <tr class="fw-bold"><td>MARGEM (%)</td>
+            <td class="text-end {{ 'rel-lucro-pos' if data.margem_valor >= 0 else 'rel-lucro-neg' }}">{{ data.margem_valor | percentage }}</td></tr>
+    </table>
+
+    <h4 class="mt-4">Sugestão de despesas</h4>
+    {% set per = data.periodo_sugestao_despesas or {} %}
+    {% if per.inicio %}
+    <p class="small text-muted"><strong>Período:</strong> {{ per.inicio }}{% if per.fim and per.fim != per.inicio %} a {{ per.fim }}{% endif %}{% if per.proxima_viagem %} (próxima viagem: {{ per.proxima_viagem }}){% endif %}. Não afeta o cálculo.</p>
+    {% endif %}
+    <table class="table table-bordered table-sm rel-viagem-table">
+        <thead class="table-secondary">
+            <tr><th>Grupo</th><th>Nota</th><th>Data</th><th>Série</th><th>Fornecedor</th><th>Cód. Item</th><th>Descrição</th><th class="text-end">Valor</th></tr>
+        </thead>
+        <tbody>
+            {% for item in data.despesas_sugeridas %}
+            <tr>
+                <td>{{ item.descGrupoD or '' }}</td><td>{{ item.codNota or '' }}</td><td>{{ item.dataControle or '' }}</td>
+                <td>{{ item.serie or '' }}</td><td>{{ item.nomeForn or '' }}</td><td>{{ item.codItemNota or '' }}</td>
+                <td>{{ item.descItemD or '' }}</td><td class="text-end">{{ (item.Valor or 0) | float | currency }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center">Nenhuma despesa sugerida no período.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

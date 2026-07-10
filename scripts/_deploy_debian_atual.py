@@ -37,10 +37,6 @@ BI_FILES = [
     "requirements.txt",
 ]
 
-NFE_FILES = [
-    (f"{LOCAL}\\scripts\\_server_painel.js", f"{NFE}/frontend/painel/painel.js"),
-]
-
 
 def run(c, cmd, t=180, read_output=True):
     _, o, e = c.exec_command(cmd, timeout=t)
@@ -175,9 +171,6 @@ def main():
         print(f"Upload {dst}")
         sftp.put(src, dst)
 
-    for src, dst in NFE_FILES:
-        print(f"Upload {dst}")
-        sftp.put(src, dst)
     sftp.close()
 
     print("\n=== Patch API painel (ocultar Brasil na aba BI) ===")
@@ -210,8 +203,8 @@ def main():
     print("\n=== Testes HTTP ===")
     tests = [
         "https://dadosfrete.duckdns.org/",
-        "https://dadosfrete.duckdns.org/acesso/w-carlos",
-        "https://dadosfrete.duckdns.org/painel_licenca/",
+        "https://dadosfrete.duckdns.org:8443/painel_licenca/",
+        "https://dadosfrete.duckdns.org:8443/biweb/wcarlos/",
     ]
     for url in tests:
         out = run(c, f"curl -sI --max-time 15 -k {url} 2>&1 | head -3")

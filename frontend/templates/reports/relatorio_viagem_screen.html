@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+
+{% block title %}Relatório {{ data.viagem_display }} — BIWEB{% endblock %}
+
+{% block content %}
+<div class="rel-viagem-page container-fluid px-3 px-lg-4 pb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="history.back()">← Voltar</button>
+        <a href="{{ url_for('main.print_viagem_report', numero=data.numero, dias_janela=dias_janela) }}"
+           class="btn btn-sm btn-primary" target="_blank" rel="noopener">Imprimir PDF</a>
+    </div>
+    {% include "reports/_relatorio_viagem_body.html" %}
+</div>
+{% endblock %}

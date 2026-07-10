@@ -36,6 +36,27 @@
         return fmtMoeda(n);
     }
 
+    /** Data legível dd/mm/aaaa (aceita ISO yyyy-mm-dd). */
+    function fmtDataBr(iso) {
+        if (iso == null || iso === '') return '—';
+        const s = String(iso).trim();
+        if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) return s.slice(0, 10);
+        const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+        const d = new Date(s);
+        if (!Number.isNaN(d.getTime())) {
+            return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+        }
+        return s;
+    }
+
+    function fmtPeriodoBr(ini, fim, sep = ' → ') {
+        const a = fmtDataBr(ini);
+        const b = fmtDataBr(fim);
+        if (a !== '—' && b !== '—') return `${a}${sep}${b}`;
+        return a !== '—' ? a : b;
+    }
+
     /** Valor numérico correto no tooltip (evita índice 0/1 em barras horizontais ou stacked). */
     function tooltipNumeric(ctx) {
         const type = ctx.chart?.config?.type;
@@ -293,6 +314,8 @@
         palette,
         fmtMoeda,
         fmtCompact,
+        fmtDataBr,
+        fmtPeriodoBr,
         tooltipNumeric,
         doughnutBackgrounds,
         gridScales,

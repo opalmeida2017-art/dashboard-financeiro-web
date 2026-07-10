@@ -28,7 +28,6 @@ def normalizar_url_login(url: str | None) -> str:
 
 def robo_usar_headless() -> bool:
     """
-    .exe / BIWEB Desktop: navegador oculto (headless).
     Servidor Linux sem DISPLAY: headless automático (evita session not created).
     Dev Windows: visível, salvo ROBO_HEADLESS=true no .env.
     """
@@ -38,8 +37,6 @@ def robo_usar_headless() -> bool:
     if flag in ("0", "false", "no", "off"):
         return False
     if getattr(sys, "frozen", False):
-        return True
-    if os.getenv("BIWEB_DESKTOP", "").strip():
         return True
     if sys.platform.startswith("linux") and not os.getenv("DISPLAY", "").strip():
         return True
@@ -90,6 +87,17 @@ def configurar_driver(apartamento_id: int):
         chrome_options.add_argument("--disable-software-rasterizer")
         chrome_options.add_argument("--remote-debugging-port=0")
 
+    user_data_dir = None
+    try:
+        from sati_integration.robos.chrome_cleanup import (
+            preparar_opcoes_chrome,
+            registrar_sessao_chrome,
+        )
+
+        user_data_dir = preparar_opcoes_chrome(chrome_options)
+    except Exception:
+        pass
+
     chrome_bin, caminho_driver = _resolver_chrome_binario_e_driver()
     if chrome_bin:
         chrome_options.binary_location = chrome_bin
@@ -116,12 +124,39 @@ def configurar_driver(apartamento_id: int):
             servico = Service(caminho_driver)
             driver = webdriver.Chrome(service=servico, options=chrome_options)
         else:
+            servico = None
             driver = webdriver.Chrome(options=chrome_options)
     except Exception as e:
+        if user_data_dir:
+            try:
+                import shutil
+
+                shutil.rmtree(user_data_dir, ignore_errors=True)
+            except OSError:
+                pass
         raise RuntimeError(
             f"Falha ao iniciar Chrome (bin={chrome_bin or 'auto'}, "
             f"driver={caminho_driver or 'selenium-manager'}, headless={headless}): {e}"
         ) from e
+
+    chromedriver_pid = None
+    try:
+        svc = servico or getattr(driver, "service", None)
+        proc = getattr(svc, "process", None) if svc else None
+        if proc and proc.pid:
+            chromedriver_pid = int(proc.pid)
+    except Exception:
+        pass
+    if chromedriver_pid:
+        try:
+            from sati_integration.robos.chrome_cleanup import registrar_sessao_chrome
+
+            driver._bi_chrome_lock = registrar_sessao_chrome(chromedriver_pid)
+            driver._bi_chromedriver_pid = chromedriver_pid
+        except Exception:
+            pass
+    if user_data_dir:
+        driver._bi_user_data_dir = user_data_dir
 
     driver.set_page_load_timeout(180)
     driver.set_script_timeout(90)
@@ -457,7 +492,7 @@ def _tentar_abrir_submenu_richfaces(driver, menu_base_id: str) -> bool:
             driver.execute_script(
                 """
                 var base = arguments[0];
-                var ids = [base, base + '_itm', base + '_label'];
+                var ids = [base, base + '_itm', base + '_label', base + '_list'];
                 if (typeof RichFaces !== 'undefined' && RichFaces.component) {
                     for (var i = 0; i < ids.length; i++) {
                         var el = document.getElementById(ids[i]);
@@ -466,6 +501,16 @@ def _tentar_abrir_submenu_richfaces(driver, menu_base_id: str) -> bool:
                         if (!c) continue;
                         if (typeof c.show === 'function') { c.show(); return true; }
                         if (typeof c.expand === 'function') { c.expand(); return true; }
+                        if (typeof c.open === 'function') { c.open(); return true; }
+                    }
+                }
+                if (typeof jQuery !== 'undefined') {
+                    var el = document.getElementById(base + '_itm')
+                        || document.getElementById(base)
+                        || document.getElementById(base + '_label');
+                    if (el) {
+                        jQuery(el).trigger('mouseenter').trigger('mouseover');
+                        return true;
                     }
                 }
                 return false;
@@ -477,25 +522,156 @@ def _tentar_abrir_submenu_richfaces(driver, menu_base_id: str) -> bool:
         return False
 
 
+def _cdp_hover_elemento(driver, elemento) -> None:
+    """Move o mouse via CDP — headless ignora ActionChains em alguns builds."""
+    try:
+        rect = driver.execute_script(
+            """
+            var r = arguments[0].getBoundingClientRect();
+            return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+            """,
+            elemento,
+        )
+        if not rect:
+            return
+        driver.execute_cdp_cmd(
+            "Input.dispatchMouseEvent",
+            {
+                "type": "mouseMoved",
+                "x": float(rect["x"]),
+                "y": float(rect["y"]),
+                "buttons": 1,
+                "pointerType": "mouse",
+            },
+        )
+    except Exception:
+        pass
+
+
+def _forcar_visibilidade_lista_dropdown(driver, lista_id: str) -> None:
+    try:
+        driver.execute_script(
+            """
+            var el = document.getElementById(arguments[0]);
+            if (!el) return;
+            el.style.display = 'block';
+            el.style.visibility = 'visible';
+            el.style.opacity = '1';
+            el.style.height = 'auto';
+            el.style.maxHeight = 'none';
+            el.style.overflow = 'visible';
+            el.removeAttribute('aria-hidden');
+            """,
+            lista_id,
+        )
+    except Exception:
+        pass
+
+
+def _localizar_menu_barra_por_rotulo(driver, rotulo: str):
+    """Retorna (celula_td, lista_id, menu_base_id) pelo rótulo do menu superior."""
+    alvo = rotulo.strip()
+    for el in driver.find_elements(By.CSS_SELECTOR, "div.rf-ddm-lbl-dec, div.rf-ddm-lbl"):
+        txt = (el.text or "").strip()
+        if txt != alvo:
+            continue
+        td = _celula_menu_hover(driver, el)
+        tid = (td.get_attribute("id") or "").strip()
+        if tid.endswith("_itm"):
+            base = tid[:-4]
+            return td, f"{base}_list", base
+        if tid:
+            return td, f"{tid}_list", tid
+
+    # Fallback: IDs conhecidos (SATI legado)
+    if alvo == "Configurações":
+        for tid, base in (
+            ("formMenu:j_idt711_itm", "formMenu:j_idt711"),
+        ):
+            try:
+                td = driver.find_element(By.ID, tid)
+                if td.is_displayed():
+                    return td, f"{base}_list", base
+            except Exception:
+                continue
+    return None, None, None
+
+
+def _submenu_tem_itens(driver, lista_id: str) -> bool:
+    try:
+        lista = driver.find_element(By.ID, lista_id)
+    except Exception:
+        return False
+    for el in lista.find_elements(By.CSS_SELECTOR, "span.rf-ddm-itm-lbl"):
+        if (el.text or "").strip():
+            return True
+    return False
+
+
+def _clicar_item_submenu_por_texto(
+    driver, actions, lista_id: str | None, texto_parcial: str, apartamento_id: int
+):
+    """Clica item do submenu RichFaces pelo rótulo (parcial, case-insensitive)."""
+    texto = texto_parcial.strip().lower()
+    candidatos = []
+    if lista_id:
+        try:
+            lista = driver.find_element(By.ID, lista_id)
+            candidatos.extend(lista.find_elements(By.CSS_SELECTOR, "span.rf-ddm-itm-lbl"))
+        except Exception:
+            pass
+    if not candidatos:
+        candidatos = driver.find_elements(By.CSS_SELECTOR, "span.rf-ddm-itm-lbl")
+
+    for el in candidatos:
+        lbl = (el.text or "").strip()
+        if not lbl or texto not in lbl.lower():
+            continue
+        try:
+            item = el.find_element(
+                By.XPATH, "./ancestor::div[contains(@class,'rf-ddm-itm')][1]"
+            )
+        except Exception:
+            item = el
+        db.logar_progresso(apartamento_id, f"Clicando em '{lbl}'…")
+        try:
+            actions.move_to_element(item).pause(0.2).click(item).perform()
+        except Exception:
+            try:
+                item.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", item)
+        return item
+    return None
+
+
 def _abrir_submenu_dropdown(
     driver, wait, actions, hover_alvo, lista_id: str, menu_base_id: str, apartamento_id
 ) -> bool:
     """Hover/clique até o submenu RichFaces (formMenu:xxx_list) ficar visível."""
-    _mover_mouse_para_elemento(driver, actions, hover_alvo, apartamento_id)
-    _tentar_abrir_submenu_richfaces(driver, menu_base_id)
-    _aguardar_menu_lista(driver, wait, lista_id, timeout=8)
-    if _menu_lista_visivel(driver, lista_id):
-        return True
+    tentativas = (
+        lambda: actions.move_to_element(hover_alvo).pause(0.8).perform(),
+        lambda: _mover_mouse_para_elemento(driver, actions, hover_alvo, apartamento_id),
+        lambda: _cdp_hover_elemento(driver, hover_alvo),
+        lambda: hover_alvo.click(),
+        lambda: driver.execute_script("arguments[0].click();", hover_alvo),
+    )
+    for idx, acao in enumerate(tentativas, start=1):
+        try:
+            acao()
+        except Exception:
+            pass
+        time.sleep(0.35)
+        _tentar_abrir_submenu_richfaces(driver, menu_base_id)
+        _forcar_visibilidade_lista_dropdown(driver, lista_id)
+        _aguardar_menu_lista(driver, wait, lista_id, timeout=6)
+        if _menu_lista_visivel(driver, lista_id) or _submenu_tem_itens(driver, lista_id):
+            if idx > 1:
+                db.logar_progresso(apartamento_id, f"Submenu aberto (estratégia {idx}).")
+            return True
 
-    db.logar_progresso(apartamento_id, "Hover não abriu submenu — tentando clique…")
-    try:
-        hover_alvo.click()
-    except Exception:
-        driver.execute_script("arguments[0].click();", hover_alvo)
-    time.sleep(0.5)
-    _tentar_abrir_submenu_richfaces(driver, menu_base_id)
-    _aguardar_menu_lista(driver, wait, lista_id, timeout=8)
-    return _menu_lista_visivel(driver, lista_id)
+    db.logar_progresso(apartamento_id, "Hover não abriu submenu — tentando clique final…")
+    return _menu_lista_visivel(driver, lista_id) or _submenu_tem_itens(driver, lista_id)
 
 
 def _listar_menus_topo_sati(driver, apartamento_id, contexto: str = "") -> None:
@@ -640,143 +816,89 @@ def _aguardar_tela_envio_bd(driver, apartamento_id: int, timeout: int = 150):
 
 
 def _abrir_menu_configuracoes(driver, wait, actions, apartamento_id):
-    """Menu superior SATI: Configurações (formMenu:j_idt711)."""
+    """Menu superior SATI: Configurações (IDs dinâmicos RichFaces)."""
     db.logar_progresso(apartamento_id, "Abrindo menu Configurações…")
     time.sleep(0.5)
 
-    menu = None
-    for el in driver.find_elements(
-        By.XPATH,
-        "//div[contains(@class,'rf-ddm-lbl-dec') and normalize-space()='Configurações']",
-    ):
-        if el.is_displayed():
-            menu = el
-            break
-    if menu is None:
-        for el in driver.find_elements(By.ID, "formMenu:j_idt711_itm"):
-            if el.is_displayed():
-                menu = el
-                break
-
-    candidatos = [
-        (By.ID, "formMenu:j_idt711_itm"),
-        (By.XPATH, "//td[@id='formMenu:j_idt711_itm']"),
-        (By.ID, "formMenu:j_idt711_label"),
-        (
-            By.XPATH,
-            "//div[contains(@class,'rf-ddm-lbl-dec') and normalize-space()='Configurações']",
-        ),
-        (
-            By.XPATH,
-            "//div[contains(@class,'rf-ddm-lbl')][contains(normalize-space(),'Configurações')]",
-        ),
-    ]
-    if menu is None:
-        for by, sel in candidatos:
-            try:
-                menu = _wait_curto(driver, 6).until(
-                    EC.visibility_of_element_located((by, sel))
-                )
-                break
-            except Exception:
-                continue
-
-    if menu is None:
+    hover_alvo, lista_id, menu_base_id = _localizar_menu_barra_por_rotulo(
+        driver, "Configurações"
+    )
+    if hover_alvo is None or not lista_id:
         _listar_menus_topo_sati(driver, apartamento_id, "menu Configurações não encontrado")
         raise RuntimeError("Menu 'Configurações' não encontrado na barra do SATI.")
 
-    db.logar_progresso(apartamento_id, "Menu Configurações localizado — posicionando mouse…")
-    hover_alvo = _celula_menu_hover(driver, menu)
+    db.logar_progresso(
+        apartamento_id,
+        f"Menu Configurações localizado ({menu_base_id}) — abrindo submenu…",
+    )
 
     if not _abrir_submenu_dropdown(
         driver,
         wait,
         actions,
         hover_alvo,
-        "formMenu:j_idt711_list",
-        "formMenu:j_idt711",
+        lista_id,
+        menu_base_id,
         apartamento_id,
     ):
-        _listar_menus_topo_sati(driver, apartamento_id, "submenu Configurações não abriu")
-        raise RuntimeError(
-            "Submenu 'Configurações' não abriu (formMenu:j_idt711_list invisível)."
-        )
+        _forcar_visibilidade_lista_dropdown(driver, lista_id)
+        if not (_menu_lista_visivel(driver, lista_id) or _submenu_tem_itens(driver, lista_id)):
+            _listar_menus_topo_sati(driver, apartamento_id, "submenu Configurações não abriu")
+            raise RuntimeError(
+                f"Submenu 'Configurações' não abriu ({lista_id} invisível)."
+            )
 
-    _listar_itens_submenu(driver, "formMenu:j_idt711_list", apartamento_id, "Configurações")
+    _listar_itens_submenu(driver, lista_id, apartamento_id, "Configurações")
     return hover_alvo
 
 
 def navegar_envio_banco_dados(driver, wait, actions, apartamento_id):
-    """Menu Configurações → Envio de Banco de Dados (formMenu:j_idt747 → formCad:enviarDadosBI)."""
+    """Menu Configurações → Envio de Banco de Dados → formCad:enviarDadosBI."""
     menu_cfg = _abrir_menu_configuracoes(driver, wait, actions, apartamento_id)
 
-    envio_selectors = [
-        (By.ID, "formMenu:j_idt747"),
-        (By.CSS_SELECTOR, "[id='formMenu:j_idt747']"),
-        (
-            By.XPATH,
-            "//div[@id='formMenu:j_idt711_list']"
-            "//div[contains(@class,'rf-ddm-itm')][@id='formMenu:j_idt747']",
-        ),
-        (
-            By.XPATH,
-            "//div[@id='formMenu:j_idt711_list']"
-            "//span[contains(@class,'rf-ddm-itm-lbl') and "
-            "normalize-space()='Envio de Banco de Dados']"
-            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
-        ),
-        (
-            By.XPATH,
-            "//div[@id='formMenu:j_idt711_list']"
-            "//span[contains(@class,'rf-ddm-itm-lbl') and contains(.,'Envio de Banco')]"
-            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
-        ),
-        (
-            By.XPATH,
-            "//span[contains(@class,'rf-ddm-itm-lbl') and "
-            "normalize-space()='Envio de Banco de Dados']"
-            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
-        ),
-        (
-            By.XPATH,
-            "//span[contains(@class,'rf-ddm-itm-lbl') and contains(.,'Envio de Banco')]"
-            "/ancestor::div[contains(@class,'rf-ddm-itm')]",
-        ),
-    ]
+    _, lista_id, _ = _localizar_menu_barra_por_rotulo(driver, "Configurações")
+    _forcar_visibilidade_lista_dropdown(driver, lista_id or "formMenu:j_idt711_list")
 
-    envio = None
-    for by, sel in envio_selectors:
-        try:
-            _mover_mouse_para_elemento(
-                driver, actions, menu_cfg, apartamento_id, "Configurações (manter aberto)"
-            )
-            time.sleep(0.4)
-            envio = _wait_curto(driver, 12).until(EC.element_to_be_clickable((by, sel)))
-            db.logar_progresso(
-                apartamento_id,
-                f"Item 'Envio de Banco de Dados' localizado ({by}).",
-            )
-            break
-        except Exception:
-            continue
+    envio = _clicar_item_submenu_por_texto(
+        driver, actions, lista_id, "envio de banco", apartamento_id
+    )
+
+    if envio is None:
+        envio_selectors = [
+            (By.ID, "formMenu:j_idt747"),
+            (
+                By.XPATH,
+                "//span[contains(@class,'rf-ddm-itm-lbl') and "
+                "contains(.,'Envio de Banco')]"
+                "/ancestor::div[contains(@class,'rf-ddm-itm')]",
+            ),
+        ]
+        for by, sel in envio_selectors:
+            try:
+                _mover_mouse_para_elemento(
+                    driver, actions, menu_cfg, apartamento_id, "Configurações (manter aberto)"
+                )
+                time.sleep(0.4)
+                envio = _wait_curto(driver, 8).until(EC.element_to_be_clickable((by, sel)))
+                db.logar_progresso(
+                    apartamento_id,
+                    f"Item 'Envio de Banco de Dados' localizado ({by}).",
+                )
+                try:
+                    actions.move_to_element(envio).pause(0.2).click(envio).perform()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", envio)
+                break
+            except Exception:
+                continue
 
     if envio is None:
         _listar_itens_submenu(
-            driver, "formMenu:j_idt711_list", apartamento_id, "Configurações (falha)"
+            driver, lista_id or "formMenu:j_idt711_list", apartamento_id, "Configurações (falha)"
         )
         raise RuntimeError(
             "Item 'Envio de Banco de Dados' não encontrado dentro de Configurações."
         )
-
-    db.logar_progresso(apartamento_id, "Clicando em Envio de Banco de Dados…")
-    try:
-        _mover_mouse_para_elemento(driver, actions, envio, apartamento_id, "Envio de Banco de Dados")
-        ActionChains(driver).move_to_element(envio).pause(0.2).click(envio).perform()
-    except Exception:
-        try:
-            envio.click()
-        except Exception:
-            driver.execute_script("arguments[0].click();", envio)
 
     time.sleep(1)
     _aguardar_tela_envio_bd(driver, apartamento_id)
@@ -822,7 +944,13 @@ def executar_envio_banco_bi(driver, wait, apartamento_id, tempo_max_seg=3600):
             f"Tempo esgotado ({tempo_max_seg}s) aguardando conclusão do envio BI."
         )
 
-    url = extrair_url_zip_da_pagina(driver)
+    driver.switch_to.default_content()
+    url = None
+    for tentativa in range(8):
+        time.sleep(1 if tentativa else 0.5)
+        url = extrair_url_zip_da_pagina(driver)
+        if url:
+            break
     if not url:
         raise RuntimeError("URL do arquivo .zip do backup não encontrada na página.")
     db.logar_progresso(apartamento_id, f"Link do backup: {url}")
@@ -840,22 +968,31 @@ def _primeira_url_zip(texto: str) -> str | None:
 
 
 def extrair_url_zip_da_pagina(driver) -> str | None:
-    for el in driver.find_elements(
-        By.XPATH,
-        "//span[contains(@style,'#0000FF') and contains(.,'.zip')]"
-        " | //span[contains(.,'SATI') and contains(.,'.zip')]"
-        " | //a[contains(@href,'.zip')]",
-    ):
-        texto = (el.text or "") + (el.get_attribute("href") or "")
-        url = _primeira_url_zip(texto)
-        if url:
-            return url
-    for el in driver.find_elements(
-        By.XPATH, "//*[contains(text(),'.zip') and contains(text(),'SATI')]"
-    ):
-        url = _primeira_url_zip(el.text or "")
-        if url:
-            return url
+    """Extrai URL do .zip — HTML primeiro (evita stale element após AJAX RichFaces)."""
+    from selenium.common.exceptions import StaleElementReferenceException
+
+    url = extrair_url_zip_do_html(driver.page_source)
+    if url:
+        return url
+
+    xpaths = [
+        "//span[contains(@style,'#0000FF') and contains(.,'.zip')]",
+        "//span[contains(.,'SATI') and contains(.,'.zip')]",
+        "//a[contains(@href,'.zip')]",
+        "//*[contains(text(),'.zip') and contains(text(),'SATI')]",
+    ]
+    for xpath in xpaths:
+        try:
+            for el in driver.find_elements(By.XPATH, xpath):
+                try:
+                    texto = (el.text or "") + (el.get_attribute("href") or "")
+                    url = _primeira_url_zip(texto)
+                    if url:
+                        return url
+                except StaleElementReferenceException:
+                    continue
+        except Exception:
+            continue
     return extrair_url_zip_do_html(driver.page_source)
 
 
@@ -1015,9 +1152,15 @@ def _menu_lista_visivel(driver, lista_id: str) -> bool:
     except Exception:
         return False
     style = (el.get_attribute("style") or "").replace(" ", "").lower()
-    if "display:none" in style:
-        return False
-    return el.is_displayed()
+    if "display:none" in style or "visibility:hidden" in style:
+        if not _submenu_tem_itens(driver, lista_id):
+            return False
+    try:
+        if el.is_displayed():
+            return True
+    except Exception:
+        pass
+    return _submenu_tem_itens(driver, lista_id)
 
 
 def _aguardar_menu_lista(driver, wait, lista_id: str, timeout=20):

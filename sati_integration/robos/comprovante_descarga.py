@@ -61,7 +61,7 @@ def _normalizar_item(item: dict, apartamento_id: int) -> dict:
 
 
 def mapa_cache_por_numero(apartamento_id: int) -> dict[int, dict]:
-    from robos.coletor_painel_documentos import carregar_cache_comprovantes
+    from sati_integration.robos.coletor_painel_documentos import carregar_cache_comprovantes
 
     out: dict[int, dict] = {}
     for item in carregar_cache_comprovantes(apartamento_id).get("itens") or []:

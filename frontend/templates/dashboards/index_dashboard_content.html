@@ -11,7 +11,7 @@
         </div>
         {% if selected_start_date and selected_end_date %}
         <div class="dash-period-badge">
-            Período: <strong>{{ selected_start_date }}</strong> até <strong>{{ selected_end_date }}</strong>
+            Período: <strong>{{ selected_start_date | format_date }}</strong> até <strong>{{ selected_end_date | format_date }}</strong>
         </div>
         {% endif %}
     </header>
@@ -64,6 +64,7 @@
             </div>
             <button type="submit" class="btn-apply">Aplicar</button>
             <div class="dash-toolbar">
+                <button type="button" id="btn-analise-margem-toolbar" class="tb-btn tb-btn-primary" title="Análise da margem, CT-e e notas">📊 Análise geral</button>
                 {% if is_admin_in_context() %}
                 <button type="button" id="btn-iniciar-coleta" class="tb-btn tb-btn-primary">↻ Atualizar banco SATI</button>
                 {% endif %}
@@ -78,7 +79,9 @@
 
     {% if summary %}
     {% set custo_operacional = summary.custo_total_viagem + summary.total_despesas_gerais + summary.total_despesas_tipo_d %}
-    {% set num_ctes = summary.faturamento_conhecimentos | length if summary.faturamento_conhecimentos else 0 %}
+    {% set num_ctes = summary.qtd_ctes if summary.qtd_ctes is defined else (summary.faturamento_conhecimentos | length if summary.faturamento_conhecimentos else 0) %}
+    {% set cmp = summary.comparativo if summary.comparativo else none %}
+    {% set meta_st = summary.meta_margem_status if summary.meta_margem_status else none %}
 
     <section class="kpi-hero">
         <div class="kpi-card kpi-receita">
@@ -86,12 +89,18 @@
             <div class="kpi-label">Receita de frete</div>
             <div class="kpi-value" style="color: var(--accent);">{{ summary.faturamento_total_viagens | currency }}</div>
             <div class="kpi-hint">{{ num_ctes }} viagem(ns) no período</div>
+            {% if cmp and cmp.receita %}
+            <div class="kpi-delta kpi-delta-{{ cmp.receita.tone }}">{{ cmp.receita.label }} vs período ant.</div>
+            {% endif %}
         </div>
         <div class="kpi-card kpi-custo">
             <button type="button" class="audit-btn" data-audit-metric="custo_operacional" title="Auditar composição dos custos">⊕</button>
             <div class="kpi-label">Custos operacionais</div>
             <div class="kpi-value" style="color: var(--warning);">{{ custo_operacional | currency }}</div>
             <div class="kpi-hint">Prévia CT-e + notas + tipo D</div>
+            {% if cmp and cmp.custo %}
+            <div class="kpi-delta kpi-delta-{{ cmp.custo.tone }}">{{ cmp.custo.label }} vs período ant.</div>
+            {% endif %}
         </div>
         <div class="kpi-card kpi-resultado">
             <button type="button" class="audit-btn" data-audit-metric="resultado_liquido" title="Auditar composição do resultado">⊕</button>
@@ -100,6 +109,9 @@
                 {{ summary.saldo_geral | currency }}
             </div>
             <div class="kpi-hint">Receita − custos</div>
+            {% if cmp and cmp.resultado %}
+            <div class="kpi-delta kpi-delta-{{ cmp.resultado.tone }}">{{ cmp.resultado.label }} vs período ant.</div>
+            {% endif %}
         </div>
         <div class="kpi-card kpi-margem">
             <button type="button" class="audit-btn" data-audit-metric="margem_frete" title="Auditar margem">⊕</button>
@@ -107,11 +119,32 @@
             <div class="kpi-value" style="color: {% if summary.margem_frete >= 0 %}var(--success){% else %}var(--danger){% endif %};">
                 {{ summary.margem_frete | percentage }}
             </div>
-            <div class="kpi-hint">Lucro / receita</div>
+            <div class="kpi-hint">
+                Lucro / receita
+                {% if meta_st and meta_st.label %}
+                · <span class="kpi-meta kpi-meta-{{ meta_st.tone }}">{{ meta_st.label }}</span>
+                {% endif %}
+            </div>
+            {% if cmp and cmp.margem %}
+            <div class="kpi-delta kpi-delta-{{ cmp.margem.tone }}">{{ cmp.margem.label }} vs período ant.</div>
+            {% endif %}
         </div>
     </section>
 
     <section class="kpi-secondary">
+        <div class="kpi-mini">
+            <span>Custo por CT-e</span>
+            <strong style="color: var(--warning);">{{ (summary.custo_por_cte or 0) | currency }}</strong>
+            <small class="kpi-mini-hint">Custos operacionais ÷ {{ num_ctes }} CT-e(s)</small>
+            {% if cmp and cmp.custo_por_cte %}
+            <small class="kpi-delta kpi-delta-{{ cmp.custo_por_cte.tone }}">{{ cmp.custo_por_cte.label }} vs ant.</small>
+            {% endif %}
+        </div>
+        <div class="kpi-mini">
+            <span>Ticket médio</span>
+            <strong style="color: var(--accent);">{{ (summary.ticket_medio or 0) | currency }}</strong>
+            <small class="kpi-mini-hint">Receita frete ÷ {{ num_ctes }} CT-e(s)</small>
+        </div>
         <div class="kpi-mini">
             <button type="button" class="audit-btn-mini" data-audit-metric="custo_viagem" title="Auditar custo de viagem">⊕</button>
             <span>Custo de viagem</span>
@@ -200,26 +233,23 @@
             </div>
             <div class="side-card">
                 <h3>Financeiro</h3>
-                <div class="kpi-mini" style="margin-bottom:0.5rem;box-shadow:none;">
-                    <button type="button" class="audit-btn-mini" data-audit-metric="contas_pagar" title="Auditar contas a pagar">⊕</button>
-                    <span>A pagar</span>
-                    <strong style="color:var(--danger);">{{ summary.saldo_contas_a_pagar_pendentes | currency }}</strong>
-                    <small class="kpi-mini-hint">Sem transação confirmada</small>
-                </div>
-                <div class="kpi-mini" style="margin-bottom:0.5rem;box-shadow:none;">
-                    <button type="button" class="audit-btn-mini" data-audit-metric="contas_receber" title="Auditar contas a receber">⊕</button>
-                    <span>A receber</span>
-                    <strong style="color:var(--accent);">{{ summary.saldo_contas_a_receber_pendentes | currency }}</strong>
-                    <small class="kpi-mini-hint">Sem transação confirmada</small>
-                </div>
+                {% include 'partials/financeiro_kpi.html' %}
                 <button type="button" id="btn-auditoria-despesas" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
                     <span class="icon red">🔍</span>
                     <span>Auditoria de despesas</span>
                 </button>
+                <button type="button" id="btn-analise-margem-geral" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                    <span class="icon blue">📊</span>
+                    <span>Análise geral</span>
+                </button>
+                <button type="button" id="btn-inconsistencias-banco" class="side-link" style="padding:0;border:none;background:transparent;width:100%;text-align:left;cursor:pointer;margin-top:0.25rem;">
+                    <span class="icon orange">⚠</span>
+                    <span>Inconsistências do banco</span>
+                </button>
             </div>
             <div class="side-card">
                 <h3>Viagens</h3>
-                <a class="side-link" href="{{ url_for('main.fluxo_viagem') }}?{{ request.query_string.decode('utf-8') }}">
+                <a class="side-link" href="{{ url_for('main.fluxo_viagem') }}">
                     <span class="icon purple">🛣️</span>
                     <span>Fluxo de viagem</span>
                 </a>

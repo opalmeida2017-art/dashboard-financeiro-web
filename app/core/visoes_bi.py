@@ -8,14 +8,36 @@ import numpy as np
 import pandas as pd
 
 from app.data import data_manager as dm
+from app.core import dre_viagem as dre
+from app.utils.dre_tenant_config import obter_dre_opts
 from app.core.gestao_comercial import (
-    _alocar_custo_proporcional,
     _base_viagens_fat,
-    _custo_operacional_total,
     _fmt_brl,
     _fmt_pct,
 )
+from app.utils.bi_metas import obter_metas_bi, status_vs_meta
 from app.core.visao_exploratorio import EXPLORATORIO_VISOES, get_exploratorio_data
+
+
+def _viagens_com_receita(filtered: dict, apartamento_id: int) -> pd.DataFrame:
+    """Viagens com receita DRE > 0 (regras por tenant)."""
+    df_dre = dm._df_viagens_com_receita(
+        filtered.get("df_viagens_cliente", pd.DataFrame()),
+        apartamento_id,
+        filtered.get("df_acerto_motorista_raw"),
+    )
+    if not df_dre.empty:
+        return df_dre
+    df = _base_viagens_fat(filtered)
+    if df.empty:
+        return df
+    df_out = dre.aplicar_dre_em_dataframe(
+        df,
+        filtered.get("df_acerto_motorista_raw"),
+        dre_opts=obter_dre_opts(apartamento_id),
+    )
+    rec = pd.to_numeric(df_out.get("receita", 0), errors="coerce").fillna(0)
+    return df_out[rec > 0].copy()
 
 VISOES = {
     "financeira": {
@@ -141,7 +163,7 @@ VISOES = {
             },
             2: {
                 "titulo": "Rentabilidade por viagem",
-                "subtitulo": "CT-es com pior margem estimada",
+                "subtitulo": "CT-es com pior margem DRE",
                 "pergunta": "Quais viagens microgerenciar ou recusar?",
                 "icone": "red",
                 "emoji": "📉",
@@ -770,23 +792,30 @@ def _operacional(meta, filtered, apartamento_id, start_date, end_date, analise_i
 
 
 def _estrategica(meta, filtered, apartamento_id, placa_filter, start_date, end_date, filial_filter, tipo_negocio_filter, analise_id):
-    df_fat = _base_viagens_fat(filtered)
-    custo_total = _custo_operacional_total(
-        filtered, apartamento_id, placa_filter, start_date, end_date, filial_filter, tipo_negocio_filter
-    )
+    df_fat = _viagens_com_receita(filtered, apartamento_id)
+    metas = obter_metas_bi(apartamento_id)
+    meta_margem = metas.get("meta_margem_pct")
 
     if analise_id == 1:
         if df_fat.empty:
             return _empty(meta)
         cv = dm._get_case_insensitive_column_map(df_fat.columns)
         col = cv.get("nomecliente", "nomecliente")
-        grp = _alocar_custo_proporcional(df_fat, col, custo_total).head(10)
+        grp = dre.agrupar_dre(df_fat, col).head(10)
+        rec_sum = float(grp["receita"].sum()) if not grp.empty else 0.0
+        lucro_sum = float(grp["lucro"].sum()) if not grp.empty else 0.0
+        margem_top = (lucro_sum / rec_sum * 100.0) if rec_sum > 0 else 0.0
+        st_meta = status_vs_meta(margem_top, meta_margem, maior_melhor=True)
         return {
             "analise": meta,
             "kpis": [
-                {"label": "Clientes top", "value": str(len(grp)), "hint": ""},
-                {"label": "Receita top 10", "value": _fmt_brl(float(grp["receita"].sum())), "hint": ""},
-                {"label": "Margem média top", "value": _fmt_pct(float(grp["lucro"].sum() / grp["receita"].sum() * 100) if grp["receita"].sum() else 0), "hint": ""},
+                {"label": "Clientes top", "value": str(len(grp)), "hint": "DRE por CT-e"},
+                {"label": "Receita top 10", "value": _fmt_brl(rec_sum), "hint": ""},
+                {
+                    "label": "Margem média top",
+                    "value": _fmt_pct(margem_top),
+                    "hint": f"DRE conhecimento · {st_meta['label']}" if st_meta["label"] else "DRE conhecimento",
+                },
                 {"label": "AR em aberto", "value": _fmt_brl(dm._calcular_contas_receber_pendentes(filtered["df_contas_receber_raw"])), "hint": "global"},
             ],
             "chart": {
@@ -796,10 +825,10 @@ def _estrategica(meta, filtered, apartamento_id, placa_filter, start_date, end_d
                 "labels": [str(x)[:35] for x in grp[col]],
                 "datasets": [
                     {"label": "Receita (R$)", "unit": "currency", "data": [round(float(x), 2) for x in grp["receita"]]},
-                    {"label": "Lucro est. (R$)", "unit": "currency", "data": [round(float(x), 2) for x in grp["lucro"]]},
+                    {"label": "Lucro DRE (R$)", "unit": "currency", "data": [round(float(x), 2) for x in grp["lucro"]]},
                 ],
             },
-            "chart_title": "Comercial 360 — top clientes (receita × lucro)",
+            "chart_title": "Comercial 360 — top clientes (receita × lucro DRE)",
         }
 
     if analise_id == 2:
@@ -808,18 +837,37 @@ def _estrategica(meta, filtered, apartamento_id, placa_filter, start_date, end_d
         cv = dm._get_case_insensitive_column_map(df_fat.columns)
         num = cv.get("numero", "numero")
         df = df_fat.copy()
+        if "custo_previa_conhecimento" not in df.columns:
+            df = dre.aplicar_dre_em_dataframe(
+                df,
+                filtered.get("df_acerto_motorista_raw"),
+                dre_opts=obter_dre_opts(apartamento_id),
+            )
+        rec = pd.to_numeric(df["receita"], errors="coerce").fillna(0) if "receita" in df.columns else pd.Series(0.0, index=df.index)
+        custo = (
+            pd.to_numeric(df["custo_previa_conhecimento"], errors="coerce").fillna(0)
+            if "custo_previa_conhecimento" in df.columns
+            else pd.Series(0.0, index=df.index)
+        )
+        df["custo_dre"] = custo
+        df["lucro"] = rec - custo
+        df["margem"] = np.where(rec > 0, df["lucro"] / rec * 100, 0)
         n = len(df)
-        df["custo_al"] = custo_total / max(n, 1)
-        df["lucro"] = df["receita"] - df["custo_al"]
-        df["margem"] = np.where(df["receita"] > 0, df["lucro"] / df["receita"] * 100, 0)
+        rec_sum = float(rec.sum())
+        margem_media = float(df["lucro"].sum() / rec_sum * 100) if rec_sum > 0 else 0.0
+        st_meta = status_vs_meta(margem_media, meta_margem, maior_melhor=True)
         worst = df.sort_values("margem").head(12)
         return {
             "analise": meta,
             "kpis": [
-                {"label": "CT-es", "value": str(n), "hint": ""},
-                {"label": "Margem média", "value": _fmt_pct(float(df["margem"].mean())), "hint": "rateio uniforme"},
+                {"label": "CT-es", "value": str(n), "hint": "DRE por CT-e"},
+                {
+                    "label": "Margem média",
+                    "value": _fmt_pct(margem_media),
+                    "hint": f"DRE conhecimento · {st_meta['label']}" if st_meta["label"] else "DRE conhecimento",
+                },
                 {"label": "Piores viagens", "value": str(len(worst)), "hint": "no gráfico"},
-                {"label": "Prejuízo estimado", "value": _fmt_brl(float(worst.loc[worst["lucro"] < 0, "lucro"].sum())), "hint": "top 12"},
+                {"label": "Prejuízo DRE", "value": _fmt_brl(float(worst.loc[worst["lucro"] < 0, "lucro"].sum())), "hint": "top 12"},
             ],
             "chart": {
                 "mode": "margem_hbar",
@@ -828,7 +876,7 @@ def _estrategica(meta, filtered, apartamento_id, placa_filter, start_date, end_d
                 "labels": [f"CT-e {x}" for x in worst[num].astype(str)],
                 "datasets": [{"label": "Margem %", "unit": "percent", "data": [round(float(x), 1) for x in worst["margem"]]}],
             },
-            "chart_title": "Piores margens por CT-e",
+            "chart_title": "Piores margens por CT-e (DRE)",
         }
 
     if analise_id == 3:
@@ -893,13 +941,19 @@ def _estrategica(meta, filtered, apartamento_id, placa_filter, start_date, end_d
         media_rkm = float(m.loc[m["km"] > 0, "r_km"].mean()) if (m["km"] > 0).any() else 0
         media_kml = float(m.loc[m["kml"] > 0, "kml"].mean()) if (m["kml"] > 0).any() else 0
         comb_total = float(m["comb"].sum())
+        meta_rkm = metas.get("meta_r_km")
+        st_rkm = status_vs_meta(media_rkm, meta_rkm, maior_melhor=False)
         m = m.sort_values("r_km", ascending=False).head(10)
         return {
             "analise": meta,
             "kpis": [
                 {"label": "Placas", "value": str(len(m)), "hint": "top 10 R$/km"},
-                {"label": "R$/km médio", "value": _fmt_brl(media_rkm), "hint": "frota com km"},
-                {"label": "km/l médio", "value": f"{media_kml:.2f}".replace(".", ","), "hint": "frota com combustível"},
+                {
+                    "label": "R$/km médio",
+                    "value": _fmt_brl(media_rkm),
+                    "hint": f"frota com km · {st_rkm['label']}" if st_rkm["label"] else "frota com km",
+                },
+                {"label": "km/l médio", "value": f"{media_kml:.2f}".replace(".", ","), "hint": "aprox. litros = valor÷5,5"},
                 {"label": "Combustível", "value": _fmt_brl(comb_total), "hint": ""},
             ],
             "chart": {
@@ -912,6 +966,7 @@ def _estrategica(meta, filtered, apartamento_id, placa_filter, start_date, end_d
                 ],
             },
             "chart_title": "Eficiência integrada — custo/km e consumo",
+            "meta_r_km": meta_rkm,
         }
 
     if analise_id == 6:

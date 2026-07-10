@@ -41,15 +41,31 @@ def logar_progresso(apartamento_id, mensagem):
     Salva uma mensagem de progresso do robô no banco de dados,
     usando a conexão principal da aplicação.
     """
-    print(mensagem) 
-    
+    slug = (os.getenv("BI_TENANT_SLUG") or "").strip()
+    razao = (os.getenv("RAZAO_SOCIAL") or "").strip()
+    rotulo = slug or razao
+    if rotulo and rotulo.lower() not in str(mensagem).lower():
+        mensagem = f"[{rotulo}] {mensagem}"
+    print(mensagem)
+
+    try:
+        apt_id = int(apartamento_id)
+    except (TypeError, ValueError):
+        apt_id = apartamento_id
+    try:
+        from app.data.tenant import default_transportadora_id
+
+        apt_id = int(default_transportadora_id())
+    except Exception:
+        pass
+
     try:
         with engine.connect() as conn:
             query = text("""
                 INSERT INTO tb_logs_robo (apartamento_id, timestamp, mensagem)
                 VALUES (:apartamento_id, NOW(), :mensagem)
             """)
-            conn.execute(query, {"apartamento_id": apartamento_id, "mensagem": mensagem})
+            conn.execute(query, {"apartamento_id": apt_id, "mensagem": mensagem})
             conn.commit()
     except Exception as e:
         print(f"--- ERRO CRÍTICO NO LOG: Não foi possível salvar a mensagem no banco. Erro: {e} ---")

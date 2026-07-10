@@ -11,7 +11,9 @@
                 Rentabilidade, carteira de clientes e comércio — dados do banco SATI.
             </p>
         </div>
-        <a href="{{ painel_home_url(request.query_string.decode('utf-8')) }}" class="dash-back-link">&larr; Voltar ao painel</a>
+        <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
+            <a href="{{ painel_home_url(request.query_string.decode('utf-8')) }}" class="dash-back-link">&larr; Voltar ao painel</a>
+        </div>
     </header>
 
     <div class="gc-menu-grid">

@@ -80,6 +80,47 @@ h4, .section-title, thead, .table-warning, .table-danger, .text-success, .text-d
 .text-end { text-align: right !important; }
 .text-center { text-align: center !important; }
 
+/* Modais de auditoria / análise — imprimir documento completo, sem barras de rolagem */
+body.bi-audit-print-mode,
+body.bi-inconsist-print-mode,
+body.bi-margem-print-mode {
+    overflow: visible !important;
+    height: auto !important;
+}
+
+body.bi-audit-print-mode #biAuditModal,
+body.bi-inconsist-print-mode #inconsistenciasModal,
+body.bi-margem-print-mode #margemAnaliseModal {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    background: #fff !important;
+}
+
+body.bi-audit-print-mode .bi-audit-body,
+body.bi-inconsist-print-mode .bi-inconsist-modal-body,
+body.bi-margem-print-mode .bi-margem-modal-body,
+body.bi-audit-print-mode .modal-content,
+body.bi-inconsist-print-mode .modal-content,
+body.bi-margem-print-mode .modal-content {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+body.bi-audit-print-mode .bi-audit-table-wrap,
+body.bi-inconsist-print-mode .bi-audit-table-wrap,
+body.bi-margem-print-mode .bi-audit-table-wrap,
+body.bi-audit-print-mode .table-responsive,
+body.bi-inconsist-print-mode .table-responsive,
+body.bi-margem-print-mode .table-responsive {
+    max-height: none !important;
+    overflow: visible !important;
+    height: auto !important;
+}
+
 /* Estilos para o cabeçalho do relatório e logo (VERSÃO CORRIGIDA E ALINHADA) */
 .report-header {
     position: relative; /* Essencial para o posicionamento do título */

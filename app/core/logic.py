@@ -119,9 +119,45 @@ def get_fluxo_viagem_historico(apartamento_id: int, start_date, end_date, placa:
     print(f">>> [LOGIC] Chamando get_fluxo_viagem_historico placa={placa} apt={apartamento_id}")
     return dm.get_fluxo_viagem_historico(apartamento_id, start_date, end_date, placa, filial_filter)
 
+def get_nfe_pendentes_cte(apartamento_id: int, start_date=None, end_date=None, filial_filter=None, placa_filter=None, numero_nfe=None, data_nfe=None):
+    return dm.get_nfe_pendentes_cte(
+        apartamento_id, start_date, end_date, filial_filter,
+        placa_filter=placa_filter, numero_nfe=numero_nfe, data_nfe=data_nfe,
+    )
+
 def get_expense_audit_data(apartamento_id: int, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter, unidade_embarque_filter=None, embarcador_filter="Todos"):
     print(f">>> [LOGIC] Chamando get_expense_audit_data para o apartamento ID: {apartamento_id}")
     return dm.get_expense_audit_data(apartamento_id, start_date, end_date, placa_filter, filial_filter, tipo_negocio_filter, unidade_embarque_filter, embarcador_filter)
+
+
+def get_db_inconsistencias(apartamento_id: int, start_date=None, end_date=None):
+    from app.core import db_inconsistencias
+
+    return db_inconsistencias.get_db_inconsistencias(apartamento_id, start_date, end_date)
+
+
+def get_margem_analise_geral(
+    apartamento_id: int,
+    start_date=None,
+    end_date=None,
+    placa_filter="Todos",
+    filial_filter=None,
+    tipo_negocio_filter="Todos",
+    unidade_embarque_filter=None,
+    embarcador_filter="Todos",
+):
+    from app.core import margem_analise
+
+    return margem_analise.get_margem_analise_geral(
+        apartamento_id,
+        start_date,
+        end_date,
+        placa_filter,
+        filial_filter,
+        tipo_negocio_filter,
+        unidade_embarque_filter,
+        embarcador_filter,
+    )
 
 
 def get_bi_audit_data(
@@ -134,6 +170,8 @@ def get_bi_audit_data(
     tipo_negocio_filter,
     cliente=None,
     rota=None,
+    periodo_label=None,
+    numero_cte=None,
     unidade_embarque_filter=None,
     embarcador_filter="Todos",
 ):
@@ -149,6 +187,8 @@ def get_bi_audit_data(
         tipo_negocio_filter,
         cliente,
         rota,
+        periodo_label,
+        numero_cte,
         unidade_embarque_filter,
         embarcador_filter,
     )
@@ -187,11 +227,71 @@ def executar_atualizacao_bd_sati(
     return bool(executar_atualizacao_bd_sati(apartamento_id))
 
 
+def rebuild_bi_snapshot_job(apartamento_id: int, sati_generation: str | None = None) -> int:
+    """Job RQ: recalcula snapshot BI após import SATI."""
+    from app.data.bi_snapshot import rebuild_bi_viagem_snapshot
+
+    print(f">>> [LOGIC] Rebuild BI snapshot apt={apartamento_id}")
+    n = rebuild_bi_viagem_snapshot(int(apartamento_id), sati_generation)
+    print(f"<<< [LOGIC] BI snapshot: {n} viagem(ns)")
+    return n
+
+
+def executar_rebuild_bi_snapshot(apartamento_id: int) -> int:
+    """Rebuild síncrono do snapshot (admin / teste)."""
+    from app.data.bi_snapshot import rebuild_bi_viagem_snapshot
+
+    return rebuild_bi_viagem_snapshot(int(apartamento_id))
+
+
 def get_comprovante_descarga_payload(apartamento_id: int, numeros: list[int]) -> dict:
-    from comprovante_descarga import itens_para_numeros
+    from sati_integration.robos.comprovante_descarga import itens_para_numeros
 
     itens = itens_para_numeros(apartamento_id, numeros)
     return {"itens": itens, "numeros": numeros}
+
+
+def _is_tenant_ou_ambiente_teste(apartamento_id: int | None = None) -> bool:
+    """Tenant/empresa de teste (nome ou slug)."""
+    from app.data.tenant import get_transportadora_nome
+
+    if apartamento_id is not None:
+        nome = (get_transportadora_nome(apartamento_id) or "").strip().lower()
+        if nome == "teste":
+            return True
+    slug_env = os.getenv("BI_TENANT_SLUG", "").strip().lower()
+    if slug_env == "teste":
+        return True
+    try:
+        from flask import has_request_context, session
+
+        if has_request_context():
+            slug = (session.get("bi_tenant_slug") or "").strip().lower()
+            if slug == "teste":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def coleta_comprovante_automatica_habilitada(apartamento_id: int | None = None) -> bool:
+    """
+    Busca automática ao abrir o fluxo e em ociosidade.
+    Desligada por padrão (teste e Debian). Ligue com BIWEB_COLETA_COMPROVANTE_AUTO=true.
+    """
+    explicit = os.getenv("BIWEB_COLETA_COMPROVANTE_AUTO", "").strip().lower()
+    if explicit in ("1", "true", "yes", "on"):
+        return True
+    if explicit in ("0", "false", "no", "off"):
+        return False
+
+    from app.utils.runtime import is_production_server
+
+    if is_production_server():
+        return False
+    if _is_tenant_ou_ambiente_teste(apartamento_id):
+        return False
+    return False
 
 
 def disparar_coleta_comprovantes_fluxo(
@@ -203,8 +303,15 @@ def disparar_coleta_comprovantes_fluxo(
     """
     Enfileira (ou executa) o robô Painel de Documentos para CT-es pendentes no fluxo.
     """
+    if not coleta_comprovante_automatica_habilitada(apartamento_id):
+        return {
+            "status": "ignorado",
+            "mensagem": "Coleta automática de comprovantes desativada neste ambiente.",
+            "numeros": [],
+        }
+
     from app.data import data_manager as dm
-    from comprovante_descarga import (
+    from sati_integration.robos.comprovante_descarga import (
         filtrar_numeros_para_coleta_automatica,
         liberar_coleta_da_fila,
         registrar_coleta_em_fila,
@@ -279,7 +386,7 @@ def disparar_coleta_comprovantes_fluxo(
 
 
 def resolver_arquivo_comprovante_descarga(apartamento_id: int, numero: int) -> str | None:
-    from comprovante_descarga import resolver_caminho_arquivo
+    from sati_integration.robos.comprovante_descarga import resolver_caminho_arquivo
 
     return resolver_caminho_arquivo(apartamento_id, numero)
 

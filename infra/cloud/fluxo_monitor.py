@@ -8,6 +8,7 @@ import json
 import os
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 try:
@@ -174,6 +175,9 @@ def _lock_painel_ativo(apartamento_id: int) -> bool:
 
 def _restore_sati_em_andamento() -> bool:
     try:
+        tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
+        if tenant_path:
+            return Path(tenant_path, "sati_restore.lock").exists()
         from app.utils.paths import data_root
 
         return (data_root() / "sati_restore.lock").exists()
@@ -258,7 +262,9 @@ def sistema_ocioso(apartamento_id: int) -> bool:
     return minutos >= _minutos_idle_necessarios()
 
 
-def executar_tarefas_ociosas(apartamento_id: int) -> dict:
+def executar_tarefas_ociosas(
+    apartamento_id: int, tenant_slug: str | None = None
+) -> dict:
     """
     Em ociosidade: atualiza BD SATI e busca comprovantes pendentes da lista salva.
     """
@@ -305,14 +311,18 @@ def executar_tarefas_ociosas(apartamento_id: int) -> dict:
             apartamento_id,
             "Sistema ocioso — iniciando atualização do banco SATI…",
         )
-        ok_bd = logic.executar_atualizacao_bd_sati(apartamento_id)
+        ok_bd = logic.executar_atualizacao_bd_sati(
+            apartamento_id, tenant_slug=tenant_slug
+        )
         resultado["bd_sati"] = "ok" if ok_bd else "erro"
         dm.clear_data_cache(apartamento_id)
 
         pendentes = atualizar_pendentes_da_lista_salva(apartamento_id)
         resultado["numeros"] = pendentes
 
-        if pendentes:
+        from app.core.logic import coleta_comprovante_automatica_habilitada
+
+        if pendentes and coleta_comprovante_automatica_habilitada(apartamento_id):
             db.logar_progresso(
                 apartamento_id,
                 f"Sistema ocioso — buscando {len(pendentes)} comprovante(s): {pendentes}",
@@ -327,6 +337,13 @@ def executar_tarefas_ociosas(apartamento_id: int) -> dict:
             resultado["mensagem"] = (
                 f"BD SATI: {'OK' if ok_bd else 'falhou'}; "
                 f"comprovantes: {disp.get('mensagem', disp.get('status'))}"
+            )
+        elif pendentes:
+            resultado["comprovantes"] = "auto_desativada"
+            resultado["status"] = "sucesso" if ok_bd else "parcial"
+            resultado["mensagem"] = (
+                f"BD SATI: {'OK' if ok_bd else 'falhou'}; "
+                f"coleta automática de comprovantes desativada ({len(pendentes)} pendente(s))."
             )
         else:
             resultado["comprovantes"] = "nada_pendente"
@@ -351,9 +368,46 @@ def executar_tarefas_ociosas(apartamento_id: int) -> dict:
 def verificar_e_executar_tarefas_ociosas(apartamento_id: int | None = None) -> dict | None:
     """Ponto de entrada para worker / agendador do Flask."""
     try:
-        from app.data.tenant import ensure_transportadora
+        from infra.tenant_licensing.bi_tenant_runtime import (
+            TENANTS_ROOT,
+            prepare_robot_context,
+        )
+        from app.data.tenant import default_transportadora_id, ensure_transportadora
+        from infra.tenant_licensing.bi_tenant_context import list_active_bi_tenants
 
-        tid = apartamento_id or ensure_transportadora()
+        def _executar_um(
+            slug: str | None, apt_painel: int | None
+        ) -> dict:
+            if slug:
+                if not prepare_robot_context(
+                    tenant_slug=slug, apartamento_id=apt_painel
+                ):
+                    return {
+                        "status": "erro",
+                        "mensagem": f"Contexto tenant '{slug}' indisponível.",
+                    }
+                tid = int(default_transportadora_id())
+            else:
+                tid = int(apt_painel or ensure_transportadora())
+            return executar_tarefas_ociosas(tid, tenant_slug=slug)
+
+        if apartamento_id is not None and not TENANTS_ROOT.is_dir():
+            return _executar_um(None, apartamento_id)
+
+        tenants = list_active_bi_tenants(max_apartamento=3)
+        if tenants:
+            resultados: dict[str, dict] = {}
+            for item in tenants:
+                slug = item["slug"]
+                try:
+                    resultados[slug] = _executar_um(slug, item.get("apartamento_id"))
+                except Exception as exc:
+                    resultados[slug] = {
+                        "status": "erro",
+                        "mensagem": str(exc),
+                    }
+            return {"multi_tenant": True, "tenants": resultados}
+
+        return _executar_um(None, apartamento_id)
     except Exception:
         return None
-    return executar_tarefas_ociosas(int(tid))

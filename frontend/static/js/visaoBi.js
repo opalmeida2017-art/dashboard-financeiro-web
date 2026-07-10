@@ -222,8 +222,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     chartInstance = new Chart(ctx, config);
     const chartMetrics = buildChartAuditMap(chart);
-    if (window.BIWEB_bindChartSegmentAudit && chartMetrics) {
-      window.BIWEB_bindChartSegmentAudit(chartInstance, chartMetrics);
+    if (window.BIWEB_bindChartDrill && chartMetrics) {
+        window.BIWEB_bindChartDrill(chartInstance, {
+            metrics: chartMetrics,
+            drill: chart.audit_drill || {},
+            labelValues: chart.label_values || chart.labels || [],
+        });
     }
   }
 
@@ -239,7 +243,7 @@ document.addEventListener("DOMContentLoaded", function () {
       else if (label.includes("custo") && label.includes("viagem")) map[ds.label] = "custo_viagem";
       else if (label.includes("receita") || label.includes("faturamento")) map[ds.label] = "receita_frete";
       else if (label.includes("despesa")) map[ds.label] = "despesas_gerais";
-      else if (label.includes("custo")) map[ds.label] = "custo_operacional";
+      else if (label.includes("custo")) map[ds.label] = "custo_previa_conhecimento";
       else if (label.includes("pagar")) map[ds.label] = "contas_pagar";
       else if (label.includes("receber")) map[ds.label] = "contas_receber";
       else map[ds.label] = "receita_frete";

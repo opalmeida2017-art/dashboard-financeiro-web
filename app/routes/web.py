@@ -8,6 +8,7 @@ import getpass
 import redis
 from rq import Queue
 from app.core import logic
+from app.core.fluxo_page import build_fluxo_viagem_context
 from app.data import data_manager as dm
 from app.data import database as db
 import uuid
@@ -17,10 +18,7 @@ from app.utils.helpers import get_target_apartment_id, is_admin_in_context, pars
 from app.extensions import bcrypt
 from app.data.db_connection import engine
 import time
-from weasyprint import HTML, CSS
-import secrets 
-from PIL import Image
-from rembg import remove
+import secrets
 
 # --- CORREÇÃO: REMOVIDO ---
 # As linhas UPLOAD_FOLDER e ALLOWED_EXTENSIONS foram removidas.
@@ -73,17 +71,7 @@ def index():
         filters['end_date_str'] = end_eff.strftime('%Y-%m-%d')
         filters['start_date_obj'] = start_eff
         filters['end_date_obj'] = end_eff
-    summary_data = logic.get_dashboard_summary(
-        apartamento_id=apartamento_id_alvo,
-        start_date=start_eff,
-        end_date=end_eff,
-        placa_filter=filters['placa'],
-        filial_filter=filters['filial'],
-        tipo_negocio_filter=filters['tipo_negocio'],
-        unidade_embarque_filter=filters['unidade_embarque'],
-        embarcador_filter=filters['embarcador'],
-    )
-    
+
     placas = logic.get_unique_plates_with_types(
         apartamento_id=apartamento_id_alvo,
         tipo_negocio_filter=filters['tipo_negocio'],
@@ -93,9 +81,11 @@ def index():
     embarcadores = logic.get_unique_embarcadores(apartamento_id=apartamento_id_alvo)
     tipos_negocio = logic.get_unique_negocios(apartamento_id=apartamento_id_alvo)
     placa_filtrada = filters['placa'] and filters['placa'] != 'Todos'
-    
+    query_string = request.query_string.decode('utf-8')
+
     return render_template('dashboards/index.html',
-                           summary=summary_data,
+                           summary=None,
+                           load_summary_async=True,
                            placas=placas,
                            filiais=filiais,
                            unidades_embarque=unidades_embarque,
@@ -109,7 +99,14 @@ def index():
                            selected_end_date=filters['end_date_str'],
                            selected_tipo_negocio=filters['tipo_negocio'],
                            placa_filtrada=placa_filtrada,
+                           query_string=query_string,
                            logo_url=logo_url)
+    
+@main_bp.route('/1')
+@login_required
+def redirect_painel_atalho():
+    """Atalho local frequente (/1 → painel principal)."""
+    return redirect(url_for('main.index'))
     
 @main_bp.route('/faturamento_detalhes')
 @login_required
@@ -211,12 +208,8 @@ def visao_bi_analise(visao_key: str, analise_id: int):
 
 
 def _resolver_intervalo_fluxo_viagem(apartamento_id, start_date, end_date):
-    """Fluxo operacional: padrão 30 dias (evita ano inteiro no SATI)."""
-    if start_date and end_date:
-        return dm.resolver_intervalo_consulta(apartamento_id, start_date, end_date)
-    fim = datetime.now().replace(hour=23, minute=59, second=59)
-    inicio = (fim - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
-    return inicio, fim
+    """Fluxo operacional: período próprio da tela (independente do painel BI)."""
+    return dm.resolver_intervalo_fluxo(apartamento_id, start_date, end_date)
 
 
 @main_bp.route('/fluxo_viagem')
@@ -227,7 +220,11 @@ def fluxo_viagem():
         flash("Não foi possível identificar a empresa.", "error")
         return redirect(url_for('auth.logout'))
 
-    filters = parse_filters(request.args)
+    panel_noise = dm.url_tem_filtros_painel(request.args)
+    args_fluxo = dm.extrair_query_fluxo(
+        request.args, ignorar_datas_painel=panel_noise
+    )
+    filters = parse_filters(args_fluxo)
     start_eff, end_eff = _resolver_intervalo_fluxo_viagem(
         apartamento_id_alvo, filters['start_date_obj'], filters['end_date_obj']
     )
@@ -235,96 +232,47 @@ def fluxo_viagem():
         filters['start_date_str'] = start_eff.strftime('%Y-%m-%d')
         filters['end_date_str'] = end_eff.strftime('%Y-%m-%d')
 
-    historico_placa = request.args.get('historico') == '1'
-    placa_arg = normalize_placa_filter(request.args.get('placa') or filters.get('placa'))
     qs_base = request.query_string.decode('utf-8')
-
-    if historico_placa and placa_arg and placa_arg != 'Todos':
-        rows = logic.get_fluxo_viagem_historico(
-            apartamento_id=apartamento_id_alvo,
-            start_date=start_eff,
-            end_date=end_eff,
-            placa=placa_arg,
-            filial_filter=filters['filial'],
-        )
-        modo = 'historico'
-        placa_historico = placa_arg
-    else:
-        rows = logic.get_fluxo_veiculos_resumo(
-            apartamento_id=apartamento_id_alvo,
-            start_date=start_eff,
-            end_date=end_eff,
-            filial_filter=filters['filial'],
-        )
-        modo = 'lista'
-        placa_historico = None
-
-    comprovante_filtro = dm.normalizar_filtro_comprovante_fluxo(
-        request.args.get('comprovante')
+    flux_async_qs = dm.fluxo_query_string_para_async(
+        args_fluxo, filters['start_date_str'], filters['end_date_str']
     )
-    total_antes_filtro = len(rows)
-    rows = dm.filtrar_fluxo_por_comprovante(rows, comprovante_filtro)
+    from urllib.parse import parse_qsl, urlencode
 
-    if modo == 'lista' and rows:
-        placas = [
-            {"placa": r.get("placa"), "tipo": ""}
-            for r in sorted(rows, key=lambda x: x.get("placa") or "")
-            if r.get("placa") and not r.get("sem_viagem_periodo")
-        ]
-        visto = set()
-        placas_unicas = []
-        for p in placas:
-            pl = p["placa"]
-            if pl not in visto:
-                visto.add(pl)
-                placas_unicas.append(p)
-        placas = placas_unicas
+    def _qs_norm(qs: str) -> str:
+        return urlencode(sorted(parse_qsl(qs or '', keep_blank_values=True)))
+
+    if _qs_norm(qs_base) != _qs_norm(flux_async_qs):
+        return redirect(f"{url_for('main.fluxo_viagem')}?{flux_async_qs}")
+    load_async = request.args.get('sync') != '1'
+
+    if load_async:
+        ctx = {
+            'rows': [],
+            'placas': [],
+            'modo': 'historico' if args_fluxo.get('historico') == '1' else 'lista',
+            'placa_historico': normalize_placa_filter(args_fluxo.get('placa')),
+            'selected_placa': normalize_placa_filter(args_fluxo.get('placa')),
+            'selected_start_date': filters['start_date_str'],
+            'selected_end_date': filters['end_date_str'],
+            'selected_comprovante_filtro': dm.normalizar_filtro_comprovante_fluxo(args_fluxo.get('comprovante')),
+            'selected_mdfe_filtro': dm.normalizar_filtro_mdfe_fluxo(args_fluxo.get('mdfe')),
+            'total_antes_filtro_comprovante': 0,
+            'pendentes_coleta_json': '[]',
+            'coleta_automatica_habilitada': logic.coleta_comprovante_automatica_habilitada(apartamento_id_alvo),
+        }
+        if ctx['modo'] != 'historico' or not ctx['placa_historico'] or ctx['placa_historico'] == 'Todos':
+            ctx['placa_historico'] = None
     else:
-        # Histórico: placas do resumo (cache SATI) — evita relFilViagensCliente + despesas.
-        resumo_placas = logic.get_fluxo_veiculos_resumo(
-            apartamento_id=apartamento_id_alvo,
-            start_date=start_eff,
-            end_date=end_eff,
-            filial_filter=filters['filial'],
-        )
-        placas = [
-            {"placa": r.get("placa"), "tipo": ""}
-            for r in sorted(resumo_placas, key=lambda x: x.get("placa") or "")
-            if r.get("placa")
-        ]
-
-    import json
-
-    pendentes_coleta = dm.coletar_numeros_pendentes_comprovante(rows)
-
-    try:
-        from infra.cloud.fluxo_monitor import salvar_lista_fluxo
-
-        salvar_lista_fluxo(
-            apartamento_id_alvo,
-            rows,
-            start_date=filters['start_date_str'],
-            end_date=filters['end_date_str'],
-            modo=modo,
-            numeros_pendentes=pendentes_coleta,
-        )
-    except Exception as e:
-        print(f"Aviso: não foi possível salvar lista do fluxo: {e}")
+        ctx = build_fluxo_viagem_context(apartamento_id_alvo, args_fluxo)
 
     return render_template(
         'dashboards/fluxo_viagem.html',
-        rows=rows,
-        placas=placas,
-        modo=modo,
-        placa_historico=placa_historico,
         qs_base=qs_base,
-        selected_placa=placa_arg,
-        selected_start_date=filters['start_date_str'],
-        selected_end_date=filters['end_date_str'],
-        selected_comprovante_filtro=comprovante_filtro,
+        flux_async_qs=flux_async_qs,
+        load_fluxo_async=load_async,
         comprovante_filtro_opcoes=dm.FLUXO_FILTRO_COMPROVANTE_OPCOES,
-        total_antes_filtro_comprovante=total_antes_filtro,
-        pendentes_coleta_json=json.dumps(pendentes_coleta),
+        mdfe_filtro_opcoes=dm.FLUXO_FILTRO_MDFE_OPCOES,
+        **ctx,
     )
 
 
@@ -697,6 +645,8 @@ def configuracao():
             'SENHA_ROBO': request.form.get('SENHA_ROBO'),
             'USE_SATI_SOURCE': 'true',
             'live_monitoring_enabled': 'live_monitoring_enabled' in request.form,
+            'BI_META_MARGEM_PCT': (request.form.get('BI_META_MARGEM_PCT') or '').strip() or '15',
+            'BI_META_R_KM': (request.form.get('BI_META_R_KM') or '').strip() or '4',
         }
         logic.salvar_configuracoes_robo(apartamento_id_alvo, configs_to_save)
         flash('Configurações salvas com sucesso!', 'success')
@@ -837,14 +787,8 @@ def criar_admin_command():
 # Adicione esta função para formatar datas no template
 @main_bp.app_template_filter('format_date')
 def format_date_filter(s):
-    if not s:
-        return ''
-    try:
-        # Assumindo que a data vem como 'YYYY-MM-DDTHH:MM:SS'
-        dt = datetime.fromisoformat(s.split('T')[0])
-        return dt.strftime('%d/%m/%Y')
-    except:
-        return s
+    from app.utils.helpers import format_date_br
+    return format_date_br(s)
 
 @main_bp.route('/render_report/viagem', methods=['POST'])
 @login_required
@@ -852,6 +796,27 @@ def render_viagem_report():
     report_data = request.json.get('data')
     # Usamos o novo template para renderizar o relatório
     return render_template('reports/report_viagem.html', data=report_data)
+
+@main_bp.route('/report/viagem/<int:numero>')
+@login_required
+def view_viagem_report(numero):
+    apartamento_id_alvo = get_target_apartment_id()
+    if not apartamento_id_alvo:
+        flash("Apartamento não selecionado.", "danger")
+        return redirect(url_for('main.index'))
+
+    dias_janela = request.args.get('dias_janela', type=int, default=10)
+    data = logic.get_relatorio_viagem_data(apartamento_id_alvo, numero, dias_janela)
+    if not data or data.get("error"):
+        flash(data.get("error", "Dados do relatório de viagem não encontrados."), "danger")
+        return redirect(url_for('main.index'))
+
+    return render_template(
+        'reports/relatorio_viagem_screen.html',
+        data=data,
+        dias_janela=dias_janela,
+    )
+
 
 @main_bp.route('/report/print/<int:numero>')
 @login_required
@@ -861,7 +826,7 @@ def print_viagem_report(numero):
         flash("Apartamento não selecionado.", "danger")
         return redirect(url_for('main.index'))
 
-    dias_janela = request.args.get('dias_janela', type=int, default=0)
+    dias_janela = request.args.get('dias_janela', type=int, default=10)
     data = logic.get_relatorio_viagem_data(apartamento_id_alvo, numero, dias_janela)
 
     if not data:
@@ -887,8 +852,12 @@ def print_viagem_report(numero):
                                   logo_url=logo_url, 
                                   apartamento_id=apartamento_id_alvo)
     
-    # Caminho para o seu CSS de impressão
-    css_path = os.path.join(current_app.root_path, 'static', 'print.css')
+    from weasyprint import HTML, CSS
+
+    # Caminho para o CSS de impressão (frontend/static)
+    css_path = os.path.join(current_app.static_folder, "print.css")
+    if not os.path.isfile(css_path):
+        css_path = os.path.join(os.path.dirname(current_app.root_path), "frontend", "static", "print.css")
     
     # Criar um objeto HTML a partir da string e base_url
     # A base_url é crucial para o WeasyPrint encontrar recursos como imagens e CSS
@@ -951,6 +920,9 @@ def upload_logo():
         file.save(temp_filepath)
 
         try:
+            from PIL import Image
+            from rembg import remove
+
             input_image = Image.open(temp_filepath)
             output_image = remove(input_image)
             
