@@ -32,12 +32,52 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function escapeAttr(s) {
+        return String(s || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     function atualizarDatalistPlacas(placas) {
         const dl = document.getElementById('lista-placas');
         if (!dl || !placas || !placas.length) return;
-        dl.innerHTML = placas.map(function (p) {
-            return '<option value="' + String(p).replace(/"/g, '&quot;') + '"></option>';
-        }).join('');
+        const vistos = {};
+        const opts = [];
+        Array.prototype.forEach.call(dl.options || [], function (opt) {
+            const placa = String(opt.value || '').trim().toUpperCase();
+            const tipo = String(opt.label || '').trim();
+            if (!placa || vistos[placa]) return;
+            vistos[placa] = true;
+            opts.push('<option value="' + escapeAttr(placa) + '"' + (tipo ? ' label="' + escapeAttr(tipo) + '"' : '') + '></option>');
+        });
+        placas.forEach(function (p) {
+            const placa = String((p && typeof p === 'object') ? (p.placa || '') : (p || '')).trim().toUpperCase();
+            const tipo = String((p && typeof p === 'object') ? (p.tipo || '') : '').trim();
+            if (!placa || vistos[placa]) return;
+            vistos[placa] = true;
+            opts.push('<option value="' + escapeAttr(placa) + '"' + (tipo ? ' label="' + escapeAttr(tipo) + '"' : '') + '></option>');
+        });
+        if (!opts.length) return;
+        dl.innerHTML = opts.join('');
+        dl.dataset.loaded = '1';
+    }
+
+    function carregarPlacasFluxo() {
+        const dl = document.getElementById('lista-placas');
+        if (!dl || dl.dataset.loaded === '1') return;
+        fetch('/api/fluxo_viagem_placas', { credentials: 'same-origin' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (data) {
+                atualizarDatalistPlacas(data.placas || []);
+            })
+            .catch(function () {
+                // O fluxo principal ainda pode preencher as placas quando terminar.
+            });
     }
 
     function coletaAutomaticaHabilitada() {
@@ -574,6 +614,8 @@ document.addEventListener('DOMContentLoaded', function () {
         window.addEventListener('resize', placeTruck);
     });
     }
+
+    carregarPlacasFluxo();
 
     if (document.getElementById('fluxo-async-mount') && document.getElementById('fluxo-async-mount').dataset.loaded !== '1') {
         carregarFluxoAsync();
