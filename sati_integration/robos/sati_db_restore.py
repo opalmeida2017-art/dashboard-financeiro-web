@@ -34,7 +34,14 @@ _TABELAS_OBRIGATORIAS = (
 _MIN_TABELAS_PRE_DATA = int(os.getenv("SATI_RESTORE_MIN_TABELAS", "50"))
 
 
-def _restore_lock_path() -> Path:
+def _restore_lock_path(apartamento_id: int | None = None) -> Path:
+    if apartamento_id is not None:
+        try:
+            from app.utils.paths import downloads_dir
+
+            return downloads_dir(int(apartamento_id)) / "sati_restore.lock"
+        except Exception:
+            pass
     tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
     if tenant_path:
         try:
@@ -58,7 +65,7 @@ def _restore_lock_path() -> Path:
 @contextmanager
 def _restore_lock(apartamento_id: int | None):
     """Evita restore duplo (Flask debug) e sinaliza painel para aguardar."""
-    lock = _restore_lock_path()
+    lock = _restore_lock_path(apartamento_id)
     if lock.exists():
         raise RuntimeError(
             "Outra atualização do banco SATI já está em andamento. "

@@ -175,6 +175,15 @@ def _lock_painel_ativo(apartamento_id: int) -> bool:
 
 def _restore_sati_em_andamento() -> bool:
     try:
+        try:
+            from app.data.tenant import get_transportadora_id
+            from app.utils.paths import downloads_dir
+
+            lock_apto = downloads_dir(int(get_transportadora_id())) / "sati_restore.lock"
+            if lock_apto.exists():
+                return True
+        except Exception:
+            pass
         tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
         if tenant_path:
             try:
