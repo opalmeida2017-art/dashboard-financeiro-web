@@ -177,6 +177,15 @@ def _restore_sati_em_andamento() -> bool:
     try:
         tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
         if tenant_path:
+            try:
+                from infra.tenant_licensing.bi_tenant_runtime import ensure_tenant_runtime_dirs
+
+                slug = os.getenv("BI_TENANT_SLUG", "").strip().lower()
+                if slug:
+                    tenant_path = str(ensure_tenant_runtime_dirs(slug, tenant_path))
+                    os.environ["BI_TENANT_DIR"] = tenant_path
+            except Exception:
+                pass
             return Path(tenant_path, "sati_restore.lock").exists()
         from app.utils.paths import data_root
 
