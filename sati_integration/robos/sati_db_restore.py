@@ -41,7 +41,11 @@ def _restore_lock_path(apartamento_id: int | None = None) -> Path:
 
             return downloads_dir(int(apartamento_id)) / "sati_restore.lock"
         except Exception:
-            pass
+            local_downloads = Path(__file__).resolve().parents[1] / "downloads" / str(
+                int(apartamento_id)
+            )
+            local_downloads.mkdir(parents=True, exist_ok=True)
+            return local_downloads / "sati_restore.lock"
     tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
     if tenant_path:
         try:
