@@ -38,21 +38,19 @@ def main():
         run(
             c,
             f"cd {APP} && git fetch origin main && "
-            "git reset --hard origin/main && git clean -fd -e .env -e downloads -e pgdata",
+            "git reset --hard origin/main && "
+            "git clean -fd -e .env -e downloads -e pgdata -e data -e tenants",
         )
     )
 
     print("=== pip ===")
     print(run(c, f"cd {APP} && ./venv/bin/pip install -q -r requirements.txt 2>&1 | tail -8"))
 
-    print("=== reiniciar gunicorn ===")
-    cmd_gunicorn = (
-        f"cd {APP} && pkill -f 'gunicorn.*127.0.0.1:8000.*app:app' || true; sleep 2; "
-        "./venv/bin/gunicorn --workers 3 --worker-class gevent --bind 127.0.0.1:8000 "
-        "--timeout 120 --log-level info --daemon --pid /tmp/gunicorn-dashboard.pid app:app; "
-        "sleep 2; pgrep -af gunicorn | head -3"
-    )
-    print(run(c, cmd_gunicorn, timeout=60))
+    print("=== reiniciar gunicorn (systemd wsgi:application) ===")
+    print(sudo(c, "systemctl restart gunicorn && systemctl is-active gunicorn", timeout=90))
+    time.sleep(2)
+    print(run(c, "pgrep -af 'gunicorn.*127.0.0.1:8000' | head -3 || true"))
+    print(run(c, "systemctl restart rq-biweb 2>/dev/null || true"))
 
     print("=== nginx ===")
     print(sudo(c, "nginx -t && systemctl restart nginx"))

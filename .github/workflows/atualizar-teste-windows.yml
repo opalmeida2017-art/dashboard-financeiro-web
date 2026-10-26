@@ -1,10 +1,8 @@
-name: Atualizar teste Windows
+name: Atualizar teste Windows (manual)
 
-# Push na main ou Actions → Run workflow
-# Runner self-hosted nesta maquina, labels: self-hosted, windows, biweb-win
+# O push na main já atualiza o teste no workflow "Versão, teste Windows e produção .12".
+# Este fica só para rodar o teste local sem mexer na produção.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:

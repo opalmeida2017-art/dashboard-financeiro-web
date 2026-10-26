@@ -16,6 +16,8 @@ __pycache__/
 *.dump
 *.log
 downloads/
+tenants/
+data/acessos_bi.json
 restore_log.txt
 dump_list.txt
 dump_toc.txt

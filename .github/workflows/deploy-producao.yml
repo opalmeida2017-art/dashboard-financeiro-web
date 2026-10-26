@@ -1,0 +1,63 @@
+# Push na main: cria versão no GitHub, atualiza o teste Windows e reinicia a produção .12.
+#
+# Runner Windows (esta máquina): labels self-hosted, windows, biweb-win
+# Produção: 192.168.100.12  /home/oitamar/dashboard-financeiro-web  (LAN — só runner local)
+name: Versão, teste Windows e produção .12
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-biweb-producao
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  versao:
+    name: Criar versão GitHub
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Publicar release
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          VER=$(head -1 VERSION | tr -d ' \r')
+          [ -n "$VER" ] || VER="0.0.0"
+          TAG="v${VER}.${GITHUB_RUN_NUMBER}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          gh release view "$TAG" >/dev/null 2>&1 && exit 0
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Produção 192.168.100.12 — ${GITHUB_SHA}" \
+            --target "$GITHUB_SHA" || echo "Release opcional: ${TAG}"
+
+  teste-windows:
+    name: Atualizar teste Windows
+    runs-on: [self-hosted, windows, biweb-win]
+    steps:
+      - name: Puxar main e reiniciar run_dev
+        working-directory: C:\python\BIWEB
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\atualizar_do_github.ps1
+
+  producao:
+    name: Git pull + gunicorn .12
+    needs: [versao]
+    runs-on: [self-hosted, windows, biweb-win]
+    steps:
+      - name: Atualizar Debian e reiniciar
+        working-directory: C:\python\BIWEB
+        run: python scripts/_deploy_git_pull.py

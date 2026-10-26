@@ -54,10 +54,12 @@ def create_app() -> Flask:
     from app.routes.web import main_bp
     from app.routes.auth import auth_bp
     from app.routes.api import api_bp
+    from app.routes.admin import admin_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(admin_bp)
 
     from app.utils.helpers import is_admin_in_context
 
@@ -105,15 +107,24 @@ def create_app() -> Flask:
             return
         if request.endpoint in ("static",) or (request.path or "").startswith("/static/"):
             return
+        if (request.path or "").startswith("/api/admin"):
+            return
         if not _path_entrada_tenant(request):
             return
         slug = resolve_tenant_slug_from_request(request)
         if not slug:
             return
-        if tenant_slug_registrado(slug):
-            return
-        session.pop("bi_tenant_slug", None)
-        return render_template("auth/tenant_nao_encontrado.html"), 404
+        if not tenant_slug_registrado(slug):
+            session.pop("bi_tenant_slug", None)
+            session.pop("bi_acesso_slug", None)
+            return render_template("auth/tenant_nao_encontrado.html"), 404
+        parts = [p for p in (request.path or "").strip("/").split("/") if p]
+        if len(parts) >= 3 and parts[0].lower() == "acesso":
+            from infra.tenant_licensing.acesso_registry import acesso_for_tenant
+
+            if not acesso_for_tenant(parts[2].lower(), slug):
+                session.pop("bi_acesso_slug", None)
+                return render_template("auth/tenant_nao_encontrado.html"), 404
 
     @app.before_request
     def biweb_require_tenant_link():
@@ -127,6 +138,8 @@ def create_app() -> Flask:
         if not _biweb_multi_tenant_ativo():
             return
         if request.endpoint in ("static",) or (request.path or "").startswith("/static/"):
+            return
+        if (request.path or "").startswith("/api/admin"):
             return
         if _path_entrada_tenant(request):
             return
@@ -149,12 +162,19 @@ def create_app() -> Flask:
             )
             from app.data.database import switch_engine_for_request
 
+            if (request.path or "").startswith("/api/admin"):
+                return
             slug = resolve_tenant_slug_from_request(request)
             slug_da_url = bool(slug)
             if not slug:
                 slug = (session.get("bi_tenant_slug") or "").strip().lower() or None
             if not slug:
                 return
+            from infra.tenant_licensing.bi_tenant_runtime import resolve_usuario_from_request
+
+            usuario = resolve_usuario_from_request(request)
+            if usuario:
+                session["bi_acesso_slug"] = usuario
             set_tenant(slug)
             if not apply_tenant_env(slug):
                 if slug_da_url:

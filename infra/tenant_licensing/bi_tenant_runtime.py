@@ -87,11 +87,21 @@ def apply_tenant_env(slug: str | None) -> bool:
 
 
 def slug_from_uri(uri: str) -> str | None:
-    """Extrai slug de URLs /acesso/w-carlos ou /biweb/w-carlos."""
+    """Extrai slug da transportadora em /acesso/<slug>, /biweb/<slug> ou /acesso/<tenant>/<usuario>."""
     if not uri:
         return None
     m = re.search(r"/(?:biweb|acesso)/([a-z0-9][a-z0-9_-]*)", uri, re.I)
     return m.group(1).lower() if m else None
+
+
+def usuario_from_uri(uri: str) -> str | None:
+    """Extrai o usuário em /acesso/<tenant>/<usuario>."""
+    if not uri:
+        return None
+    m = re.search(
+        r"/acesso/([a-z0-9][a-z0-9_-]*)/([a-z0-9][a-z0-9_-]*)", uri, re.I
+    )
+    return m.group(2).lower() if m else None
 
 
 def prepare_robot_context(
@@ -141,31 +151,65 @@ def prepare_robot_context(
 def resolve_tenant_slug_from_request(request) -> str | None:
     header = (request.headers.get("X-BI-Tenant-Slug") or "").strip().lower()
     if header:
-        return header
+        return _slug_ou_pai_do_usuario(header)
 
     for key in ("HTTP_X_FORWARDED_URI", "HTTP_X_ORIGINAL_URI", "REQUEST_URI", "RAW_URI"):
         found = slug_from_uri(request.environ.get(key) or "")
         if found:
-            return found
+            return _slug_ou_pai_do_usuario(found)
 
     referer = request.headers.get("Referer") or ""
     found = slug_from_uri(referer)
     if found:
-        return found
+        return _slug_ou_pai_do_usuario(found)
 
     script = (request.environ.get("SCRIPT_NAME") or "").strip("/")
     if script:
         parts = [p for p in script.split("/") if p]
         if len(parts) >= 2 and parts[0] in ("biweb", "acesso"):
-            return parts[1].lower()
+            return _slug_ou_pai_do_usuario(parts[1].lower())
         if parts and parts[0] not in ("static", "api"):
-            return parts[-1].lower()
+            return _slug_ou_pai_do_usuario(parts[-1].lower())
 
     path = (request.path or "").strip("/")
     parts = [p for p in path.split("/") if p]
     if len(parts) >= 2 and parts[0] in ("biweb", "acesso"):
-        return parts[1].lower()
+        return _slug_ou_pai_do_usuario(parts[1].lower())
     return None
+
+
+def resolve_usuario_from_request(request) -> str | None:
+    for key in ("HTTP_X_FORWARDED_URI", "HTTP_X_ORIGINAL_URI", "REQUEST_URI", "RAW_URI"):
+        found = usuario_from_uri(request.environ.get(key) or "")
+        if found:
+            return found
+    found = usuario_from_uri(request.headers.get("Referer") or "")
+    if found:
+        return found
+    path = (request.path or "").strip("/")
+    parts = [p for p in path.split("/") if p]
+    if len(parts) >= 3 and parts[0].lower() == "acesso":
+        return parts[2].lower()
+    return None
+
+
+def _slug_ou_pai_do_usuario(slug: str) -> str:
+    s = str(slug or "").strip().lower()
+    if not s:
+        return s
+    try:
+        from infra.tenant_licensing.bi_tenant_context import tenant_slug_registrado
+
+        if tenant_slug_registrado(s):
+            return s
+        from infra.tenant_licensing.acesso_registry import get_acesso
+
+        acesso = get_acesso(s)
+        if acesso and acesso.get("ativo", True):
+            return str(acesso.get("tenant_slug") or s).lower()
+    except Exception:
+        return s
+    return s
 
 
 def _biweb_multi_tenant_ativo() -> bool:
