@@ -2,7 +2,7 @@
 import paramiko
 import time
 
-HOST, USER, PASS = "192.168.100.12", "oitamar", "oitapere"
+HOST, USER, PASS = "192.168.100.15", "oitamar", "oitapere"
 APP = "/home/oitamar/dashboard-financeiro-web"
 
 
@@ -56,7 +56,7 @@ def main():
     print(sudo(c, "nginx -t && systemctl restart nginx"))
 
     print("=== health ===")
-    for url in ("http://127.0.0.1:8000/", "https://dadosfrete.duckdns.org/"):
+    for url in ("http://127.0.0.1:8000/", "http://192.168.100.15/biweb/"):
         out = run(c, f"curl -sI --max-time 10 {url} 2>&1 | head -2")
         print(url, "->", out.strip())
 

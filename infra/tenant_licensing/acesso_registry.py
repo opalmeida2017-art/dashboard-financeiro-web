@@ -68,7 +68,7 @@ def acesso_for_tenant(usuario: str, tenant_slug: str) -> dict | None:
 
 
 def _urls(tenant_slug: str, usuario: str) -> tuple[str, str]:
-    host = os.getenv("BI_PUBLIC_HOST", os.getenv("NFE_PUBLIC_HOST", "192.168.100.12"))
+    host = os.getenv("BI_PUBLIC_HOST", "").strip() or "192.168.100.15"
     ext = (
         os.getenv("BI_PUBLIC_EXTERNAL_URL", "").strip()
         or os.getenv("NFE_PUBLIC_EXTERNAL_URL", "").strip()

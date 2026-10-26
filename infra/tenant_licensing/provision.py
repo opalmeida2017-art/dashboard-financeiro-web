@@ -197,7 +197,7 @@ def _inicializar_empresa(pg_database: str, razao_social: str, slug: str) -> int 
 
 
 def _public_url(slug: str) -> str:
-    host = os.getenv("BI_PUBLIC_HOST", os.getenv("NFE_PUBLIC_HOST", "192.168.100.12"))
+    host = os.getenv("BI_PUBLIC_HOST", "").strip() or "192.168.100.15"
     return f"http://{host}/biweb/{slug}/"
 
 

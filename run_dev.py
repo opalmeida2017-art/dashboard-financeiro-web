@@ -5,7 +5,7 @@ Uso:
     python run_dev.py
 
 Abre em http://127.0.0.1:5000 — sem link /acesso/slug.
-Deploy para Debian: só quando você pedir — python scripts/deploy_debian.py --confirmar-deploy
+Debian de destino: 192.168.100.15 (o .12 só serviu para copiar banco/estrutura).
 """
 from __future__ import annotations
 

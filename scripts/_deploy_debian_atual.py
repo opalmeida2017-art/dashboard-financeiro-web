@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     exigir_confirmacao_deploy("_deploy_debian_atual")
 
-HOST, USER, PASS = "192.168.100.12", "oitamar", "oitapere"
+HOST, USER, PASS = "192.168.100.15", "oitamar", "oitapere"
 BI = "/home/oitamar/dashboard-financeiro-web"
 NFE = "/opt/nfe-web"
 LOCAL = r"c:\python\BIWEB"
@@ -202,9 +202,9 @@ def main():
 
     print("\n=== Testes HTTP ===")
     tests = [
-        "https://dadosfrete.duckdns.org/",
-        "https://dadosfrete.duckdns.org:8443/painel_licenca/",
-        "https://dadosfrete.duckdns.org:8443/biweb/wcarlos/",
+        "http://127.0.0.1:8000/",
+        "http://192.168.100.15/biweb/",
+        "http://192.168.100.15/acesso/",
     ]
     for url in tests:
         out = run(c, f"curl -sI --max-time 15 -k {url} 2>&1 | head -3")

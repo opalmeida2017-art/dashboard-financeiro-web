@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-HOST, USER, PASS = "192.168.100.12", "oitamar", "oitapere"
+HOST, USER, PASS = "192.168.100.15", "oitamar", "oitapere"
 BI_REMOTE = "/home/oitamar/dashboard-financeiro-web"
 TENANTS_REMOTE = "/opt/biweb/tenants"
 MIRROR = ROOT / "dev" / "debian_mirror"
