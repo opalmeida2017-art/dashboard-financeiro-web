@@ -1,0 +1,16 @@
+name: Atualizar teste Windows
+
+# Push na main ou Actions → Run workflow
+# Runner self-hosted nesta maquina, labels: self-hosted, windows, biweb-win
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  atualizar:
+    runs-on: [self-hosted, windows, biweb-win]
+    steps:
+      - name: Puxar main e reiniciar run_dev
+        working-directory: C:\python\BIWEB
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\atualizar_do_github.ps1

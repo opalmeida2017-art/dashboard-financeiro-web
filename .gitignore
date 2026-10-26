@@ -1,21 +1,40 @@
-# Arquivos de ambiente com senhas
+# Segredos e ambiente
 .env
+licenca_config.py
 
-# Pasta do ambiente virtual do Python
+# Virtualenv
 .venv/
 venv/
 
-# Arquivos de cache do Python
+# Cache Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.schema_ok
 
-# Dumps, downloads e logs locais
+# Dumps, downloads, logs e dados de tenant
 *.dump
+*.log
 downloads/
 restore_log.txt
 dump_list.txt
 dump_toc.txt
 *_analise.txt
+frontend/static/uploads/
+dev/debian_mirror/tenants/
+dev/debian_mirror/manifest.json
+
+# Scripts avulsos de diagnóstico (não versionar)
+scripts/_*
+!scripts/__init__.py
+!scripts/_deploy_guard.py
+!scripts/_deploy_debian_atual.py
+!scripts/_deploy_git_pull.py
+scripts/_tmp_*
+scripts/*_out.txt
+
+# Deploy/ops só na máquina (igual CTe)
+deploy/
 
 # Outros
 .DS_Store
@@ -25,11 +44,5 @@ build/
 runtime/
 installer/
 pgdata/
-scripts/_tmp_*
-scripts/_*_out.txt
-scripts/_nginx*.tmp
-scripts/_painel_index.html
-scripts/_server_*.js
-scripts/_server_*.py
-dev/debian_mirror/tenants/
-dev/debian_mirror/manifest.json
+*.xls
+*.xlsx

@@ -1,115 +1,83 @@
-# Desenvolvimento Windows (base) + deploy Debian
+# BIWEB — teste Windows + versão pelo GitHub
 
-Fluxo: **sync do Debian → setup local → testar → deploy quando aprovar**.
+**Pasta de teste:** `C:\python\BIWEB`  
+**Repositório:** `https://github.com/opalmeida2017-art/dashboard-financeiro-web.git`  
+**Produção:** `192.168.100.12` (`/home/oitamar/dashboard-financeiro-web`) — DuckDNS continua lá até pedido de troca.
 
-## Pré-requisitos
+## Fluxo
 
-1. **PostgreSQL 17** (ou 16) instalado, porta **5433**
-2. `.env` na raiz (copie de `.env.example` e ajuste senha `postgres`)
-3. Python venv com dependências: `pip install -r requirements.txt`
-
-Exemplo mínimo no `.env`:
-
-```env
-DATABASE_URL=postgresql://postgres:SUA_SENHA@localhost:5433/dashboard_db
-SATI_DATABASE_URL=postgresql://postgres:SUA_SENHA@localhost:5433/sat1_sati_is
-SATI_PG_RESTORE=C:\Program Files\PostgreSQL\17\bin\pg_restore.exe
-SATI_RESTORE_USE_SUDO_POSTGRES=0
-USE_SATI_SOURCE=true
-BIWEB_LOCAL_DEV=1
-BIWEB_REQUIRE_TENANT_LINK=0
-BIWEB_SKIP_LOGIN=true
+```
+produzir / corrigir em C:\python\BIWEB
+        ↓
+publicar_versao.bat   →  git push origin main
+        ↓
+GitHub (fonte da versão)
+        ↓
+atualizar_do_github.bat  (ou Actions no runner self-hosted)
+        ↓
+reinicia http://127.0.0.1:5000
 ```
 
-## 1. Trazer dados do Debian (Windows ← servidor)
+O GitHub recebe **só a aplicação**. Não versionar: `.env`, `venv/`, `downloads/`, dumps, logs, `scripts/_*`, `deploy/`.
+
+## 1. Subir o teste local
+
+Pré-requisitos: PostgreSQL 17 (porta **5433**), `.env` (copie de `.env.example`), venv com `pip install -r requirements.txt`.
 
 ```powershell
-cd c:\python\BIWEB
-python scripts/sync_from_debian.py --tenant transporte-brasil
-```
-
-Baixa:
-- `tenant.env` do tenant → `dev/debian_mirror/tenants/`
-- `SATI-c3332-atual.zip` → `downloads/3/`
-
-Tenants disponíveis: `transporte-brasil`, `jeremias`, `rio-bonito`, `wcarlos`, `all`
-
-Opcional — sobrescrever código local com o do servidor:
-
-```powershell
-python scripts/sync_from_debian.py --tenant transporte-brasil --code
-```
-
-## 2. Criar bancos, schema app e restaurar SATI
-
-```powershell
-python scripts/setup_dev_windows.py --tenant transporte-brasil
-```
-
-Faz automaticamente:
-| Passo | Ação |
-|-------|------|
-| 1 | Cria `dashboard_db` e `sat1_sati_is` (se não existirem) |
-| 2 | Aplica `migrations/sql_scripts/criar_tabelas_biweb_apartamento.sql` |
-| 3 | Insere apartamento (ex. id=3 Transporte Brasil) |
-| 4 | Ajusta `.env` para modo dev Windows |
-| 5 | `pg_restore` do ZIP SATI no schema `c3332` |
-
-Tudo de uma vez (sync + setup):
-
-```powershell
-python scripts/setup_dev_windows.py --tenant transporte-brasil --sync-first
-```
-
-Só schema app, sem restore:
-
-```powershell
-python scripts/setup_dev_windows.py --tenant transporte-brasil --skip-restore
-```
-
-Forçar novo restore (apaga/recria schema via sati_db_restore):
-
-```powershell
-python scripts/setup_dev_windows.py --tenant transporte-brasil --force-restore
-```
-
-## 3. Subir o painel local
-
-```powershell
+cd C:\python\BIWEB
 python run_dev.py
 ```
 
-Abre em **http://127.0.0.1:5000** — sem link `/biweb/slug/`.
+Abre em **http://127.0.0.1:5000** (sem `/biweb/slug/`).
 
-## 4. Depois de testar → Debian (só quando você pedir)
+Primeira vez (bancos + SATI de um tenant):
+
+```powershell
+python scripts/sync_from_debian.py --tenant transporte-brasil
+python scripts/setup_dev_windows.py --tenant transporte-brasil
+```
+
+## 2. Enviar versão → GitHub
+
+```bat
+publicar_versao.bat
+```
+
+Ou: `git add` / `git commit` / `git push origin main`.
+
+## 3. Reiniciar o teste pela versão do GitHub
+
+```bat
+atualizar_do_github.bat
+```
+
+Isso faz `git pull --ff-only origin main`, atualiza o venv e reinicia **somente** o `run_dev.py` desta pasta (não mexe no CTe).
+
+No GitHub: **Actions → Atualizar teste Windows → Run workflow** (precisa de runner self-hosted com labels `self-hosted`, `windows`, `biweb-win` nesta máquina).
+
+## 4. Produção .12
+
+O `.12` **não** atualiza sozinho. Quando quiser mandar a mesma versão do GitHub para a produção:
 
 ```powershell
 python scripts/deploy_debian.py --confirmar-deploy
 ```
 
-O deploy **não** envia `.env`, `downloads/` nem `venv/`.
+Não envia `.env`, `downloads/` nem `venv/`.
 
-## Schemas no PostgreSQL local
+## O que não vai para o GitHub
 
-| Banco | Conteúdo |
-|-------|----------|
-| `dashboard_db` | Tabelas app (`apartamentos`, `usuarios`, configs…) |
-| `sat1_sati_is` | Dados SATI — schemas `c2910`, `c3219`, `c3332` |
-
-Cada restore SATI preenche um schema (`c3332` = Transporte Brasil / Jeremias, etc.).
-
-## Servidor Debian (referência)
-
-| Item | Valor |
-|------|--------|
-| Host | `192.168.100.12` |
-| App | `/home/oitamar/dashboard-financeiro-web` |
-| Tenants | `/opt/biweb/tenants` |
-| SATI compartilhado | DB `sat1_sati_is` |
+| Fica só no Windows / servidor | Motivo |
+|-------------------------------|--------|
+| `.env` | senhas |
+| `venv/`, `.venv/` | ambiente local |
+| `downloads/`, `*.dump`, logs | dados |
+| `scripts/_*`, `deploy/` | diagnóstico e ops |
+| `frontend/static/uploads/` | logos de cliente |
 
 ## Troubleshooting
 
-- **psql pede senha**: confira `DATABASE_URL` no `.env`
-- **Restore falha (versão PG)**: dump SATI exige PostgreSQL **16+**
-- **Lista vazia no fluxo**: confira `SATI_SCHEMA` e datas no filtro
-- **ZIP grande**: primeiro sync pode demorar vários minutos
+- **psql pede senha:** confira `DATABASE_URL` no `.env`
+- **Restore falha (versão PG):** dump SATI exige PostgreSQL **16+**
+- **pull recusado:** há commit local; faça commit ou `git status` antes de `atualizar_do_github.bat`
