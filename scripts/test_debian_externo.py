@@ -10,22 +10,26 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts._test_period import mes_vigente_qs
+
 HOST, USER, PASS = "192.168.100.12", "oitamar", "oitapere"
 BI = "/home/oitamar/dashboard-financeiro-web"
 EXT = "https://dadosfrete.duckdns.org:8443"
 TENANTS = ("wcarlos", "rio-bonito")
 
+_QS = mes_vigente_qs()
+
 PATHS = [
-    "/api/monthly_summary?start_date=2026-01-01&end_date=2026-06-20",
+    f"/api/monthly_summary?{_QS}",
     "/visao_comercial",
     "/visao/volume",
     "/fluxo_viagem",
-    "/api/bi_audit?metric=receita_frete&start_date=2026-01-01&end_date=2026-06-20",
+    f"/api/bi_audit?metric=receita_frete&{_QS}",
 ]
 
-GC = [f"/api/gestao_comercial_data?analise={i}&start_date=2026-01-01&end_date=2026-06-20" for i in range(1, 8)]
+GC = [f"/api/gestao_comercial_data?analise={i}&{_QS}" for i in range(1, 8)]
 
-PAINEL_QS = "start_date=2025-01-01&end_date=2026-06-20"
+PAINEL_QS = _QS
 
 
 def run(c, cmd, t=120):
@@ -71,7 +75,7 @@ def test_tenant(c, slug: str) -> tuple[int, int]:
 
     api_url = f"{EXT}/api/monthly_summary?{PAINEL_QS}"
     api_code = curl_status(c, api_url, cookie, timeout=90)
-    print(f"  API 2025 {api_url} -> {api_code}")
+    print(f"  API mês vigente {api_url} -> {api_code}")
     if api_code == "200":
         ok += 1
     else:
@@ -93,7 +97,7 @@ def test_tenant(c, slug: str) -> tuple[int, int]:
 def server_import_test(c) -> None:
     import base64
 
-    py = b"""import os, sys
+    py = f"""import os, sys
 sys.path.insert(0, "/home/oitamar/dashboard-financeiro-web")
 os.chdir("/home/oitamar/dashboard-financeiro-web")
 os.environ.setdefault("BIWEB_PRODUCTION", "1")
@@ -110,9 +114,9 @@ with app.test_client() as client:
         s["bi_tenant_slug"] = "wcarlos"
     r = client.get("/visao_comercial")
     print("internal_visao", r.status_code)
-    r2 = client.get("/api/gestao_comercial_data?analise=4&start_date=2026-01-01&end_date=2026-06-20")
+    r2 = client.get("/api/gestao_comercial_data?analise=4&{_QS}")
     print("internal_gc4", r2.status_code)
-"""
+""".encode("utf-8")
     b64 = base64.b64encode(py).decode("ascii")
     print(run(c, f"cd {BI} && echo {b64} | base64 -d | ./venv/bin/python", t=180))
 
