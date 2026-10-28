@@ -136,7 +136,12 @@ def query_embarcadores_cadastro(schema: str = "c3332") -> str:
     """
 
 
-def query_fluxo_viagem(schema: str = "c3332", *, incluir_km_vazio: bool = True) -> str:
+def query_fluxo_viagem(
+    schema: str = "c3332",
+    *,
+    incluir_km_vazio: bool = True,
+    somente_com_mdfe_emitido: bool = False,
+) -> str:
     """Fluxo operacional diário: ordem, CT-e, averbação, CIOT, pedágio, MDF-e.
 
     Km vazio = kmini(atual) − kmfim(viagem anterior) no mesmo veículo.
@@ -183,6 +188,16 @@ def query_fluxo_viagem(schema: str = "c3332", *, incluir_km_vazio: bool = True) 
                     ELSE NULL
                 END AS km_vazio,"""
         sel_km_vazio_lateral = ""
+    filtro_mdfe_emitido = ""
+    filtro_ordem_sem_mdfe = ""
+    if somente_com_mdfe_emitido:
+        filtro_mdfe_emitido = """
+              AND (
+                  NULLIF(TRIM(mf.mdfeprot::text), '') IS NOT NULL
+                  OR LOWER(TRIM(COALESCE(mf.mdfestatus::text, ''))) LIKE '%autor%'
+                  OR LOWER(TRIM(COALESCE(mf.mdfestatus::text, ''))) IN ('100', '135', 'autorizado')
+              )"""
+        filtro_ordem_sem_mdfe = " AND 1=0"
     return f"""
         WITH base AS (
             SELECT
@@ -327,6 +342,7 @@ def query_fluxo_viagem(schema: str = "c3332", *, incluir_km_vazio: bool = True) 
                 LIMIT 1
             ) mfe ON TRUE
             WHERE c.cancelado IS DISTINCT FROM 'S'
+              {filtro_mdfe_emitido}
 
             UNION ALL
 
@@ -366,6 +382,7 @@ def query_fluxo_viagem(schema: str = "c3332", *, incluir_km_vazio: bool = True) 
             LEFT JOIN {schema}.veiculo v ON v.codveiculo = oc.codveiculo
             LEFT JOIN {schema}.motorista mot ON mot.codmotorista = oc.codmotorista
             WHERE oc.cancelado IS DISTINCT FROM 'S'
+              {filtro_ordem_sem_mdfe}
               AND NOT EXISTS (
                   SELECT 1 FROM {schema}.conhecimento c2
                   WHERE c2.codordemcar = oc.codordemcar

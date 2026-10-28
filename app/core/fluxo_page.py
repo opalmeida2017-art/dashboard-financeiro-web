@@ -17,6 +17,33 @@ from app.data import data_manager as dm
 from app.utils.helpers import normalize_placa_filter, parse_filters
 
 
+def _listar_placas_fluxo(apartamento_id: int) -> list[dict[str, str]]:
+    """Lista placas para a busca do fluxo sem carregar a consulta pesada de MDF-e."""
+    try:
+        placas = logic.get_unique_plates_with_types(
+            apartamento_id=apartamento_id,
+            tipo_negocio_filter="Todos",
+        )
+    except Exception as exc:
+        print(f"Aviso: não foi possível carregar placas do fluxo: {exc}")
+        return []
+
+    visto: set[str] = set()
+    out: list[dict[str, str]] = []
+    for item in placas or []:
+        if isinstance(item, dict):
+            placa = str(item.get("placa") or "").strip().upper()
+            tipo = str(item.get("tipo") or "").strip()
+        else:
+            placa = str(item or "").strip().upper()
+            tipo = ""
+        if not placa or placa in visto:
+            continue
+        visto.add(placa)
+        out.append({"placa": placa, "tipo": tipo})
+    return out
+
+
 
 
 
@@ -108,57 +135,7 @@ def build_fluxo_viagem_context(
 
 
 
-    if modo == "lista" and rows:
-
-        placas = [
-
-            {"placa": r.get("placa"), "tipo": ""}
-
-            for r in sorted(rows, key=lambda x: x.get("placa") or "")
-
-            if r.get("placa") and not r.get("sem_viagem_periodo")
-
-        ]
-
-        visto: set[str] = set()
-
-        placas_unicas = []
-
-        for p in placas:
-
-            pl = p["placa"]
-
-            if pl not in visto:
-
-                visto.add(pl)
-
-                placas_unicas.append(p)
-
-        placas = placas_unicas
-
-    else:
-
-        resumo_placas = logic.get_fluxo_veiculos_resumo(
-
-            apartamento_id=apartamento_id,
-
-            start_date=start_eff,
-
-            end_date=end_eff,
-
-            filial_filter=[],
-
-        )
-
-        placas = [
-
-            {"placa": r.get("placa"), "tipo": ""}
-
-            for r in sorted(resumo_placas, key=lambda x: x.get("placa") or "")
-
-            if r.get("placa")
-
-        ]
+    placas = _listar_placas_fluxo(apartamento_id)
 
 
 

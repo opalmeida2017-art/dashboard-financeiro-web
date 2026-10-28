@@ -5116,13 +5116,26 @@ _fluxo_sati_cache: dict[tuple, tuple] = {}
 _FLUXO_CACHE_TTL_SEC = 90
 
 
-def _fluxo_cache_key(apartamento_id: int, start_date, end_date, cod_filial) -> tuple:
+def _fluxo_cache_key(
+    apartamento_id: int,
+    start_date,
+    end_date,
+    cod_filial,
+    somente_com_mdfe_emitido: bool,
+) -> tuple:
     def _fmt(d):
         if d is None:
             return ""
         return d.strftime("%Y-%m-%d %H:%M:%S") if hasattr(d, "strftime") else str(d)
 
-    return (apartamento_id, _fmt(start_date), _fmt(end_date), cod_filial, 5)
+    return (
+        apartamento_id,
+        _fmt(start_date),
+        _fmt(end_date),
+        cod_filial,
+        bool(somente_com_mdfe_emitido),
+        6,
+    )
 
 
 def _fluxo_sql_coluna_ausente(exc: Exception, coluna: str) -> bool:
@@ -5133,9 +5146,21 @@ def _fluxo_sql_coluna_ausente(exc: Exception, coluna: str) -> bool:
     )
 
 
-def _fetch_fluxo_viagem_sati(apartamento_id: int, start_date, end_date) -> pd.DataFrame:
+def _fetch_fluxo_viagem_sati(
+    apartamento_id: int,
+    start_date,
+    end_date,
+    *,
+    somente_com_mdfe_emitido: bool = False,
+) -> pd.DataFrame:
     cod_filial = resolve_cod_filial(db.engine, apartamento_id)
-    key = _fluxo_cache_key(apartamento_id, start_date, end_date, cod_filial)
+    key = _fluxo_cache_key(
+        apartamento_id,
+        start_date,
+        end_date,
+        cod_filial,
+        somente_com_mdfe_emitido,
+    )
     now = time.time()
     cached = _fluxo_sati_cache.get(key)
     if cached and (now - cached[0]) < _FLUXO_CACHE_TTL_SEC:
@@ -5149,7 +5174,11 @@ def _fetch_fluxo_viagem_sati(apartamento_id: int, start_date, end_date) -> pd.Da
     }
 
     def _run(incluir_km_vazio: bool = True) -> pd.DataFrame:
-        sql = query_fluxo_viagem(schema, incluir_km_vazio=incluir_km_vazio)
+        sql = query_fluxo_viagem(
+            schema,
+            incluir_km_vazio=incluir_km_vazio,
+            somente_com_mdfe_emitido=somente_com_mdfe_emitido,
+        )
         with get_sati_engine().connect() as conn:
             return pd.read_sql_query(text(sql), conn, params=params)
 
@@ -5358,7 +5387,12 @@ def _load_fluxo_viagem_rows(
 
     if sati_enabled_for_apartment(db.engine, apartamento_id):
         try:
-            df = _fetch_fluxo_viagem_sati(apartamento_id, start_date, end_date)
+            df = _fetch_fluxo_viagem_sati(
+                apartamento_id,
+                start_date,
+                end_date,
+                somente_com_mdfe_emitido=somente_com_mdfe_emitido,
+            )
             if not df.empty:
                 df["placa"] = df["placa"].astype(str).str.strip().str.upper()
                 df = df[(df["placa"] != "") & (df["placa"] != "—") & (df["placa"].str.lower() != "nan")]
