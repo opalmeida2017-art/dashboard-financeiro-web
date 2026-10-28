@@ -12,12 +12,15 @@ os.environ.setdefault("BIWEB_LOCAL_DEV", "1")
 
 from app import create_app
 
+from scripts._test_period import mes_vigente_params
+
 app = create_app()
+_FILTRO = mes_vigente_params()
 
 ENDPOINTS = [
     ("GET", "/", {}),
-    ("GET", "/api/monthly_summary", {"start_date": "2026-01-01", "end_date": "2026-06-20"}),
-    ("GET", "/api/bi_audit", {"metric": "receita_frete", "start_date": "2026-01-01", "end_date": "2026-06-20"}),
+    ("GET", "/api/monthly_summary", _FILTRO),
+    ("GET", "/api/bi_audit", {"metric": "receita_frete", **_FILTRO}),
     ("GET", "/visao_comercial", {}),
     ("GET", "/visao/volume", {}),
     ("GET", "/fluxo_viagem", {}),
@@ -42,7 +45,7 @@ def main():
 
         for aid in GC_ANALISES:
             path = "/api/gestao_comercial_data"
-            r = c.get(path, query_string={"analise": aid, "start_date": "2026-01-01", "end_date": "2026-06-20"})
+            r = c.get(path, query_string={"analise": aid, **_FILTRO})
             if r.status_code >= 400:
                 fail += 1
                 print(f"ERRO {path}?analise={aid} -> {r.status_code} {r.data[:300]!r}")
@@ -61,7 +64,7 @@ def main():
 
             r2 = c.get(
                 "/api/visao_bi_data",
-                query_string={"visao": vk, "analise": 1, "start_date": "2026-01-01", "end_date": "2026-06-20"},
+                query_string={"visao": vk, "analise": 1, **_FILTRO},
             )
             if r2.status_code >= 400:
                 fail += 1

@@ -12,7 +12,7 @@
         <div class="kpi-value" style="color: var(--accent);">{{ summary.faturamento_total_viagens | currency }}</div>
         <div class="kpi-hint">{{ num_ctes }} viagem(ns) no período</div>
         {% if cmp and cmp.receita %}
-        <div class="kpi-delta kpi-delta-{{ cmp.receita.tone }}">{{ cmp.receita.label }} vs período ant.</div>
+        <div class="kpi-delta kpi-delta-{{ cmp.receita.tone }}" {% if cmp.periodo_anterior %}title="Período anterior: {{ cmp.periodo_anterior.label }}"{% endif %}>{{ cmp.receita.label }} vs período ant.{% if cmp.periodo_anterior %} <span class="kpi-delta-period">({{ cmp.periodo_anterior.label }})</span>{% endif %}</div>
         {% endif %}
     </div>
     <div class="kpi-card kpi-custo">
@@ -21,7 +21,7 @@
         <div class="kpi-value" style="color: var(--warning);">{{ custo_operacional | currency }}</div>
         <div class="kpi-hint">Prévia CT-e + notas + tipo D</div>
         {% if cmp and cmp.custo %}
-        <div class="kpi-delta kpi-delta-{{ cmp.custo.tone }}">{{ cmp.custo.label }} vs período ant.</div>
+        <div class="kpi-delta kpi-delta-{{ cmp.custo.tone }}" {% if cmp.periodo_anterior %}title="Período anterior: {{ cmp.periodo_anterior.label }}"{% endif %}>{{ cmp.custo.label }} vs período ant.</div>
         {% endif %}
     </div>
     <div class="kpi-card kpi-resultado">
@@ -32,7 +32,7 @@
         </div>
         <div class="kpi-hint">Receita − custos</div>
         {% if cmp and cmp.resultado %}
-        <div class="kpi-delta kpi-delta-{{ cmp.resultado.tone }}">{{ cmp.resultado.label }} vs período ant.</div>
+        <div class="kpi-delta kpi-delta-{{ cmp.resultado.tone }}" {% if cmp.periodo_anterior %}title="Período anterior: {{ cmp.periodo_anterior.label }}"{% endif %}>{{ cmp.resultado.label }} vs período ant.</div>
         {% endif %}
     </div>
     <div class="kpi-card kpi-margem">
@@ -48,7 +48,7 @@
             {% endif %}
         </div>
         {% if cmp and cmp.margem %}
-        <div class="kpi-delta kpi-delta-{{ cmp.margem.tone }}">{{ cmp.margem.label }} vs período ant.</div>
+        <div class="kpi-delta kpi-delta-{{ cmp.margem.tone }}" {% if cmp.periodo_anterior %}title="Período anterior: {{ cmp.periodo_anterior.label }}"{% endif %}>{{ cmp.margem.label }} vs período ant.</div>
         {% endif %}
     </div>
 </section>
@@ -59,7 +59,7 @@
         <strong style="color: var(--warning);">{{ (summary.custo_por_cte or 0) | currency }}</strong>
         <small class="kpi-mini-hint">Custos operacionais ÷ {{ num_ctes }} CT-e(s)</small>
         {% if cmp and cmp.custo_por_cte %}
-        <small class="kpi-delta kpi-delta-{{ cmp.custo_por_cte.tone }}">{{ cmp.custo_por_cte.label }} vs ant.</small>
+        <small class="kpi-delta kpi-delta-{{ cmp.custo_por_cte.tone }}" {% if cmp.periodo_anterior %}title="Período anterior: {{ cmp.periodo_anterior.label }}"{% endif %}>{{ cmp.custo_por_cte.label }} vs ant.</small>
         {% endif %}
     </div>
     <div class="kpi-mini">

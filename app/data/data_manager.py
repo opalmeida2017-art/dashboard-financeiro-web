@@ -2513,12 +2513,10 @@ def get_dashboard_summary(
         float(summary["margem_frete"]), metas.get("meta_margem_pct"), maior_melhor=True
     )
 
-    # Comparativo MoM: período anterior de mesma duração (sem recursão)
+    # Comparativo vs período anterior (calendário quando possível; sem recursão)
     if start_date is not None and end_date is not None:
         try:
-            dur = end_date - start_date
-            prev_end = start_date - timedelta(microseconds=1)
-            prev_start = prev_end - dur
+            prev_start, prev_end = _periodo_anterior_comparativo(start_date, end_date)
             prev_summary = _dashboard_summary_core(
                 apartamento_id,
                 prev_start,
@@ -2529,6 +2527,10 @@ def get_dashboard_summary(
                 unidade_embarque_filter,
                 embarcador_filter,
             )
+            from app.utils.helpers import format_date_br
+
+            prev_ini_br = format_date_br(prev_start)
+            prev_fim_br = format_date_br(prev_end)
             summary["comparativo"] = {
                 "receita": formatar_delta_pct(
                     summary["faturamento_total_viagens"],
@@ -2553,6 +2555,9 @@ def get_dashboard_summary(
                 "periodo_anterior": {
                     "inicio": prev_start.strftime("%Y-%m-%d"),
                     "fim": prev_end.strftime("%Y-%m-%d"),
+                    "inicio_br": prev_ini_br,
+                    "fim_br": prev_fim_br,
+                    "label": f"{prev_ini_br} a {prev_fim_br}",
                 },
             }
         except Exception as e:
@@ -2562,6 +2567,39 @@ def get_dashboard_summary(
         summary["comparativo"] = None
 
     return summary
+
+
+def _periodo_anterior_comparativo(
+    start_date: datetime, end_date: datetime
+) -> tuple[datetime, datetime]:
+    """Janela anterior para o delta dos KPIs.
+
+    - Mês parcial a partir do dia 1 → mesmo intervalo no mês anterior (MTD).
+    - Ano parcial a partir de 1/jan → mesmo intervalo no ano anterior (YTD).
+    - Demais casos → mesma duração imediatamente antes do início.
+    """
+    try:
+        from dateutil.relativedelta import relativedelta
+    except ImportError:
+        relativedelta = None  # type: ignore
+
+    start = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = end_date.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    if relativedelta is not None and start.day == 1 and start.month == end.month and start.year == end.year:
+        prev_start = start - relativedelta(months=1)
+        prev_end = end - relativedelta(months=1)
+        return prev_start, prev_end.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    if relativedelta is not None and start.month == 1 and start.day == 1 and start.year == end.year:
+        prev_start = start - relativedelta(years=1)
+        prev_end = end - relativedelta(years=1)
+        return prev_start, prev_end.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    dur = end - start
+    prev_end = (start - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+    prev_start = (prev_end - dur).replace(hour=0, minute=0, second=0, microsecond=0)
+    return prev_start, prev_end
 
 
 def _dashboard_summary_core(

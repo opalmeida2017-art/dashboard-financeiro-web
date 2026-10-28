@@ -419,25 +419,39 @@ def _linhas_ctes_sem_km(df: pd.DataFrame) -> list[dict[str, Any]]:
     return linhas
 
 
-def _sql_cte_valido_mesma_nota(alias: str = "c") -> str:
-    """CT-e válido para checagem de nota duplicada: não cancelado, autorizado, pagar=S e a faturar=S."""
+def _sql_cte_autorizado_expr(alias: str = "c") -> str:
+    """Expressão booleana: CT-e autorizado (status, chave ou protocolo)."""
     st = f"UPPER(TRIM(COALESCE({alias}.ctestatus::text, '')))"
-    return f"""
-          UPPER(TRIM(COALESCE({alias}.cancelado::text, ''))) IS DISTINCT FROM 'S'
-          AND (
+    return f"""(
             {st} IN ('2', '100', '135')
             OR LOWER(TRIM(COALESCE({alias}.ctestatus::text, ''))) LIKE '%autor%'
             OR NULLIF(TRIM({alias}.ctechave::text), '') IS NOT NULL
             OR NULLIF(TRIM({alias}.cteprot::text), '') IS NOT NULL
-          )
+          )"""
+
+
+def _sql_cte_valido_mesma_nota(alias: str = "c") -> str:
+    """CT-e na lista de nota duplicada.
+
+    - Exclui cancelado.
+    - Exige pagar conhecimento (pagar=S) e a faturar (permitefaturar=S).
+    - Não autorizado só entra com essas duas flags marcadas; coluna Autorizado fica em branco.
+    """
+    return f"""
+          UPPER(TRIM(COALESCE({alias}.cancelado::text, ''))) IS DISTINCT FROM 'S'
           AND UPPER(TRIM(COALESCE({alias}.pagar::text, ''))) = 'S'
           AND UPPER(TRIM(COALESCE({alias}.permitefaturar::text, ''))) = 'S'
     """
 
 
 def _query_ctes_mesma_nota(schema: str, period_sql: str) -> str:
-    """CT-es distintos com a mesma NF-e; ignora cancelado, não autorizado e flags pagar/a faturar desmarcadas."""
+    """CT-es com a mesma NF-e (chave de 44 dígitos); só com pagar=S e a faturar=S.
+
+    Sem chave NFe válida não entra — evita falso positivo (ex.: série/nº 1/1 sem chave).
+    """
     dt = "COALESCE(c.dataviagemmotorista, c.data)"
+    auth_expr = _sql_cte_autorizado_expr("c")
+    chave_norm = "regexp_replace(TRIM(COALESCE(cn.chavenfe::text, '')), '[^0-9]', '', 'g')"
     return f"""
         WITH base AS (
             SELECT
@@ -446,19 +460,18 @@ def _query_ctes_mesma_nota(schema: str, period_sql: str) -> str:
                 ({_safe_ts(dt)})::date AS data_viagem,
                 TRIM(COALESCE(v.placa, '')) AS placa,
                 TRIM(COALESCE(cli.nome, '')) AS cliente,
-                NULLIF(TRIM(cn.chavenfe::text), '') AS chave,
+                {chave_norm} AS chave,
                 NULLIF(TRIM(cn.numeronota::text), '') AS numeronota,
                 TRIM(COALESCE(cn.serie::text, '')) AS serie,
                 cn.codnota,
-                CASE
-                    WHEN NULLIF(TRIM(cn.chavenfe::text), '') IS NOT NULL
-                    THEN 'chave:' || TRIM(cn.chavenfe::text)
-                    ELSE 'num:' || TRIM(COALESCE(cn.serie::text, '')) || '/' || TRIM(cn.numeronota::text)
-                END AS nota_key,
+                CASE WHEN {auth_expr} THEN TRUE ELSE FALSE END AS autorizado,
+                TRIM(COALESCE(c.ctestatus::text, '')) AS ctestatus,
+                'chave:' || {chave_norm} AS nota_key,
                 CASE
                     WHEN COALESCE(TRIM(cn.serie::text), '') <> ''
+                         AND NULLIF(TRIM(cn.numeronota::text), '') IS NOT NULL
                     THEN TRIM(cn.serie::text) || '/' || TRIM(cn.numeronota::text)
-                    ELSE NULLIF(TRIM(cn.numeronota::text), '')
+                    ELSE {chave_norm}
                 END AS nota_lbl
             FROM {schema}.conhecimentonota cn
             INNER JOIN {schema}.conhecimento c ON c.numero = cn.numero
@@ -467,10 +480,7 @@ def _query_ctes_mesma_nota(schema: str, period_sql: str) -> str:
             LEFT JOIN {schema}.nota n ON n.codnota = cn.codnota
             WHERE {_sql_cte_valido_mesma_nota("c")}
               AND (n.codnota IS NULL OR n.datacanc IS NULL)
-              AND (
-                NULLIF(TRIM(cn.chavenfe::text), '') IS NOT NULL
-                OR NULLIF(TRIM(cn.numeronota::text), '') IS NOT NULL
-              )
+              AND length({chave_norm}) = 44
               {period_sql}
         ),
         grupos AS (
@@ -491,10 +501,12 @@ def _query_ctes_mesma_nota(schema: str, period_sql: str) -> str:
             b.serie,
             b.nota_lbl,
             b.nota_key,
+            b.autorizado,
+            b.ctestatus,
             g.qtd_ctes
         FROM base b
         INNER JOIN grupos g ON g.nota_key = b.nota_key
-        ORDER BY g.qtd_ctes DESC, b.nota_key, b.data_viagem DESC NULLS LAST, b.numero
+        ORDER BY g.qtd_ctes DESC, b.nota_key, b.autorizado DESC, b.data_viagem DESC NULLS LAST, b.numero
         LIMIT 800
     """
 
@@ -523,6 +535,8 @@ def _linhas_ctes_mesma_nota(df: pd.DataFrame) -> list[dict[str, Any]]:
             qtd = int(row["qtd_ctes"]) if pd.notna(row.get("qtd_ctes")) else None
         except (TypeError, ValueError):
             qtd = None
+        auth_raw = row.get("autorizado")
+        autorizado = bool(auth_raw) if pd.notna(auth_raw) else False
         linhas.append(
             {
                 "cte": cte_lbl,
@@ -532,9 +546,11 @@ def _linhas_ctes_mesma_nota(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "placa": row.get("placa") or "—",
                 "cliente": row.get("cliente") or "—",
                 "nota": nota,
-                "chave": (chave[:20] + "...") if len(chave) > 24 else (chave or "—"),
+                "chave": (chave[:20] + "…") if len(chave) > 24 else (chave or "—"),
                 "chave_completa": chave or "—",
                 "qtd_ctes": qtd,
+                "autorizado": autorizado,
+                "autorizado_label": "autorizado" if autorizado else "",
             }
         )
     return linhas
@@ -616,7 +632,7 @@ def get_db_inconsistencias(
     if end_date:
         filtros["end_date"] = format_date_br(end_date)
     filtros["exclui"] = (
-        "notas canceladas (datacanc); CT-es cancelados, não autorizados "
+        "notas canceladas (datacanc); CT-es cancelados "
         "ou com pagar/a faturar desmarcado"
     )
 
@@ -628,10 +644,11 @@ def get_db_inconsistencias(
                 "id": "ctes_mesma_nota",
                 "titulo": "CT-es com a mesma nota vinculada",
                 "descricao": (
-                    "Mais de um CT-e no período compartilhando a mesma NF-e "
-                    "(chave ou série/número em conhecimentonota). "
-                    "Desconsidera: CT-e cancelado, não autorizado, pagar conhecimento desmarcado "
-                    "e a faturar (permitefaturar) desmarcado; notas com datacanc também são ignoradas."
+                    "Mais de um CT-e no período com a mesma chave NFe (44 dígitos). "
+                    "Sem chave válida não lista (evita falso positivo tipo 1/1). "
+                    "Só entram CT-es com pagar conhecimento e a faturar marcados "
+                    "(não autorizado: coluna Autorizado em branco). "
+                    "Desconsidera: CT-e cancelado; flags desmarcadas; notas com datacanc."
                 ),
                 "total": len(linhas_mesma_nota),
                 "linhas": linhas_mesma_nota,

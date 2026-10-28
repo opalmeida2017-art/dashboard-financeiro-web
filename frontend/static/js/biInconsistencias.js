@@ -218,6 +218,7 @@
                     <td class="small" title="${l.chave_completa || ""}">${l.chave || "—"}</td>
                     <td class="text-center text-danger fw-semibold">${l.qtd_ctes != null ? l.qtd_ctes : "—"}</td>
                     <td>${l.cte || "—"}</td>
+                    <td>${l.autorizado_label || ""}</td>
                     <td>${l.data_viagem || "—"}</td>
                     <td>${l.placa || "—"}</td>
                     <td class="small">${l.cliente || "—"}</td>
@@ -232,6 +233,7 @@
                         <th>Chave NFe</th>
                         <th class="text-center">Qtd CT-es</th>
                         <th>CT-e \\ interno</th>
+                        <th>Autorizado</th>
                         <th>Data viagem</th>
                         <th>Placa</th>
                         <th>Cliente</th>

@@ -294,6 +294,12 @@ body.biweb-app main.container {
     margin-top: 0.4rem;
 }
 
+.kpi-delta-period {
+    font-weight: 500;
+    opacity: 0.75;
+    white-space: nowrap;
+}
+
 .kpi-delta-up { color: var(--success); }
 .kpi-delta-down { color: var(--danger); }
 .kpi-delta-neutral { color: var(--text-muted); }
@@ -778,11 +784,17 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
     padding: 12px;
 }
 
+#inconsistenciasModal {
+    padding: 0.35rem;
+    align-items: stretch;
+}
+
 .bi-inconsist-modal-content {
-    width: min(1280px, calc(100vw - 1.5rem));
-    max-width: min(1280px, calc(100vw - 1.5rem));
-    margin: 1rem auto;
-    max-height: calc(100vh - 2rem);
+    width: calc(100vw - 0.7rem);
+    max-width: none;
+    margin: 0.35rem auto;
+    max-height: calc(100vh - 0.7rem);
+    height: calc(100vh - 0.7rem);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -793,14 +805,49 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
     justify-content: space-between;
     align-items: center;
     gap: 0.75rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--surface, #fff);
+    padding: 0.35rem 0 0.65rem;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    margin-bottom: 0.25rem;
 }
 
 .bi-inconsist-modal-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+#inconsistenciasModal .bi-inconsist-close-btn,
+#inconsistenciasModal button.bi-inconsist-close-btn.close-button {
+    position: static !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--border, #cbd5e1);
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #0f172a;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    float: none;
+    opacity: 1;
+}
+
+#inconsistenciasModal .bi-inconsist-close-btn:hover,
+#inconsistenciasModal button.bi-inconsist-close-btn.close-button:hover {
+    background: #e2e8f0;
+    color: #000;
 }
 
 .bi-inconsist-modal-body {
@@ -819,7 +866,8 @@ button.chart-pill.audit-chart-pill:hover .audit-chart-icon {
 }
 
 .bi-inconsist-modal-body .bi-audit-table {
-    min-width: 720px;
+    min-width: 900px;
+    width: 100%;
 }
 
 @media (max-width: 768px) {
