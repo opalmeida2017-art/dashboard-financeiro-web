@@ -17,6 +17,9 @@ _TENANT_ENV_KEYS = (
     "SATI_DATABASE_URL",
     "USE_SATI_SOURCE",
     "SATI_SCHEMA",
+    "SATI_URL_CODIGO",
+    "SATI_PG_SCHEMA",
+    "SATI_COD_FILIAL",
     "BIWEB_SKIP_LOGIN",
     "SATI_RESTORE_USE_SUDO_POSTGRES",
     "BIWEB_TRANSPORTADORA_ID",
@@ -61,6 +64,60 @@ def tenant_dir(slug: str) -> Path:
     return TENANTS_ROOT / str(slug or "").strip().lower()
 
 
+def canonical_tenant_dir(slug: str) -> Path:
+    """Pasta canonica de runtime do tenant, sempre normalizada pelo slug."""
+    return TENANTS_ROOT / str(slug or "").strip().lower()
+
+
+def _runtime_fallback_dir(slug: str) -> Path:
+    try:
+        from app.utils.paths import data_root
+
+        return data_root() / "tenants" / str(slug or "").strip().lower()
+    except Exception:
+        return Path.cwd() / "tenants" / str(slug or "").strip().lower()
+
+
+def _diretorio_gravavel(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "downloads").mkdir(exist_ok=True)
+        (path / "logs").mkdir(exist_ok=True)
+        teste = path / ".biweb_write_test"
+        teste.write_text("ok", encoding="utf-8")
+        teste.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
+
+
+def ensure_tenant_runtime_dirs(slug: str, preferred: str | Path | None = None) -> Path:
+    """
+    Garante uma pasta gravavel para lock/downloads/logs do tenant.
+
+    O tenant.env pode estar em uma pasta legada com maiusculas (ex.: Batatao)
+    ou sem permissao para o usuario do worker. Para arquivos de execucao,
+    preferimos sempre /opt/biweb/tenants/<slug-minusculo> e caimos para
+    data_root()/tenants/<slug> quando o Debian nao permite gravar em /opt.
+    """
+    slug_norm = str(slug or "").strip().lower() or "default"
+    candidatos: list[Path] = []
+    canon = canonical_tenant_dir(slug_norm)
+    candidatos.append(canon)
+    if preferred:
+        pref = Path(preferred)
+        if pref not in candidatos and pref.name == slug_norm:
+            candidatos.append(pref)
+    fallback = _runtime_fallback_dir(slug_norm)
+    if fallback not in candidatos:
+        candidatos.append(fallback)
+
+    for path in candidatos:
+        if _diretorio_gravavel(path):
+            return path
+    return fallback
+
+
 def load_tenant_env(slug: str) -> dict[str, str]:
     base = tenant_dir(slug)
     merged: dict[str, str] = {}
@@ -77,12 +134,14 @@ def apply_tenant_env(slug: str | None) -> bool:
     if not env.get("DATABASE_URL"):
         return False
     for key in _TENANT_ENV_KEYS:
+        os.environ.pop(key, None)
+    for key in _TENANT_ENV_KEYS:
         if key in env:
             os.environ[key] = env[key]
     os.environ["BI_TENANT_SLUG"] = slug
     os.environ["BI_PG_DATABASE"] = env.get("BI_PG_DATABASE", f"bi_{slug.replace('-', '_')}")
-    tenant_path = env.get("BI_TENANT_DIR") or str(tenant_dir(slug))
-    os.environ["BI_TENANT_DIR"] = tenant_path
+    tenant_path = ensure_tenant_runtime_dirs(slug, env.get("BI_TENANT_DIR"))
+    os.environ["BI_TENANT_DIR"] = str(tenant_path)
     return True
 
 

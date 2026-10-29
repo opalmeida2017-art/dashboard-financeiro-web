@@ -24,16 +24,27 @@ def env_file() -> Path:
 def downloads_dir(transportadora_id: int = 1) -> Path:
     tenant_path = os.getenv("BI_TENANT_DIR", "").strip()
     if tenant_path:
+        try:
+            from infra.tenant_licensing.bi_tenant_runtime import ensure_tenant_runtime_dirs
+
+            slug = os.getenv("BI_TENANT_SLUG", "").strip().lower()
+            if slug:
+                tenant_path = str(ensure_tenant_runtime_dirs(slug, tenant_path))
+                os.environ["BI_TENANT_DIR"] = tenant_path
+        except Exception:
+            pass
         d = Path(tenant_path) / "downloads" / str(transportadora_id)
         d.mkdir(parents=True, exist_ok=True)
         return d
     try:
         from infra.tenant_licensing.bi_tenant_context import get_slug
-        from infra.tenant_licensing.bi_tenant_runtime import tenant_dir
+        from infra.tenant_licensing.bi_tenant_runtime import ensure_tenant_runtime_dirs
 
         slug = get_slug() or os.getenv("BI_TENANT_SLUG", "").strip().lower()
         if slug:
-            d = tenant_dir(slug) / "downloads" / str(transportadora_id)
+            tenant_path = ensure_tenant_runtime_dirs(slug)
+            os.environ["BI_TENANT_DIR"] = str(tenant_path)
+            d = tenant_path / "downloads" / str(transportadora_id)
             d.mkdir(parents=True, exist_ok=True)
             return d
     except Exception:
