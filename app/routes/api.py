@@ -301,9 +301,25 @@ def api_fluxo_viagem_body():
     resp = make_response(html)
     resp.headers["X-Pendentes-Coleta"] = ctx.get("pendentes_coleta_json", "[]")
     resp.headers["X-Coleta-Auto"] = "1" if ctx.get("coleta_automatica_habilitada") else "0"
-    placas = [p.get("placa") for p in ctx.get("placas") or [] if p.get("placa")]
+    placas = sorted({
+        str(r.get("placa") or "").strip().upper()
+        for r in ctx.get("rows") or []
+        if r.get("placa")
+    })
     resp.headers["X-Fluxo-Placas"] = json.dumps(placas)
     return resp
+
+
+@api_bp.route('/fluxo_viagem_placas')
+@login_required
+def api_fluxo_viagem_placas():
+    """Lista leve de placas para preencher a busca antes do fluxo completo carregar."""
+    apartamento_id_alvo = get_target_apartment_id()
+    if apartamento_id_alvo is None:
+        return jsonify({"error": "Transportadora não identificada"}), 400
+    from app.core.fluxo_page import _listar_placas_fluxo
+
+    return jsonify({"placas": _listar_placas_fluxo(apartamento_id_alvo)})
 
 
 @api_bp.route('/nfe_pendentes_cte')
