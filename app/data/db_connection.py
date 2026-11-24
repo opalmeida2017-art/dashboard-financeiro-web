@@ -5,16 +5,16 @@ import os
 from sqlalchemy import create_engine
 
 from app.utils.env_loader import load_env
+import infra.tenant_licensing.tenant_env  # noqa: F401  (os.environ isolado por requisição)
 
 load_env()
 
 
 class _EngineHolder:
-    """Engine que recria quando DATABASE_URL muda (multi-tenant Debian)."""
+    """Um engine (pool) por DATABASE_URL; a URL vem do tenant da requisição atual."""
 
     def __init__(self) -> None:
-        self._engine = None
-        self._url: str | None = None
+        self._engines: dict = {}
 
     def _database_url(self) -> str:
         url = os.getenv("DATABASE_URL", "").strip()
@@ -26,18 +26,18 @@ class _EngineHolder:
 
     def _ensure(self):
         url = self._database_url()
-        if self._engine is None or self._url != url:
-            if self._engine is not None:
-                self._engine.dispose()
-            self._engine = create_engine(
+        eng = self._engines.get(url)
+        if eng is None:
+            eng = create_engine(
                 url,
+                pool_pre_ping=True,
                 connect_args={
                     "client_encoding": "utf8",
                     "options": "-c client_encoding=UTF8",
                 },
             )
-            self._url = url
-        return self._engine
+            eng = self._engines.setdefault(url, eng)
+        return eng
 
     def connect(self, *args, **kwargs):
         return self._ensure().connect(*args, **kwargs)
@@ -49,10 +49,11 @@ class _EngineHolder:
         return self._ensure().raw_connection(*args, **kwargs)
 
     def dispose(self) -> None:
-        if self._engine is not None:
-            self._engine.dispose()
-        self._engine = None
-        self._url = None
+        """Fecha o pool do tenant atual (os demais tenants seguem com o seu)."""
+        url = os.getenv("DATABASE_URL", "").strip()
+        eng = self._engines.pop(url, None)
+        if eng is not None:
+            eng.dispose()
 
     def __getattr__(self, name):
         return getattr(self._ensure(), name)

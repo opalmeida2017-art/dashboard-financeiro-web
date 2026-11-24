@@ -47,18 +47,22 @@ def use_sati_source() -> bool:
 
 
 def clear_sati_engine_cache() -> None:
-    get_sati_engine.cache_clear()
+    _sati_engine_for_url.cache_clear()
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=64)
+def _sati_engine_for_url(sati_url: str) -> Engine:
+    return create_engine(sati_url, pool_pre_ping=True)
+
+
 def get_sati_engine() -> Engine:
     """
-    Banco SATI (ex.: sat1_sati_is na porta 5433).
+    Banco SATI (ex.: sat1_sati_is na porta 5433) do tenant da requisição atual.
     Use SATI_DATABASE_URL no .env quando DATABASE_URL for outro banco (ex.: dashboard_db).
     """
     sati_url = os.getenv("SATI_DATABASE_URL", "").strip()
     if sati_url:
-        return create_engine(sati_url)
+        return _sati_engine_for_url(sati_url)
     from app.data.database import engine as app_engine
 
     return app_engine

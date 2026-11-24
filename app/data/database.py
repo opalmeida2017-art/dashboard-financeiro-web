@@ -12,28 +12,11 @@ from app import config
 from app.data.db_connection import engine, reset_engine
 
 
-_prev_request_db_url: str | None = None
-
-
 def switch_engine_for_request() -> None:
-    """Recarrega conexão após trocar tenant (Debian multi-link)."""
-    global _prev_request_db_url
-    url = os.getenv("DATABASE_URL", "").strip()
-    reset_engine()
-    try:
-        from sati_integration.db.sati_source import clear_sati_engine_cache
-
-        clear_sati_engine_cache()
-    except Exception:
-        pass
-    if url and url != _prev_request_db_url:
-        _prev_request_db_url = url
-        try:
-            from app.data import data_manager as dm
-
-            dm.clear_data_cache()
-        except Exception:
-            pass
+    """Mantido por compatibilidade: engines e caches já são escolhidos pelo tenant
+    do contexto atual (ver infra/tenant_licensing/tenant_env.py), sem reset global
+    que derrubaria conexões de outras requisições em andamento."""
+    return None
 
 
 def logar_progresso(apartamento_id, mensagem):

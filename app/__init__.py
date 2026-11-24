@@ -151,6 +151,9 @@ def create_app() -> Flask:
 
     @app.before_request
     def biweb_switch_tenant():
+        from infra.tenant_licensing.tenant_env import limpar
+
+        limpar()
         try:
             from infra.tenant_licensing.bi_tenant_context import (
                 set_tenant,

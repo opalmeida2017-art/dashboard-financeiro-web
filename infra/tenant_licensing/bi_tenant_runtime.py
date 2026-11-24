@@ -76,13 +76,16 @@ def apply_tenant_env(slug: str | None) -> bool:
     env = load_tenant_env(slug)
     if not env.get("DATABASE_URL"):
         return False
-    for key in _TENANT_ENV_KEYS:
-        if key in env:
-            os.environ[key] = env[key]
-    os.environ["BI_TENANT_SLUG"] = slug
-    os.environ["BI_PG_DATABASE"] = env.get("BI_PG_DATABASE", f"bi_{slug.replace('-', '_')}")
-    tenant_path = env.get("BI_TENANT_DIR") or str(tenant_dir(slug))
-    os.environ["BI_TENANT_DIR"] = tenant_path
+    valores = {key: env.get(key) for key in _TENANT_ENV_KEYS}
+    valores["BI_TENANT_SLUG"] = slug
+    valores["BI_PG_DATABASE"] = env.get("BI_PG_DATABASE", f"bi_{slug.replace('-', '_')}")
+    valores["BI_TENANT_DIR"] = env.get("BI_TENANT_DIR") or str(tenant_dir(slug))
+    for key, val in valores.items():
+        if val is not None:
+            os.environ[key] = val
+    from infra.tenant_licensing.tenant_env import definir
+
+    definir(valores, _TENANT_ENV_KEYS)
     return True
 
 

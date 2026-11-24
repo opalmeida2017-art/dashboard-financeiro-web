@@ -5160,7 +5160,7 @@ def _fluxo_cache_key(apartamento_id: int, start_date, end_date, cod_filial) -> t
             return ""
         return d.strftime("%Y-%m-%d %H:%M:%S") if hasattr(d, "strftime") else str(d)
 
-    return (apartamento_id, _fmt(start_date), _fmt(end_date), cod_filial, 5)
+    return (_df_cache_scope(), apartamento_id, _fmt(start_date), _fmt(end_date), cod_filial, 5)
 
 
 def _fluxo_sql_coluna_ausente(exc: Exception, coluna: str) -> bool:
