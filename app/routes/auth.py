@@ -78,25 +78,28 @@ def login():
             from app.data.tenant import get_transportadora_id
             from app.extensions import bcrypt
 
-            row = None
+            rows = []
             if email and senha and email not in EMAILS_BLOQUEADOS:
                 with engine.connect() as conn:
-                    row = conn.execute(
+                    rows = conn.execute(
                         text(
                             "SELECT id, password_hash FROM usuarios "
-                            "WHERE LOWER(email) = :e AND apartamento_id = :tid"
+                            "WHERE LOWER(email) = :e AND apartamento_id = :tid ORDER BY id"
                         ),
                         {"e": email, "tid": get_transportadora_id()},
-                    ).first()
-            ok = False
-            if row:
+                    ).all()
+            user_id = None
+            for uid, ph in rows:
                 try:
-                    ok = bcrypt.check_password_hash(row[1], senha)
+                    if bcrypt.check_password_hash(ph, senha):
+                        user_id = int(uid)
+                        break
                 except ValueError:
-                    ok = False
+                    continue
+            ok = user_id is not None
             registrar_acesso(email, "login", ok)
             if ok:
-                _iniciar_sessao(int(row[0]))
+                _iniciar_sessao(user_id)
                 return redirect(destino_seguro(nxt))
             erro = "E-mail ou senha inválidos."
     from app.data.tenant import get_transportadora_nome_exibicao
