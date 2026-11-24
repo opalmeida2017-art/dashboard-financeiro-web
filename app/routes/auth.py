@@ -138,10 +138,12 @@ def definir_senha(token):
         if not erro:
             ph = bcrypt.generate_password_hash(senha).decode("utf-8")
             with engine.begin() as conn:
-                conn.execute(
-                    text("UPDATE usuarios SET password_hash = :h WHERE id = :id"),
-                    {"h": ph, "id": row["id"]},
-                )
+                alterou = conn.execute(
+                    text("UPDATE usuarios SET password_hash = :h WHERE id = :id AND password_hash = :antigo"),
+                    {"h": ph, "id": row["id"], "antigo": row["password_hash"]},
+                ).rowcount
+            if not alterou:
+                return render_template("auth/definir_senha.html", invalido=True), 400
             registrar_acesso(row["email"], "definir_senha", True)
             flash("Senha definida. Entre com seu e-mail e a nova senha.", "success")
             return redirect(url_for("auth.login"))
