@@ -25,7 +25,7 @@ def _tenant_ok_para_login() -> bool:
     return bool(tenant_atual())
 
 
-def _iniciar_sessao(user_id: int) -> None:
+def _iniciar_sessao(user_id: int, password_hash_verificado: str) -> None:
     from app.extensions import load_user
     from app.security import hash_fingerprint, tenant_atual
 
@@ -40,7 +40,7 @@ def _iniciar_sessao(user_id: int) -> None:
     session.permanent = True
     login_user(user, remember=False)
     session["auth_tenant"] = tenant_atual()
-    session["auth_fp"] = hash_fingerprint(user.password_hash, user.email)
+    session["auth_fp"] = hash_fingerprint(password_hash_verificado, user.email)
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -88,18 +88,18 @@ def login():
                         ),
                         {"e": email, "tid": get_transportadora_id()},
                     ).all()
-            user_id = None
+            user_id = hash_ok = None
             for uid, ph in rows:
                 try:
                     if bcrypt.check_password_hash(ph, senha):
-                        user_id = int(uid)
+                        user_id, hash_ok = int(uid), ph
                         break
                 except ValueError:
                     continue
             ok = user_id is not None
             registrar_acesso(email, "login", ok)
             if ok:
-                _iniciar_sessao(user_id)
+                _iniciar_sessao(user_id, hash_ok)
                 return redirect(destino_seguro(nxt))
             erro = "E-mail ou senha inválidos."
     from app.data.tenant import get_transportadora_nome_exibicao
