@@ -68,7 +68,7 @@ def login():
     erro = None
     email = ""
     if request.method == 'POST':
-        email = (request.form.get("email") or "").strip().lower()
+        email = (request.form.get("email") or "").strip().lower()[:200]
         senha = request.form.get("senha") or ""
         if login_bloqueado(email):
             erro = "Muitas tentativas. Aguarde 15 minutos e tente novamente."
