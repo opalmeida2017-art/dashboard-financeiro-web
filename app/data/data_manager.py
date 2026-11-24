@@ -36,7 +36,7 @@ _DF_CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
 _DF_CACHE_TTL = int(os.environ.get("BIWEB_CACHE_TTL", "300"))
 _FILTER_OPTS_CACHE: dict[tuple, tuple[float, object]] = {}
 _FILTER_OPTS_TTL = int(os.environ.get("BIWEB_FILTER_OPTS_TTL", "3600"))
-_SYNC_GROUPS_AT: dict[int, float] = {}
+_SYNC_GROUPS_AT: dict[tuple, float] = {}
 _SYNC_GROUPS_TTL = int(os.environ.get("BIWEB_SYNC_GROUPS_TTL", "600"))
 
 
@@ -78,7 +78,7 @@ def clear_data_cache(apartamento_id: int | None = None):
     opt_keys = [k for k in _FILTER_OPTS_CACHE if len(k) >= 2 and k[1] == apartamento_id]
     for k in opt_keys:
         del _FILTER_OPTS_CACHE[k]
-    _SYNC_GROUPS_AT.pop(apartamento_id, None)
+    _SYNC_GROUPS_AT.pop((_df_cache_scope(), apartamento_id), None)
 
 
 def _cached_filter_options(apartamento_id: int, cache_key: str, factory):
@@ -424,11 +424,12 @@ def _bloco_composicao_despesa(df: pd.DataFrame, categoria: str) -> pd.DataFrame:
 
 def sync_expense_groups_if_needed(apartamento_id: int):
     now = time.time()
-    last = _SYNC_GROUPS_AT.get(apartamento_id, 0)
+    chave = (_df_cache_scope(), apartamento_id)
+    last = _SYNC_GROUPS_AT.get(chave, 0)
     if now - last < _SYNC_GROUPS_TTL:
         return
     sync_expense_groups(apartamento_id)
-    _SYNC_GROUPS_AT[apartamento_id] = now
+    _SYNC_GROUPS_AT[chave] = now
 
 
 def get_data_as_dataframe(
