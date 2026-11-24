@@ -24,6 +24,24 @@ class _TenantEnviron(type(os.environ)):
             return val
         return super().__getitem__(key)
 
+    def __iter__(self):
+        ov = _overrides.get()
+        if ov is None:
+            yield from super().__iter__()
+            return
+        for key in super().__iter__():
+            if ov.get(key, None) is not _AUSENTE:
+                yield key
+        for key, val in ov.items():
+            if val is not _AUSENTE and not super().__contains__(key):
+                yield key
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+    def copy(self):
+        return dict(self)
+
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
         ov = _overrides.get()
