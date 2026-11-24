@@ -27,7 +27,7 @@ def _tenant_ok_para_login() -> bool:
 
 def _iniciar_sessao(user_id: int) -> None:
     from app.extensions import load_user
-    from app.security import tenant_atual
+    from app.security import hash_fingerprint, tenant_atual
 
     user = load_user(user_id)
     tenant = session.get("bi_tenant_slug")
@@ -40,6 +40,7 @@ def _iniciar_sessao(user_id: int) -> None:
     session.permanent = True
     login_user(user, remember=False)
     session["auth_tenant"] = tenant_atual()
+    session["auth_fp"] = hash_fingerprint(user.password_hash, user.email)
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -122,7 +123,7 @@ def definir_senha(token):
                 text("SELECT id, email, nome, password_hash FROM usuarios WHERE id = :id"),
                 {"id": int(dados.get("u") or 0)},
             ).mappings().first()
-        if row and hash_fingerprint(row["password_hash"]) != dados.get("h"):
+        if row and hash_fingerprint(row["password_hash"], row["email"]) != dados.get("h"):
             row = None
     if not row:
         return render_template("auth/definir_senha.html", invalido=True), 400

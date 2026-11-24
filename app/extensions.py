@@ -34,9 +34,12 @@ login_required = instalacao_login_required
 def load_user(user_id):
     """ This function is now the single source for loading a user. """
     with engine.connect() as conn:
-        query = text("SELECT id, email, nome, apartamento_id, role FROM usuarios WHERE id = :user_id")
+        query = text("SELECT id, email, nome, apartamento_id, role, password_hash FROM usuarios WHERE id = :user_id")
         user_data = conn.execute(query, {"user_id": int(user_id)}).mappings().first()
     if user_data:
-        # The **user_data syntax automatically maps dictionary keys to class arguments
-        return User(**user_data)
+        dados = dict(user_data)
+        password_hash = dados.pop("password_hash", "")
+        user = User(**dados)
+        user.password_hash = password_hash
+        return user
     return None

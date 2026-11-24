@@ -149,7 +149,8 @@ def tenant_atual() -> str:
 def usuario_autenticado() -> bool:
     if not current_user.is_authenticated:
         return False
-    if session.get("auth_tenant") != tenant_atual():
+    atual = hash_fingerprint(getattr(current_user, "password_hash", ""), getattr(current_user, "email", ""))
+    if session.get("auth_tenant") != tenant_atual() or session.get("auth_fp") != atual:
         logout_user()
         session.pop("auth_tenant", None)
         return False
@@ -286,8 +287,9 @@ def login_bloqueado(email: str) -> bool:
         return False
 
 
-def hash_fingerprint(password_hash: str) -> str:
-    return hashlib.sha256((password_hash or "").encode("utf-8")).hexdigest()[:16]
+def hash_fingerprint(password_hash: str, email: str = "") -> str:
+    base = f"{password_hash or ''}|{(email or '').strip().lower()}"
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()[:16]
 
 
 def _serializer():
@@ -296,8 +298,10 @@ def _serializer():
     return URLSafeTimedSerializer(obter_secret_key(), salt="biweb-convite")
 
 
-def gerar_token_convite(tenant_slug: str, user_id: int, password_hash: str) -> str:
-    return _serializer().dumps({"t": tenant_slug or "", "u": int(user_id), "h": hash_fingerprint(password_hash)})
+def gerar_token_convite(tenant_slug: str, user_id: int, password_hash: str, email: str) -> str:
+    return _serializer().dumps(
+        {"t": tenant_slug or "", "u": int(user_id), "h": hash_fingerprint(password_hash, email)}
+    )
 
 
 def ler_token_convite(token: str) -> dict | None:
@@ -369,7 +373,7 @@ def criar_ou_atualizar_usuario(tenant_slug: str, email: str, nome: str, perfil: 
                 ),
                 {"tid": tid, "n": nome, "e": email, "h": ph, "r": perfil},
             ).scalar()
-    token = gerar_token_convite(tenant_slug, uid, ph)
+    token = gerar_token_convite(tenant_slug, uid, ph, email)
     return {
         "id": int(uid),
         "email": email,
