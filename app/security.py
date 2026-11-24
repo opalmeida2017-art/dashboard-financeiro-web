@@ -285,7 +285,7 @@ def login_bloqueado(email: str) -> bool:
                       AND ts > NOW() - make_interval(mins => :janela)
                     """
                 ),
-                {"janela": JANELA_FALHAS_MIN, "e": email, "ip": ip_cliente()},
+                {"janela": JANELA_FALHAS_MIN, "e": (email or "")[:200], "ip": ip_cliente()},
             ).first()
         return (
             int(falhas[0] or 0) >= MAX_FALHAS
