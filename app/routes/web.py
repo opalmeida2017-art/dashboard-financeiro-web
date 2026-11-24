@@ -692,7 +692,7 @@ def adicionar_usuario():
         flash('Todos os campos são obrigatórios.', 'error')
         return redirect(url_for('main.gerenciar_usuarios'))
     from app.security import PERFIS, SENHA_MIN
-    if len(password) < SENHA_MIN or role not in PERFIS:
+    if len(password) < SENHA_MIN or (role not in PERFIS and role != 'usuario'):
         flash(f'Senha com pelo menos {SENHA_MIN} caracteres e perfil válido são obrigatórios.', 'error')
         return redirect(url_for('main.gerenciar_usuarios'))
 
