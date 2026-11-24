@@ -263,6 +263,7 @@ def registrar_acesso(email: str, evento: str, ok: bool) -> None:
                 },
             )
     except Exception as exc:
+        _tabela_log_ok.discard(os.getenv("DATABASE_URL", ""))
         print(f"[auth] falha ao registrar acesso: {exc}")
 
 
@@ -286,6 +287,7 @@ def login_bloqueado(email: str) -> bool:
             ).first()
         return int(falhas[0] or 0) >= MAX_FALHAS or int(falhas[1] or 0) >= MAX_FALHAS_IP
     except Exception:
+        _tabela_log_ok.discard(os.getenv("DATABASE_URL", ""))
         return False
 
 
