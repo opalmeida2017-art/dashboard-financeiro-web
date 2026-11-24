@@ -112,12 +112,17 @@ def obter_secret_key() -> str:
     from app.utils.paths import data_root
 
     path = data_root() / ".flask_secret_key"
-    try:
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    if not path.is_file():
+        tmp = path.with_name(f".flask_secret_key.{os.getpid()}.tmp")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(secrets.token_hex(32))
-    except FileExistsError:
-        pass
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            pass
+        finally:
+            os.unlink(tmp)
     return path.read_text(encoding="utf-8").strip()
 
 
