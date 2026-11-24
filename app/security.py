@@ -86,6 +86,7 @@ EMAILS_BLOQUEADOS = frozenset({"admin@local"})
 SENHA_MIN = 8
 MAX_FALHAS = 5
 MAX_FALHAS_IP = 20
+MAX_FALHAS_CONTA = 30
 JANELA_FALHAS_MIN = 15
 CONVITE_HORAS = 72
 _SECRET_PADRAO = "uma-chave-secreta-muito-dificil-de-adivinhar"
@@ -276,16 +277,21 @@ def login_bloqueado(email: str) -> bool:
             falhas = conn.execute(
                 text(
                     """
-                    SELECT COUNT(*) FILTER (WHERE LOWER(email) = :e), COUNT(*)
+                    SELECT COUNT(*) FILTER (WHERE LOWER(email) = :e AND ip = :ip),
+                           COUNT(*) FILTER (WHERE ip = :ip),
+                           COUNT(*) FILTER (WHERE LOWER(email) = :e)
                     FROM bi_acessos_log
                     WHERE evento = 'login' AND ok = FALSE
                       AND ts > NOW() - make_interval(mins => :janela)
-                      AND ip = :ip
                     """
                 ),
                 {"janela": JANELA_FALHAS_MIN, "e": email, "ip": ip_cliente()},
             ).first()
-        return int(falhas[0] or 0) >= MAX_FALHAS or int(falhas[1] or 0) >= MAX_FALHAS_IP
+        return (
+            int(falhas[0] or 0) >= MAX_FALHAS
+            or int(falhas[1] or 0) >= MAX_FALHAS_IP
+            or int(falhas[2] or 0) >= MAX_FALHAS_CONTA
+        )
     except Exception:
         _tabela_log_ok.discard(os.getenv("DATABASE_URL", ""))
         return False
