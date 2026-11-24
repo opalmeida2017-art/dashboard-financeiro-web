@@ -85,6 +85,7 @@ ENDPOINTS_PUBLICOS = frozenset({
 EMAILS_BLOQUEADOS = frozenset({"admin@local"})
 SENHA_MIN = 8
 MAX_FALHAS = 5
+MAX_FALHAS_IP = 20
 JANELA_FALHAS_MIN = 15
 CONVITE_HORAS = 72
 _SECRET_PADRAO = "uma-chave-secreta-muito-dificil-de-adivinhar"
@@ -274,15 +275,16 @@ def login_bloqueado(email: str) -> bool:
             falhas = conn.execute(
                 text(
                     """
-                    SELECT COUNT(*) FROM bi_acessos_log
+                    SELECT COUNT(*) FILTER (WHERE LOWER(email) = :e), COUNT(*)
+                    FROM bi_acessos_log
                     WHERE evento = 'login' AND ok = FALSE
                       AND ts > NOW() - make_interval(mins => :janela)
-                      AND (LOWER(email) = :e OR ip = :ip)
+                      AND ip = :ip
                     """
                 ),
                 {"janela": JANELA_FALHAS_MIN, "e": email, "ip": ip_cliente()},
-            ).scalar()
-        return int(falhas or 0) >= MAX_FALHAS
+            ).first()
+        return int(falhas[0] or 0) >= MAX_FALHAS or int(falhas[1] or 0) >= MAX_FALHAS_IP
     except Exception:
         return False
 
