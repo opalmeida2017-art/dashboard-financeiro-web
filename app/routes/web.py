@@ -102,6 +102,30 @@ def index():
                            query_string=query_string,
                            logo_url=logo_url)
     
+@main_bp.route('/painel_executivo')
+@login_required
+def painel_executivo():
+    """Visão executiva (Diretor): KPIs, tendência, clientes, frota, recebíveis e alertas."""
+    apartamento_id_alvo = get_target_apartment_id()
+    filters = parse_filters(request.args)
+    resolver = getattr(logic, "resolve_date_filters", dm.resolver_intervalo_consulta)
+    start_eff, end_eff = resolver(
+        apartamento_id_alvo, filters['start_date_obj'], filters['end_date_obj']
+    )
+    if not filters['start_date_str']:
+        mes, ano = end_eff.month - 5, end_eff.year
+        while mes < 1:
+            mes, ano = mes + 12, ano - 1
+        start_eff = end_eff.replace(year=ano, month=mes, day=1)
+    logo_filename = logic.get_apartment_logo(apartamento_id_alvo)
+    return render_template(
+        'dashboards/painel_executivo.html',
+        start_date=start_eff.strftime('%Y-%m-%d'),
+        end_date=end_eff.strftime('%Y-%m-%d'),
+        logo_url=url_for('static', filename=f'uploads/{logo_filename}') if logo_filename else None,
+    )
+
+
 @main_bp.route('/1')
 @login_required
 def redirect_painel_atalho():

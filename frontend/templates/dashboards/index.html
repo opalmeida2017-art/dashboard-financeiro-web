@@ -92,6 +92,7 @@
             <button type="submit" class="btn-apply">Aplicar</button>
             <button type="button" class="btn-apply btn-apply--secondary" id="btn-limpar-filtros" title="Remove placa, filial, unidade e embarcador">Limpar filtros</button>
             <div class="dash-toolbar">
+                <a href="{{ url_for('main.painel_executivo') }}" class="tb-btn tb-btn-primary" title="KPIs, tendência, clientes, frota e alertas">📈 Painel executivo</a>
                 <button type="button" id="btn-analise-margem-toolbar" class="tb-btn tb-btn-primary" title="Análise da margem, CT-e e notas">📊 Análise geral</button>
                 {% if is_admin_in_context() %}
                 <button type="button" id="btn-iniciar-coleta" class="tb-btn tb-btn-primary" title="Gera backup no SATI e atualiza o PostgreSQL">↻ Atualizar banco SATI</button>

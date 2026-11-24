@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel executivo — BIWEB Transporte</title>
+<style>
+:root{
+  --bg:#0b2530;--panel:#103340;--panel2:#143c4b;--line:#1f5161;--txt:#e8f4f6;--muted:#8fb3bd;
+  --teal:#13b5a8;--teal2:#0e8f86;--orange:#f39c2b;--red:#e5533d;--blue:#2f86d6;--green:#3cc47c;--yellow:#f2c230;
+  --tile1:#0f8a80;--tile2:#127a9e;--tile3:#e98a1c;--tile4:#d9532f;--tile5:#5b5fc7;--tile6:#1c9b5f;
+}
+body.light{--bg:#eef3f5;--panel:#ffffff;--panel2:#f5f9fa;--line:#d8e3e7;--txt:#14323c;--muted:#5f7f89}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);font-size:14px}
+.app{display:grid;grid-template-columns:210px 1fr;min-height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 6px 16px}
+.logo{width:38px;height:38px;border-radius:10px;background:var(--teal);display:grid;place-items:center;font-weight:700;color:#fff}
+.brand b{display:block;font-size:14px}.brand small{color:var(--muted);font-size:11px}
+.nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--muted);cursor:pointer;user-select:none}
+.nav:hover{background:var(--panel2);color:var(--txt)}
+.nav.on{background:var(--teal);color:#fff}
+.nav svg{width:16px;height:16px;flex:none}
+.navsec{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:14px 10px 4px}
+.plan{margin-top:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;color:var(--muted)}
+.plan b{color:var(--orange)}
+main{padding:16px 20px;min-width:0}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.top h1{font-size:20px;margin:0 auto 0 0}
+.top h1 small{display:block;font-size:12px;font-weight:400;color:var(--muted)}
+select,.btn{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;cursor:pointer}
+.btn:hover{border-color:var(--teal)}
+.user{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--orange);color:#fff;display:grid;place-items:center;font-weight:700}
+.status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-left:8px}
+.chip{background:var(--teal);color:#fff;border-radius:14px;padding:3px 6px 3px 10px;font-size:12px;display:flex;align-items:center;gap:6px}
+.chip button{background:rgba(0,0,0,.25);border:0;color:#fff;border-radius:50%;width:18px;height:18px;cursor:pointer;line-height:18px;padding:0}
+.hint{font-style:italic}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:12px}
+.kpi{border-radius:10px;padding:12px 14px;color:#fff;position:relative;overflow:hidden;min-height:118px}
+.kpi .t{font-size:12px;opacity:.9}
+.kpi .v{font-size:24px;font-weight:700;margin-top:4px;white-space:nowrap}
+.kpi .d{font-size:11px;margin-top:2px;opacity:.95}
+.kpi svg.spark{position:absolute;left:0;right:0;bottom:0;width:100%;height:38px;opacity:.85}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.card h3{margin:0 0 2px;font-size:14px}
+.card .sub{font-size:11px;color:var(--muted);margin-bottom:8px}
+.c8{grid-column:span 8}.c4{grid-column:span 4}.c6{grid-column:span 6}.c5{grid-column:span 5}.c7{grid-column:span 7}
+svg text{fill:var(--muted);font-size:11px}
+.clk{cursor:pointer}.clk:hover{opacity:.8}
+.sel{stroke:var(--txt);stroke-width:2}
+.dim{opacity:.3}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:6px 4px}
+td{padding:6px 4px;border-bottom:1px solid var(--line)}
+td.n,th.n{text-align:right}
+.neg{color:var(--red);font-weight:600}.pos{color:var(--green)}
+.alert{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px}
+.alert:last-child{border:0}
+.tag{border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700;color:#fff;height:fit-content;white-space:nowrap}
+.legend{display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:4px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.tip{position:fixed;pointer-events:none;background:#081a22;color:#fff;border-radius:6px;padding:6px 8px;font-size:12px;display:none;z-index:9;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.proto{background:var(--orange);color:#111;font-size:11px;font-weight:700;border-radius:6px;padding:2px 8px}
+@media(max-width:1200px){.kpis{grid-template-columns:repeat(3,1fr)}.c8,.c4,.c6,.c5,.c7{grid-column:span 12}}
+@media(max-width:760px){.app{grid-template-columns:1fr}aside{display:none}.kpis{grid-template-columns:repeat(2,1fr)}}
+
+.app{grid-template-columns:1fr}
+.alert{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.alert i{width:8px;border-radius:4px;flex:none}.alert b{display:block}.alert span{color:var(--muted)}
+.det{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;margin-top:6px;min-height:34px;color:var(--muted)}
+.det b{color:var(--txt)}
+.load{color:var(--muted);font-size:12px;padding:24px 0;text-align:center}
+.err{color:var(--orange);font-size:12px;padding:16px 0;text-align:center}
+tr.clk.on td{background:var(--panel2)}
+.kpi.vazio{background:var(--panel2)!important;color:var(--muted)}
+#tip{position:fixed;pointer-events:none;background:#071a22;color:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;display:none;z-index:9}
+input[type=date]{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px}
+a.btn{text-decoration:none}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.c8,.c4,.c6,.c5,.c7{grid-column:span 12}}
+</style>
+</head>
+<body>
+<div class="app"><main>
+<div class="top">
+  <h1>{% if logo_url %}<img src="{{ logo_url }}" alt="" style="height:28px;vertical-align:middle;margin-right:8px">{% endif %}Painel executivo{% if transportadora_nome %} — {{ transportadora_nome }}{% endif %}
+    <small id="sub">Dados do SATI</small></h1>
+  <form id="fPeriodo" style="display:flex;gap:6px;align-items:center">
+    <input type="date" name="start_date" id="fIni" value="{{ start_date }}">
+    <input type="date" name="end_date" id="fFim" value="{{ end_date }}">
+    <button class="btn" type="submit">Aplicar</button>
+  </form>
+  <button class="btn" type="button" onclick="document.body.classList.toggle('light')">Tema claro/escuro</button>
+  <a class="btn" href="{{ painel_home_url() }}">Painel completo</a>
+  <div class="user"><div class="avatar">{{ (usuario_nome or 'U')[:1] }}</div>{{ usuario_nome }}</div>
+</div>
+<div class="status"><span class="dot" id="dotDados"></span><span id="statusDados">Carregando dados do SATI…</span><div class="chips" id="chips"></div><span class="hint">Clique num mês para ver os números do mês; clique em cliente, placa ou rota para o detalhe</span></div>
+<div class="kpis" id="kpis"></div>
+<div class="grid">
+<div class="card c8"><h3>Faturamento × despesas por mês</h3><div class="sub">12 meses até o fim do período · linha = resultado após todas as despesas</div><div id="chMes"><div class="load">Carregando…</div></div></div>
+<div class="card c4"><h3>Frota própria × agenciamento</h3><div class="sub">Receita e margem sobre o custo da prévia do CT-e</div><div id="chFrota"><div class="load">Carregando…</div></div><div class="det" id="detFrota"></div></div>
+<div class="card c6"><h3>Margem por cliente</h3><div class="sub" id="subCli">DRE: receita se permitefaturar = S</div><div id="chCli"><div class="load">Carregando…</div></div><div class="det" id="detCli"></div></div>
+<div class="card c6"><h3>Concentração de receita (Pareto)</h3><div class="sub">Maiores clientes · linha = % acumulado</div><div id="chConc"><div class="load">Carregando…</div></div></div>
+<div class="card c5"><h3>Custo R$/km por placa</h3><div class="sub" id="subPlaca">Linha = média da frota</div><div id="chPlaca"><div class="load">Carregando…</div></div><div class="det" id="detPlaca"></div></div>
+<div class="card c7"><h3>Contas a receber — vencimento</h3><div class="sub" id="subAging">Títulos em aberto</div><div id="chAging"><div class="load">Carregando…</div></div></div>
+<div class="card c5"><h3>Alertas</h3><div class="sub">Gerados a partir dos números do período</div><div id="alerts"><div class="load">Aguardando os dados…</div></div></div>
+<div class="card c7"><h3>Receita × custo por rota</h3><div class="sub" id="subRotas">Custo = prévia do CT-e</div><div id="rotas"><div class="load">Carregando…</div></div></div>
+</div>
+</main></div>
+<div id="tip"></div>
+<script>
+const CFG = {
+  ini: "{{ start_date }}", fim: "{{ end_date }}",
+  urlMensal: "{{ url_for('api.api_monthly_summary') }}",
+  urlComercial: "{{ url_for('api.api_gestao_comercial_data') }}",
+  urlVisao: "{{ url_for('api.api_visao_bi_data') }}",
+};
+</script>
+<script>
+{% raw %}
+const D = {};
+const S = {mes: null, cli: null, placa: null, rota: null, frota: null};
+const MES_PT = {Jan:'Jan',Feb:'Fev',Mar:'Mar',Apr:'Abr',May:'Mai',Jun:'Jun',Jul:'Jul',Aug:'Ago',Sep:'Set',Oct:'Out',Nov:'Nov',Dec:'Dez'};
+const brl = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const mi = v => 'R$ ' + (Number(v || 0) / 1e6).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' mi';
+const pc = v => Number(v || 0).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const titulo = s => String(s || '').toLowerCase().replace(/(^|[\s/(-])(\S)/g, (m, a, b) => a + b.toUpperCase()).replace(/ - ([a-z]{2})(?=$|[\s)])/gi, (m, uf) => ' - ' + uf.toUpperCase());
+const numBR = s => { const m = String(s || '').replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.'); const n = parseFloat(m); return isNaN(n) ? null : n; };
+const kpi = (d, label) => ((d && d.kpis) || []).find(k => String(k.label || '').toLowerCase().startsWith(label.toLowerCase())) || null;
+const tip = document.getElementById('tip');
+function tipOn(e, h) { tip.innerHTML = h; tip.style.display = 'block'; tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; }
+function tipOff() { tip.style.display = 'none'; }
+document.addEventListener('mousemove', e => { if (tip.style.display === 'block') { tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; } });
+function toggle(k, v) { S[k] = S[k] === v ? null : v; render(); }
+function iso(d) { return d.toISOString().slice(0, 10); }
+function inicio12m(fim) { const d = new Date(fim + 'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 11); return iso(d); }
+function qs(extra, ini, fim) { const p = new URLSearchParams(extra); p.set('start_date', ini || CFG.ini); p.set('end_date', fim || CFG.fim); return p.toString(); }
+
+async function carregar(chave, url, alvo) {
+  try {
+    const r = await fetch(url, {headers: {'Accept': 'application/json'}});
+    if (r.status === 401) { window.location.reload(); return; }
+    if (r.status === 403) { D[chave] = {erro: 'Seu perfil não tem acesso a este quadro.'}; }
+    else if (!r.ok) { D[chave] = {erro: 'Não foi possível carregar (HTTP ' + r.status + ').'}; }
+    else { D[chave] = await r.json(); if (D[chave] && D[chave].error) D[chave] = {erro: D[chave].error}; }
+  } catch (e) { D[chave] = {erro: 'Falha de conexão.'}; }
+  render();
+}
+function falhou(id, d) { if (!d) return true; if (d.erro) { document.getElementById(id).innerHTML = '<div class="err">' + esc(d.erro) + '</div>'; return true; } return false; }
+
+function meses() {
+  const m = D.mensal; if (!Array.isArray(m)) return [];
+  return m.map(x => {
+    const lb = String(x.PeriodoLabel || ''); const p = lb.split('/');
+    const rotulo = p.length === 2 ? (MES_PT[p[0]] || p[0]) + '/' + p[1].slice(-2) : lb;
+    const dt = new Date(x.Periodo);
+    return {m: rotulo, ini: isNaN(dt) ? '' : iso(dt), fat: Number(x.Faturamento || 0), desp: Number(x.TotalDespesas || 0)};
+  });
+}
+function mesesPeriodo() { const ini = CFG.ini.slice(0, 7); return meses().filter(m => m.ini.slice(0, 7) >= ini); }
+
+function spark(arr, col) { if (arr.length < 2) return ''; const mx = Math.max(...arr), mn = Math.min(...arr); const p = arr.map((v, i) => (i * 100 / (arr.length - 1)) + ',' + (36 - ((v - mn) / (mx - mn || 1)) * 30)).join(' '); return `<svg class="spark" viewBox="0 0 100 38" preserveAspectRatio="none"><polyline points="${p}" fill="none" stroke="${col}" stroke-width="2"/></svg>`; }
+function gauge(v, mn, mx) { const a = Math.PI * (1 - (Math.max(mn, Math.min(mx, v)) - mn) / (mx - mn)); const x = 50 + 38 * Math.cos(a), y = 48 - 38 * Math.sin(a); return `<svg viewBox="0 0 100 52" style="position:absolute;right:6px;bottom:4px;width:84px"><path d="M12 48 A38 38 0 0 1 88 48" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="8"/><path d="M12 48 A38 38 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" fill="none" stroke="#fff" stroke-width="8"/></svg>`; }
+
+function kpis() {
+  const todos = meses(), per = mesesPeriodo();
+  const sel = S.mes !== null ? todos[S.mes] : null;
+  const k = [];
+  if (D.mensal && !D.mensal.erro) {
+    const fat = sel ? sel.fat : per.reduce((a, m) => a + m.fat, 0), desp = sel ? sel.desp : per.reduce((a, m) => a + m.desp, 0);
+    const res = fat ? (fat - desp) / fat * 100 : 0, lbl = sel ? sel.m : 'período';
+    k.push(['Faturamento (' + lbl + ')', mi(fat), sel ? 'mês selecionado' : per.length + ' meses', 'var(--tile1)', spark(todos.map(m => m.fat), '#fff')]);
+    k.push(['Despesas totais (' + lbl + ')', mi(desp), 'viagem + gerais + tipo D', 'var(--tile2)', spark(todos.map(m => m.desp), '#fff')]);
+    k.push(['Resultado após despesas', pc(res), res < 0 ? 'abaixo de zero' : 'positivo', res < 0 ? 'var(--tile4)' : 'var(--tile6)', gauge(res, -30, 30)]);
+  } else { k.push(['Faturamento', '—', '', '', ''], ['Despesas totais', '—', '', '', ''], ['Resultado após despesas', '—', '', '', '']); }
+  const mg = kpi(D.cli, 'Margem média'), lucro = kpi(D.frota, 'Lucro estimado');
+  k.push(mg ? ['Margem sobre prévia do CT-e', esc(mg.value), lucro ? 'lucro estimado ' + esc(lucro.value) : '', 'var(--tile6)', gauge(numBR(mg.value) || 0, 0, 100)] : ['Margem sobre prévia do CT-e', '—', '', '', '']);
+  const v90 = kpi(D.aging, 'Vencido 90'), tot = kpi(D.aging, 'Total em aberto');
+  if (v90 && tot) { const sh = (numBR(v90.value) || 0) / (numBR(tot.value) || 1) * 100; k.push(['Vencido há mais de 90 dias', mi(numBR(v90.value)), pc(sh) + ' dos ' + mi(numBR(tot.value)) + ' em aberto', 'var(--tile3)', '']); }
+  else k.push(['Vencido há mais de 90 dias', '—', '', '', '']);
+  const c1 = kpi(D.conc, 'Cliente #1'), t3 = kpi(D.conc, 'Top 3');
+  k.push(c1 ? ['Maior cliente', esc(c1.value), esc(titulo(c1.hint)).slice(0, 34) + (t3 ? ' · top 3 = ' + esc(t3.value) : ''), 'var(--tile5)', ''] : ['Maior cliente', '—', '', '', '']);
+  document.getElementById('kpis').innerHTML = k.map(x => `<div class="kpi${x[3] ? '' : ' vazio'}" style="background:${x[3] || ''}"><div class="t">${x[0]}</div><div class="v">${x[1]}</div><div class="d">${x[2]}</div>${x[4]}</div>`).join('');
+}
+
+function chMes() {
+  if (falhou('chMes', D.mensal)) return;
+  const M = meses(); if (!M.length) { document.getElementById('chMes').innerHTML = '<div class="err">Sem movimento no período.</div>'; return; }
+  const W = 760, H = 250, P = 46, n = M.length, bw = (W - P - 10) / n, mx = Math.max(1, ...M.map(m => Math.max(m.fat, m.desp)));
+  const y = v => H - 26 - (v / mx) * (H - 40); let s = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  [0, .25, .5, .75, 1].forEach(t => { s += `<line x1="${P}" x2="${W}" y1="${y(mx * t)}" y2="${y(mx * t)}" stroke="var(--line)"/><text x="${P - 4}" y="${y(mx * t) + 4}" text-anchor="end">${(mx * t / 1e6).toFixed(0)} mi</text>`; });
+  const pts = [];
+  M.forEach((m, i) => {
+    const x = P + i * bw, on = S.mes === null || S.mes === i, r = m.fat ? (m.fat - m.desp) / m.fat * 100 : 0;
+    s += `<g class="clk ${on ? '' : 'dim'}" onclick="toggle('mes',${i})" onmouseover="tipOn(event,'<b>${m.m}</b><br>Faturamento ${brl(m.fat)}<br>Despesas ${brl(m.desp)}<br>Resultado ${pc(r)}')" onmouseout="tipOff()">
+      <rect x="${x + bw * .12}" y="${y(m.fat)}" width="${bw * .36}" height="${y(0) - y(m.fat)}" fill="var(--teal)" rx="2"/>
+      <rect x="${x + bw * .5}" y="${y(m.desp)}" width="${bw * .36}" height="${y(0) - y(m.desp)}" fill="var(--orange)" rx="2"/>
+      <text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${m.m}</text></g>`;
+    pts.push([x + bw / 2, H - 26 - ((Math.max(-55, Math.min(15, r)) + 55) / 70) * (H - 40), r]);
+  });
+  s += `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="var(--red)" stroke-width="2"/>`;
+  pts.forEach(p => s += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--red)"/><text x="${p[0]}" y="${p[1] - 7}" text-anchor="middle" style="fill:#fff;font-weight:700;paint-order:stroke;stroke:var(--red);stroke-width:3px">${p[2].toFixed(0)}%</text>`);
+  s += `<rect x="${W - 250}" y="2" width="10" height="10" fill="var(--teal)"/><text x="${W - 236}" y="11">Faturamento</text><rect x="${W - 160}" y="2" width="10" height="10" fill="var(--orange)"/><text x="${W - 146}" y="11">Despesas</text><line x1="${W - 80}" x2="${W - 66}" y1="7" y2="7" stroke="var(--red)" stroke-width="2"/><text x="${W - 62}" y="11">Resultado</text></svg>`;
+  document.getElementById('chMes').innerHTML = s;
+}
+
+function serie(d, i) { return ((d.chart && d.chart.datasets && d.chart.datasets[i]) || {}).data || []; }
+function rotulos(d) { return (d.chart && (d.chart.label_values || d.chart.labels)) || []; }
+
+function chFrota() {
+  if (falhou('chFrota', D.frota)) return;
+  const L = rotulos(D.frota), rec = serie(D.frota, 0), cus = serie(D.frota, 1);
+  const tot = rec.reduce((a, b) => a + Number(b || 0), 0) || 1, cols = ['var(--blue)', 'var(--teal)', 'var(--orange)', 'var(--yellow)'];
+  let a0 = -Math.PI / 2, s = '<svg viewBox="0 0 220 200" width="100%" style="max-width:270px;display:block;margin:auto">';
+  L.forEach((t, i) => {
+    const a1 = a0 + 2 * Math.PI * Number(rec[i] || 0) / tot, big = a1 - a0 > Math.PI ? 1 : 0, R = 70, r = 42, cx = 110, cy = 82;
+    const p = (a, rr) => (cx + rr * Math.cos(a)).toFixed(1) + ' ' + (cy + rr * Math.sin(a)).toFixed(1);
+    s += `<path class="clk ${S.frota === null || S.frota === i ? '' : 'dim'}" onclick="toggle('frota',${i})" d="M${p(a0, R)} A${R} ${R} 0 ${big} 1 ${p(a1 - 1e-4, R)} L${p(a1 - 1e-4, r)} A${r} ${r} 0 ${big} 0 ${p(a0, r)}Z" fill="${cols[i % 4]}"/>`;
+    s += `<rect x="40" y="${164 + i * 16}" width="10" height="10" fill="${cols[i % 4]}"/><text x="56" y="${173 + i * 16}">${esc(t)}: ${pc(Number(rec[i] || 0) / tot * 100)}</text>`;
+    a0 = a1;
+  });
+  s += `<text x="110" y="80" text-anchor="middle" style="fill:var(--txt);font-size:15px;font-weight:700">${mi(tot)}</text><text x="110" y="96" text-anchor="middle">receita</text></svg>`;
+  document.getElementById('chFrota').innerHTML = s;
+  const i = S.frota;
+  document.getElementById('detFrota').innerHTML = i !== null && L[i] !== undefined
+    ? `<b>${esc(L[i])}</b>: receita ${brl(rec[i])} · custo prévia ${brl(cus[i])} · margem <b>${pc((rec[i] - cus[i]) / (rec[i] || 1) * 100)}</b>`
+    : L.map((t, j) => esc(t) + ': margem ' + pc((rec[j] - cus[j]) / (rec[j] || 1) * 100)).join(' · ');
+}
+
+function hbar(id, L, V, fmt, col, key, ref, rot) {
+  rot = rot || titulo;
+  const W = 560, rh = 22, H = L.length * rh + 8, mx = Math.max(1e-9, ...V.map(v => Math.max(0, Number(v || 0))), ref || 0), Lw = 200;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  L.forEach((l, i) => {
+    const v = Number(V[i] || 0), w = (W - Lw - 70) * Math.max(0, v) / mx, on = S[key] === null || S[key] === i;
+    s += `<g class="clk ${on ? '' : 'dim'}" onclick="toggle('${key}',${i})"><text x="${Lw - 6}" y="${i * rh + 16}" text-anchor="end">${esc(rot(l).slice(0, 30))}</text><rect x="${Lw}" y="${i * rh + 4}" width="${Math.max(2, w)}" height="${rh - 7}" rx="2" fill="${col(v)}"/><text x="${Lw + w + 4}" y="${i * rh + 16}" style="fill:var(--txt)">${fmt(v)}</text></g>`;
+  });
+  if (ref) { const x = Lw + (W - Lw - 70) * ref / mx; s += `<line x1="${x}" x2="${x}" y1="0" y2="${H}" stroke="var(--yellow)" stroke-dasharray="4 3"/>`; }
+  document.getElementById(id).innerHTML = s + '</svg>';
+}
+
+function chCli() {
+  if (falhou('chCli', D.cli)) return;
+  const L = rotulos(D.cli), V = serie(D.cli, 0), t = kpi(D.cli, 'Total clientes');
+  document.getElementById('subCli').textContent = L.length + (t ? ' de ' + t.value : '') + ' clientes · barra = margem · DRE com permitefaturar = S';
+  hbar('chCli', L, V, pc, v => v < 0 ? 'var(--red)' : v < 30 ? 'var(--orange)' : 'var(--teal)', 'cli');
+  const i = S.cli, mg = kpi(D.cli, 'Margem média'), mn = kpi(D.cli, 'Menor margem');
+  document.getElementById('detCli').innerHTML = i !== null && L[i] !== undefined
+    ? `<b>${esc(titulo(L[i]))}</b>: margem ${pc(V[i])}`
+    : (mg ? 'Margem média ' + esc(mg.value) : '') + (mn ? ' · menor margem ' + esc(mn.value) + ' (' + esc(titulo(mn.hint)) + ')' : '');
+}
+
+function chConc() {
+  if (falhou('chConc', D.conc)) return;
+  const L = rotulos(D.conc), V = serie(D.conc, 0), A = serie(D.conc, 1); if (!L.length) { document.getElementById('chConc').innerHTML = '<div class="err">Sem dados.</div>'; return; }
+  const W = 560, H = 230, P = 40, n = L.length, bw = (W - P - 30) / n, mx = Math.max(1, ...V), y = v => H - 60 - (v / mx) * (H - 80), ya = a => H - 60 - (a / 100) * (H - 80);
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  L.forEach((c, i) => { const x = P + i * bw; s += `<rect x="${x + 2}" y="${y(V[i])}" width="${bw - 4}" height="${H - 60 - y(V[i])}" fill="var(--blue)" rx="2" onmouseover="tipOn(event,'<b>${esc(titulo(c))}</b><br>${brl(V[i])}<br>Acumulado ${pc(A[i])}')" onmouseout="tipOff()"/><text transform="translate(${x + bw / 2},${H - 56}) rotate(-50)" text-anchor="end" style="font-size:9px">${esc(titulo(c).slice(0, 16))}</text>`; });
+  if (A.length) {
+    s += `<polyline points="${A.map((a, i) => (P + i * bw + bw / 2) + ',' + ya(a)).join(' ')}" fill="none" stroke="var(--orange)" stroke-width="2"/>`;
+    [0, 2, 4].filter(i => i < A.length).forEach(i => s += `<text x="${P + i * bw + bw / 2}" y="${ya(A[i]) - 6}" text-anchor="middle" style="fill:var(--orange);font-weight:600">${pc(A[i])}</text>`);
+  }
+  s += `<line x1="${P}" x2="${W}" y1="${ya(80)}" y2="${ya(80)}" stroke="var(--yellow)" stroke-dasharray="4 3"/><text x="${W - 4}" y="${ya(80) - 4}" text-anchor="end">80%</text>`;
+  document.getElementById('chConc').innerHTML = s + '</svg>';
+}
+
+function chPlaca() {
+  if (falhou('chPlaca', D.placa)) return;
+  const L = rotulos(D.placa), V = serie(D.placa, 0), med = numBR((kpi(D.placa, 'R$/km médio') || {}).value), km = kpi(D.placa, 'Km total');
+  document.getElementById('subPlaca').textContent = L.length + ' placas' + (km ? ' · ' + km.value + ' km' : '') + (med ? ' · linha = média ' + brl(med) : '');
+  const f = v => 'R$ ' + v.toFixed(2).replace('.', ',');
+  hbar('chPlaca', L, V, f, v => med && v > 2 * med ? 'var(--red)' : 'var(--orange)', 'placa', med, l => String(l));
+  const i = S.placa;
+  document.getElementById('detPlaca').innerHTML = i !== null && L[i] !== undefined
+    ? `<b>${esc(L[i])}</b>: ${f(Number(V[i]))}/km` + (med ? ` = ${(V[i] / med).toFixed(1).replace('.', ',')}× a média da frota` : '')
+    : 'Clique numa placa para comparar com a média.';
+}
+
+function chAging() {
+  if (falhou('chAging', D.aging)) return;
+  const L = rotulos(D.aging), V = serie(D.aging, 0), tot = V.reduce((a, b) => a + Number(b || 0), 0) || 1, cols = ['var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--red)'];
+  const t = kpi(D.aging, 'Total em aberto'), n = kpi(D.aging, 'Títulos');
+  document.getElementById('subAging').textContent = (t ? t.value + ' em aberto' : '') + (n ? ' · ' + n.value + ' títulos' : '');
+  let s = '<div style="display:flex;height:34px;border-radius:6px;overflow:hidden;margin:6px 0 12px">';
+  L.forEach((l, i) => s += `<div style="width:${V[i] / tot * 100}%;background:${cols[i % 4]}" title="${esc(l)}"></div>`);
+  s += '</div><table><tr><th>Faixa</th><th class="n">Valor</th><th class="n">% do aberto</th></tr>';
+  L.forEach((l, i) => s += `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${cols[i % 4]};margin-right:6px"></span>${esc(l)}</td><td class="n">${brl(V[i])}</td><td class="n">${pc(V[i] / tot * 100)}</td></tr>`);
+  document.getElementById('chAging').innerHTML = s + '</table>';
+}
+
+function rotas() {
+  if (falhou('rotas', D.rotas)) return;
+  const L = rotulos(D.rotas), R = serie(D.rotas, 0), C = serie(D.rotas, 1), t = kpi(D.rotas, 'Total rotas');
+  document.getElementById('subRotas').textContent = L.length + (t ? ' de ' + t.value : '') + ' rotas · custo = prévia do CT-e';
+  const idx = L.map((_, i) => i).sort((a, b) => R[b] - R[a]);
+  let s = '<table><tr><th>Rota</th><th class="n">Receita</th><th class="n">Custo prévia</th><th class="n">Margem</th></tr>';
+  idx.forEach(i => { const m = (R[i] - C[i]) / (R[i] || 1) * 100; s += `<tr class="clk ${S.rota === i ? 'on' : ''}" onclick="toggle('rota',${i})"><td>${esc(titulo(L[i]))}</td><td class="n">${brl(R[i])}</td><td class="n">${brl(C[i])}</td><td class="n" style="color:${m < 0 ? 'var(--red)' : m < 20 ? 'var(--orange)' : 'var(--green)'};font-weight:600">${pc(m)}</td></tr>`; });
+  document.getElementById('rotas').innerHTML = s + '</table>';
+}
+
+function alertas() {
+  const A = [];
+  const v90 = kpi(D.aging, 'Vencido 90'), tot = kpi(D.aging, 'Total em aberto');
+  if (v90 && tot) { const sh = numBR(v90.value) / (numBR(tot.value) || 1) * 100; if (sh >= 30) A.push(['var(--red)', mi(numBR(v90.value)) + ' vencidos há mais de 90 dias', pc(sh) + ' do contas a receber']); }
+  const per = mesesPeriodo();
+  if (per.length) {
+    const neg = per.filter(m => m.fat && m.desp > m.fat).length, fat = per.reduce((a, m) => a + m.fat, 0), desp = per.reduce((a, m) => a + m.desp, 0);
+    if (neg) A.push([desp > fat ? 'var(--red)' : 'var(--orange)', 'Resultado negativo em ' + neg + ' de ' + per.length + ' meses', desp > fat ? 'Despesas superaram o faturamento em ' + mi(desp - fat) + ' no período' : 'No período o resultado ficou positivo']);
+    const ult = meses().filter(m => m.fat > 0).pop(), hoje = new Date().toISOString().slice(0, 7);
+    if (ult && ult.ini.slice(0, 7) < hoje && CFG.fim.slice(0, 7) >= hoje) A.push(['var(--yellow)', 'Sem movimento no SATI depois de ' + ult.m, 'Verifique se a atualização automática do banco está rodando']);
+  }
+  const c1 = kpi(D.conc, 'Cliente #1'), t3 = kpi(D.conc, 'Top 3');
+  if (c1 && numBR(c1.value) >= 30) A.push(['var(--orange)', 'Dependência de um cliente', titulo(c1.hint) + ' = ' + c1.value + ' da receita' + (t3 ? '; 3 clientes = ' + t3.value : '')]);
+  const pior = kpi(D.placa, 'Pior placa'), med = numBR((kpi(D.placa, 'R$/km médio') || {}).value);
+  if (pior && med && numBR(pior.value) > 2 * med) A.push(['var(--orange)', 'Placa ' + pior.hint + ' a ' + pior.value + '/km', (numBR(pior.value) / med).toFixed(1).replace('.', ',') + '× a média da frota']);
+  const tr = kpi(D.rotas, 'Total rotas'), pr = kpi(D.rotas, 'Pior resultado');
+  if (tr && /preju/i.test(tr.hint || '')) A.push(['var(--orange)', 'Rotas: ' + tr.hint, pr ? 'Pior resultado: ' + pr.value + ' (' + titulo(pr.hint) + ')' : '']);
+  const tc = kpi(D.cli, 'Total clientes');
+  if (tc && /negativ/i.test(tc.hint || '') && !/^0 /.test(tc.hint)) { const mn = kpi(D.cli, 'Menor margem'); A.push(['var(--orange)', 'Clientes: ' + tc.hint, mn ? 'Menor margem ' + mn.value + ' (' + titulo(mn.hint) + ')' : '']); }
+  const pend = ['mensal', 'aging', 'conc', 'placa', 'rotas', 'cli'].some(k => !D[k]);
+  document.getElementById('alerts').innerHTML = A.length
+    ? A.map(a => `<div class="alert"><i style="background:${a[0]}"></i><div><b>${esc(a[1])}</b><span>${esc(a[2])}</span></div></div>`).join('') + (pend ? '<div class="load">Ainda carregando alguns quadros…</div>' : '')
+    : '<div class="load">' + (pend ? 'Aguardando os dados…' : 'Nenhum alerta no período.') + '</div>';
+}
+
+function chips() {
+  const M = meses(), c = [];
+  if (S.mes !== null && M[S.mes]) c.push(['mes', 'Mês: ' + M[S.mes].m]);
+  if (S.cli !== null && D.cli) c.push(['cli', 'Cliente: ' + titulo(rotulos(D.cli)[S.cli])]);
+  if (S.placa !== null && D.placa) c.push(['placa', 'Placa: ' + rotulos(D.placa)[S.placa]]);
+  if (S.rota !== null && D.rotas) c.push(['rota', 'Rota: ' + titulo(rotulos(D.rotas)[S.rota])]);
+  if (S.frota !== null && D.frota) c.push(['frota', rotulos(D.frota)[S.frota]]);
+  document.getElementById('chips').innerHTML = c.map(x => `<span class="chip">${esc(x[1])}<button onclick="S['${x[0]}']=null;render()">×</button></span>`).join('');
+}
+
+function status() {
+  const fmt = s => s.split('-').reverse().join('/');
+  document.getElementById('sub').textContent = 'Dados do SATI · ' + fmt(CFG.ini) + ' a ' + fmt(CFG.fim);
+  const faltam = ['mensal', 'cli', 'rotas', 'conc', 'frota', 'aging', 'placa'].filter(k => !D[k]).length;
+  document.getElementById('statusDados').textContent = faltam ? 'Carregando dados do SATI… (' + faltam + ' quadros restantes)' : 'Dados carregados';
+  document.getElementById('dotDados').style.background = faltam ? 'var(--orange)' : 'var(--green)';
+}
+
+function render() {
+  const fns = [status, kpis, chMes, chFrota, chCli, chConc, chPlaca, chAging, rotas, alertas, chips];
+  fns.forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
+}
+
+render();
+carregar('mensal', CFG.urlMensal + '?' + qs({}, inicio12m(CFG.fim), CFG.fim));
+carregar('cli', CFG.urlComercial + '?' + qs({analise: 1}));
+carregar('rotas', CFG.urlComercial + '?' + qs({analise: 2}));
+carregar('conc', CFG.urlComercial + '?' + qs({analise: 4}));
+carregar('frota', CFG.urlComercial + '?' + qs({analise: 5}));
+carregar('aging', CFG.urlVisao + '?' + qs({visao: 'financeira', analise: 1}));
+carregar('placa', CFG.urlVisao + '?' + qs({visao: 'frota', analise: 1}));
+{% endraw %}
+</script>
+</body>
+</html>
