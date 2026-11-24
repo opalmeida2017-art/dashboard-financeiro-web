@@ -48,3 +48,6 @@ installer/
 pgdata/
 *.xls
 *.xlsx
+
+# Chave de sessão gerada automaticamente (app/security.py)
+.flask_secret_key

@@ -1,0 +1,16 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Sem permissão — BIWEB Transporte</title><style>
+:root{--bg:#0b2530;--panel:#103340;--line:#1f5161;--txt:#e8f4f6;--muted:#8fb3bd;--teal:#13b5a8;--red:#e5533d;--green:#3cc47c}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--txt);font-family:"Segoe UI",Roboto,Arial,sans-serif;padding:16px}
+.card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}.logo{width:40px;height:40px;border-radius:10px;background:var(--teal);display:grid;place-items:center;font-weight:700;color:#fff}
+.brand b{display:block}.brand small{color:var(--muted)}h1{font-size:18px;margin:0 0 14px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:#0b2530;color:var(--txt);font-size:14px}
+input:focus{outline:none;border-color:var(--teal)}button{margin-top:18px;width:100%;padding:11px;border:0;border-radius:8px;background:var(--teal);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.msg{padding:9px 12px;border-radius:8px;font-size:13px;margin-bottom:8px}.erro{background:rgba(229,83,61,.18);border:1px solid var(--red)}.ok{background:rgba(60,196,124,.15);border:1px solid var(--green)}
+p.n{color:var(--muted);font-size:12px;margin:16px 0 0;line-height:1.5}
+</style></head><body><div class="card">
+<div class="brand"><div class="logo">BI</div><div><b>{{ transportadora_nome or 'BIWEB Transporte' }}</b><small>BIWEB Transporte</small></div></div>
+<h1>Seu perfil não tem acesso a esta área</h1>
+<p class="n">Perfil atual: <b>{{ perfil_nome or '—' }}</b>. Fale com o administrador da sua empresa para liberar.</p>
+<p class="n"><a href="{{ painel_home_url() }}" style="color:var(--teal)">Voltar ao painel</a> · <a href="{{ url_for('auth.logout') }}" style="color:var(--teal)">Sair</a></p>
+</div></body></html>

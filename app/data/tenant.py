@@ -147,6 +147,10 @@ def ensure_transportadora() -> int:
 
 def ensure_local_admin(transportadora_id: int | None = None) -> None:
     """Garante um administrador local se a instalação ainda não tiver usuários."""
+    from app.security import auth_obrigatoria
+
+    if auth_obrigatoria():
+        return
     tid = transportadora_id or default_transportadora_id()
     try:
         with db.engine.connect() as conn:
@@ -187,6 +191,10 @@ def try_auto_login() -> bool:
 
         if current_user.is_authenticated:
             return True
+        from app.security import auth_obrigatoria
+
+        if auth_obrigatoria():
+            return False
     except Exception:
         return False
 

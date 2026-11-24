@@ -14,7 +14,8 @@ login_manager = LoginManager()
 
 
 def instalacao_login_required(view_func):
-    """Instalação única: garante sessão local, sem bloquear rotas."""
+    """Sem login obrigatório: sessão local automática. Com login obrigatório, o
+    before_request de app.security já validou usuário e perfil."""
 
     @wraps(view_func)
     def wrapped(*args, **kwargs):

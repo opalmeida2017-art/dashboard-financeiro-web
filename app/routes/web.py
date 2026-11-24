@@ -691,6 +691,10 @@ def adicionar_usuario():
     if not all([nome, email, password]):
         flash('Todos os campos são obrigatórios.', 'error')
         return redirect(url_for('main.gerenciar_usuarios'))
+    from app.security import PERFIS, SENHA_MIN
+    if len(password) < SENHA_MIN or role not in PERFIS:
+        flash(f'Senha com pelo menos {SENHA_MIN} caracteres e perfil válido são obrigatórios.', 'error')
+        return redirect(url_for('main.gerenciar_usuarios'))
 
     password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
     success, message = logic.add_user_to_apartment(
@@ -730,6 +734,10 @@ def editar_usuario(user_id):
 
     if not all([nome, email]):
         flash('Nome e email são obrigatórios.', 'error')
+        return redirect(url_for('main.gerenciar_usuarios'))
+    from app.security import PERFIS, SENHA_MIN
+    if (password and len(password) < SENHA_MIN) or role not in PERFIS:
+        flash(f'Senha com pelo menos {SENHA_MIN} caracteres e perfil válido são obrigatórios.', 'error')
         return redirect(url_for('main.gerenciar_usuarios'))
 
     new_password_hash = bcrypt.generate_password_hash(password).decode('utf-8') if password else None

@@ -18,8 +18,11 @@
             </a>
             <div class="d-flex align-items-center gap-3">
                 <span class="navbar-text text-white-50 small d-none d-md-inline">
-                    {{ usuario_nome }}
+                    {{ usuario_nome }}{% if perfil_nome %} · {{ perfil_nome }}{% endif %}
                 </span>
+                {% if auth_obrigatoria %}
+                <a class="btn btn-outline-light btn-sm" href="{{ url_for('auth.logout') }}">Sair</a>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -203,5 +206,18 @@
             sendHeartbeat();
         });
     </script>
+{% if auth_obrigatoria %}
+<script>
+(function () {
+    const _fetch = window.fetch;
+    window.fetch = function () {
+        return _fetch.apply(this, arguments).then(function (r) {
+            if (r.status === 401) { window.location.reload(); }
+            return r;
+        });
+    };
+})();
+</script>
+{% endif %}
 </body>
 </html>

@@ -33,9 +33,9 @@ def create_app() -> Flask:
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-    app.config["SECRET_KEY"] = os.environ.get(
-        "SECRET_KEY", "uma-chave-secreta-muito-dificil-de-adivinhar"
-    )
+    from app.security import configurar_sessao
+
+    configurar_sessao(app)
 
     upload_folder_path = os.path.join(app.static_folder, "uploads")
     os.makedirs(upload_folder_path, exist_ok=True)
@@ -85,8 +85,13 @@ def create_app() -> Flask:
         )
         from app.utils.tenant_urls import painel_home_url
 
+        from app.security import PERFIS, auth_obrigatoria, pode_ver
+
         return dict(
             is_admin_in_context=is_admin_in_context,
+            pode_ver=pode_ver,
+            auth_obrigatoria=auth_obrigatoria(),
+            perfil_nome=PERFIS.get(getattr(current_user, "role", ""), "") if current_user.is_authenticated else "",
             transportadora_nome=get_transportadora_nome_exibicao(),
             transportadora_id=get_transportadora_id(),
             usuario_nome=nome_exibicao_navbar(nome_ui),
@@ -236,6 +241,10 @@ def create_app() -> Flask:
 
     _iniciar_monitor_ocioso(app)
     _iniciar_limpeza_chrome_zumbi(app)
+    from app.security import proteger_request
+
+    app.before_request(proteger_request)
+
     return app
 
 

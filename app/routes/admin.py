@@ -152,3 +152,30 @@ def remover_acesso(slug: str):
     if not unregister_acesso(slug):
         return jsonify({"ok": False, "detail": "Link de usuário BI não encontrado."}), 404
     return jsonify({"ok": True})
+
+
+@admin_bp.get("/tenants/<slug>/usuarios")
+def listar_usuarios_tenant(slug: str):
+    try:
+        _check_admin()
+    except PermissionError:
+        return jsonify({"ok": False, "detail": "Acesso negado."}), 403
+    from app.security import listar_usuarios
+
+    return jsonify({"ok": True, "usuarios": listar_usuarios(slug)})
+
+
+@admin_bp.post("/tenants/<slug>/usuarios")
+def convidar_usuario_tenant(slug: str):
+    """Cria o usuário (ou atualiza nome/perfil) e devolve o link para ele definir a senha."""
+    try:
+        _check_admin()
+    except PermissionError:
+        return jsonify({"ok": False, "detail": "Acesso negado."}), 403
+    body = request.get_json(silent=True) or {}
+    from app.security import criar_ou_atualizar_usuario
+
+    item = criar_ou_atualizar_usuario(
+        slug, body.get("email") or "", body.get("nome") or "", body.get("perfil") or ""
+    )
+    return jsonify({"ok": True, "usuario": item})

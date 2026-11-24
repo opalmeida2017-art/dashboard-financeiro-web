@@ -37,14 +37,20 @@ def is_admin_in_context():
     try_auto_login()
     if current_user.is_authenticated:
         return current_user.role == "admin"
-    return True
+    from app.security import auth_obrigatoria
+
+    return not auth_obrigatoria()
 
 
 def admin_required(f):
-    """Instalação única: todas as rotas administrativas ficam liberadas."""
+    """Exige perfil admin quando o login é obrigatório; liberado na instalação local."""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if not is_admin_in_context():
+            from flask import abort
+
+            abort(403)
         return f(*args, **kwargs)
 
     return decorated_function
